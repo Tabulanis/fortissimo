@@ -16,6 +16,7 @@ const _tan = new THREE.Vector3();
 const _pA = new THREE.Vector3();
 const _pB = new THREE.Vector3();
 
+
 // lane index -> drum placement.
 // lanes 0-2: upright hand drums (cylinder axis along z, face toward +z).
 // lanes 3-5: floor drums (cylinder axis vertical, head up).
@@ -28,11 +29,13 @@ const LANES3D = [
   { x: 0.75, y: 0.36, z: -0.25, radius: 0.32, depth: 0.36, upright: false },
 ];
 
-// arrow spawn points per lane
+// arrow spawn points per lane.
+// Upright drums (0-2) take arrows from the courtyard walls at the sides, so
+// they are seen side-on at impact; floor drums (3-5) drop from overhead.
 const SPAWNS = [
-  new THREE.Vector3(-0.8 - 6, 2.0, -22),   // lane 0, side -1
-  new THREE.Vector3(0.0 - 6, 2.0, -22),    // lane 1, side -1
-  new THREE.Vector3(0.8 + 6, 2.0, -22),    // lane 2, side +1
+  new THREE.Vector3(-9.8, 2.4, -6),
+  new THREE.Vector3(-9.0, 2.6, -7),
+  new THREE.Vector3(9.8, 2.4, -6),
   new THREE.Vector3(-0.75 * 1.6, 5.5, -24),
   new THREE.Vector3(0.0 * 1.6, 5.5, -24),
   new THREE.Vector3(0.75 * 1.6, 5.5, -24),
@@ -45,6 +48,17 @@ const ARC_LIFT = [0.8, 0.8, 0.8, 3.0, 3.0, 3.0];
 function hexToColor(s) {
   return new THREE.Color(s);   // accepts "#rrggbb"
 }
+
+// shared module-level effect temps (one allocation, reused every frame)
+const _eVel = new THREE.Vector3();
+const _ePos = new THREE.Vector3();
+const _eDir = new THREE.Vector3();
+const _eTang = new THREE.Vector3();
+const _eSide = new THREE.Vector3();
+const _eGrav = new THREE.Vector3(0, -6, 0);
+const _eQ = new THREE.Quaternion();
+const _eAxis = new THREE.Vector3();
+const _eWhite = new THREE.Color(0xffffff);
 
 /**
  * Build the scene once.
@@ -137,7 +151,10 @@ export function createStage3D(canvas, layout, colors) {
     color: 0x555555, roughness: 0.4, metalness: 0.6,
   });
 
-  // arrow POOL: allocated up front, never per frame
+  // arrow POOL: allocated up front, never per frame.
+  // depthTest: false on the GLOW only — the big halo is meant to spill over
+  // the drum body as firelight; the small flame sprite and the arrow meshes
+  // keep depth testing.
   const pool = [];
   for (let i = 0; i < 40; i++) {
     const group = new THREE.Group();
@@ -157,6 +174,7 @@ export function createStage3D(canvas, layout, colors) {
       color: 0xffffff,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      depthTest: false,
       transparent: true,
       opacity: 0.35,
     }));
@@ -175,11 +193,178 @@ export function createStage3D(canvas, layout, colors) {
       spawn: new THREE.Vector3(),
       face: new THREE.Vector3(),
       hit: null,        // "HIT" | "NEAR" once judged
+      hitAt: 0,         // audio-clock time the outcome effect last fired
       stuckUntil: 0,
     });
   }
 
   const activeNotes = [];   // entries currently in flight / stuck
+
+  // effect pools: allocated up front, reused forever, nothing per frame.
+  // sparks: additive, drum-colour mixed with white, gravity, fade over 0.5 s
+  const sparks = [];
+  for (let i = 0; i < 200; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: flameTexture,
+      color: 0xffffff,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0,
+    }));
+    sp.visible = false;
+    scene.add(sp);
+    sparks.push({
+      sprite: sp,
+      active: false,
+      pos: new THREE.Vector3(),
+      vel: new THREE.Vector3(),
+      t0: 0,
+      life: 0.5,
+      scale0: 0.1,
+    });
+  }
+  // smoke: normal blending, grey, rising, growing, fading over 0.5 s
+  const smokes = [];
+  for (let i = 0; i < 40; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: flameTexture,
+      color: 0x888888,
+      blending: THREE.NormalBlending,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0,
+    }));
+    sp.visible = false;
+    scene.add(sp);
+    smokes.push({
+      sprite: sp,
+      active: false,
+      pos: new THREE.Vector3(),
+      vel: new THREE.Vector3(),
+      t0: 0,
+      life: 0.5,
+      scale0: 0.1,
+    });
+  }
+  // smouldering (per stuck arrow): one dim flicker sprite + three puffs
+  const smould = [];
+  for (let i = 0; i < 12; i++) {
+    const flicker = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: flameTexture,
+      color: 0xff6a20,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0,
+    }));
+    flicker.visible = false;
+    scene.add(flicker);
+    const puffs = [];
+    for (let k = 0; k < 3; k++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: flameTexture,
+        color: 0x777777,
+        blending: THREE.NormalBlending,
+        depthWrite: false,
+        transparent: true,
+        opacity: 0,
+      }));
+      sp.visible = false;
+      scene.add(sp);
+      puffs.push({
+        sprite: sp,
+        active: false,
+        pos: new THREE.Vector3(),
+        vel: new THREE.Vector3(),
+        t0: 0,
+        life: 0.5,
+        scale0: 0.1,
+      });
+    }
+    smould.push({ flicker, puffs, active: false, face: new THREE.Vector3() });
+  }
+
+  function freeSpark() {
+    for (const s of sparks) if (!s.active) return s;
+    return null;
+  }
+
+  // head normal: +y for floor drums, +z for upright drums
+  function headNormal(laneIdx, out) {
+    return laneIdx < 3 ? out.set(0, 0, 1) : out.set(0, 1, 0);
+  }
+
+  // outward direction at the face, biased along the head normal
+  function outwardDir(laneIdx, out) {
+    headNormal(laneIdx, out);
+    if (Math.random() < 0.5) out.x += (Math.random() - 0.5) * 1.2;
+    if (Math.random() < 0.5) out.z += (Math.random() - 0.5) * 1.2;
+    out.y += (Math.random() - 0.5) * 0.6;
+    out.normalize();
+    return out;
+  }
+
+  function spawnBurst(laneIdx, heardNow, count, speedMin, speedMax, mixed) {
+    headNormal(laneIdx, _eDir);
+    for (let k = 0; k < count; k++) {
+      const s = freeSpark();
+      if (!s) break;
+      s.active = true;
+      s.t0 = heardNow;
+      s.life = 0.5;
+      s.scale0 = 0.06 + Math.random() * 0.06;
+      _eDir.copy(outwardDir(laneIdx, _eDir));
+      s.vel.copy(_eDir).multiplyScalar(speedMin + Math.random() * (speedMax - speedMin));
+      s.pos.copy(drumFace[laneIdx]);
+      s.pos.x += (Math.random() - 0.5) * 0.05;
+      s.pos.y += (Math.random() - 0.5) * 0.05;
+      s.pos.z += (Math.random() - 0.5) * 0.05;
+      s.sprite.visible = true;
+      s.sprite.position.copy(s.pos);
+      s.sprite.scale.setScalar(s.scale0);
+      if (mixed) {
+        s.sprite.material.color.copy(_eWhite);
+        if (Math.random() < 0.5) {
+          s.sprite.material.color.copy(hexToColor(colors[drumOf(laneIdx)] || "#888888"));
+        }
+      }
+    }
+  }
+
+  // glance-off: the arrow flies off the face along the head normal plus a
+  // random sideways push at 4 m/s, spinning, fading over 0.4 s
+  function spawnGlance(e, heardNow) {
+    headNormal(e.laneIdx, _eVel);
+    _eTang.set(0, 0, 1);
+    if (Math.abs(_eVel.z) < 0.9) _eTang.set(1, 0, 0);
+    _eSide.crossVectors(_eVel, _eTang).normalize();
+    const push = 1.5 + Math.random() * 2.0;
+    _eVel.multiplyScalar(4.0).addScaledVector(_eSide, (Math.random() - 0.5) * 2 * push);
+    e.vel = _eVel;
+    e.spin = (Math.random() - 0.5) * 12;
+    e.t0 = heardNow;
+    e.life = 0.4;
+  }
+
+  function spawnPuff(s, heardNow) {
+    s.active = true;
+    s.t0 = heardNow;
+    s.life = 0.5;
+    s.scale0 = 0.1;
+    s.pos.set(0, 0, 0);
+    s.vel.set(
+      (Math.random() - 0.5) * 0.2,
+      0.6,
+      (Math.random() - 0.5) * 0.2,
+    );
+    s.sprite.visible = true;
+  }
+
+  function freeSmould() {
+    for (const s of smould) if (!s.active) return s;
+    return null;
+  }
 
   // path point p(f): lerp(spawn, face, f) + the parabolic arc lift.
   // Written into `out`; reuses module temps, allocates nothing.
@@ -229,6 +414,7 @@ export function createStage3D(canvas, layout, colors) {
         e.laneIdx = u.laneIdx;
         e.time = u.time;
         e.hit = null;
+        e.hitAt = -1;
         e.stuckUntil = 0;
         e.group.visible = true;
         e.flame.material.color.copy(hexToColor(colors[drumOf(u.laneIdx)] || "#888888"));
@@ -245,7 +431,32 @@ export function createStage3D(canvas, layout, colors) {
       if (dt < 0) {
         // past its time: a hit vanishes at once; otherwise sticks, then vanishes
         if (e.hit) {
-          recycle(e);
+          if (e.hitAt < 0) {
+            e.hitAt = heardNow;
+            if (e.hit === "HIT") {
+              spawnBurst(e.laneIdx, heardNow, 24, 1.5, 4, true);
+            } else {
+              spawnGlance(e, heardNow);
+              spawnBurst(e.laneIdx, heardNow, 6, 1.0, 2.0, false);
+            }
+          }
+          if (e.hit === "HIT") {
+            recycle(e);
+            continue;
+          }
+          // NEAR: glance-off, flying away while fading over 0.4 s
+          const g = (heardNow - e.hitAt) / e.life;
+          if (g >= 1) {
+            recycle(e);
+            continue;
+          }
+          _ePos.copy(e.face).addScaledVector(e.vel, heardNow - e.hitAt);
+          e.group.position.copy(_ePos);
+          _eQ.setFromAxisAngle(_eAxis.set(Math.random() - 0.5, 1, Math.random() - 0.5), e.spin * (heardNow - e.hitAt));
+          e.group.quaternion.copy(_eQ);
+          const fade = 1 - g;
+          e.flame.material.opacity = fade;
+          e.glow.material.opacity = 0.35 * fade;
           continue;
         }
         if (heardNow > e.stuckUntil) {
@@ -258,11 +469,57 @@ export function createStage3D(canvas, layout, colors) {
             pathPoint(e, 0.99, _pB);
             _tan.copy(_pA).sub(_pB).normalize();
             e.group.quaternion.setFromUnitVectors(UP, _tan);
+            // arm the smouldering at the head
+            const sm = freeSmould();
+            if (sm) {
+              sm.active = true;
+              sm.face.copy(e.face);
+              sm.flicker.visible = true;
+              sm.flicker.position.copy(e.face);
+              sm.flicker.scale.setScalar(0.3);
+              for (const p of sm.puffs) {
+                spawnPuff(p, heardNow);
+                p.pos.copy(e.face);
+                p.pos.x += (Math.random() - 0.5) * 0.06;
+                p.pos.z += (Math.random() - 0.5) * 0.06;
+                p.sprite.position.copy(p.pos);
+              }
+            }
             continue;
+          }
+          // retiring: kill any smouldering this arrow armed
+          for (const sm of smould) {
+            if (sm.active && sm.face.equals(e.face)) {
+              sm.active = false;
+              sm.flicker.visible = false;
+              sm.flicker.material.opacity = 0;
+              for (const p of sm.puffs) {
+                p.active = false;
+                p.sprite.visible = false;
+                p.sprite.material.opacity = 0;
+              }
+            }
           }
           recycle(e);
           continue;
         }
+        // still stuck: smoulder flicker + smoke puffs
+        for (const sm of smould) {
+          if (sm.active && sm.face.equals(e.face)) {
+            sm.flicker.material.opacity = 0.4 + 0.3 * Math.random();
+            sm.flicker.scale.setScalar(0.3 * (0.9 + 0.2 * Math.random()));
+            for (const p of sm.puffs) {
+              if (!p.active && heardNow - p.t0 > p.life) {
+                spawnPuff(p, heardNow);
+                p.pos.copy(e.face);
+                p.pos.x += (Math.random() - 0.5) * 0.06;
+                p.pos.z += (Math.random() - 0.5) * 0.06;
+                p.sprite.position.copy(p.pos);
+              }
+            }
+          }
+        }
+        continue;
       }
       const f = 1 - dt / APPROACH_S;   // 0 at spawn, 1 at the face
       const clamped = Math.min(1, Math.max(0, f));
@@ -281,11 +538,62 @@ export function createStage3D(canvas, layout, colors) {
       e.glow.scale.setScalar(1.4 * (0.9 + 0.2 * Math.random()));
     }
 
+    // effect pools: sparks (gravity + fade), smoke (rise + grow + fade)
+    for (const s of sparks) {
+      if (!s.active) continue;
+      const g = (heardNow - s.t0) / s.life;
+      if (g >= 1) {
+        s.active = false;
+        s.sprite.visible = false;
+        s.sprite.material.opacity = 0;
+        continue;
+      }
+      _eVel.copy(s.vel).addScaledVector(_eGrav, heardNow - s.t0);
+      s.pos.addScaledVector(s.vel, heardNow - s.t0);
+      s.pos.y -= 0.5 * 6 * (heardNow - s.t0) * (heardNow - s.t0);
+      s.sprite.position.copy(s.pos);
+      s.sprite.material.opacity = 1 - g;
+    }
+    for (const s of smokes) {
+      if (!s.active) continue;
+      const g = (heardNow - s.t0) / s.life;
+      if (g >= 1) {
+        s.active = false;
+        s.sprite.visible = false;
+        s.sprite.material.opacity = 0;
+        continue;
+      }
+      s.pos.addScaledVector(s.vel, heardNow - s.t0);
+      s.sprite.position.copy(s.pos);
+      s.sprite.material.opacity = 0.25 * (1 - g);
+      s.sprite.scale.setScalar(0.1 + 0.4 * g);
+    }
+    // smouldering puffs recycle into the shared smoke pool
+    for (const sm of smould) {
+      if (!sm.active) continue;
+      for (const p of sm.puffs) {
+        if (!p.active) continue;
+        const g = (heardNow - p.t0) / p.life;
+        if (g >= 1) {
+          p.active = false;
+          p.sprite.visible = false;
+          p.sprite.material.opacity = 0;
+          continue;
+        }
+        p.pos.addScaledVector(p.vel, heardNow - p.t0);
+        p.sprite.position.copy(p.pos);
+        p.sprite.material.opacity = 0.25 * (1 - g);
+        p.sprite.scale.setScalar(0.1 + 0.4 * g);
+      }
+    }
+
     renderer.render(scene, camera);
   }
 
   /**
-   * Mark the note (laneIdx, noteTime) as hit so its arrow vanishes at once.
+   * Mark the note (laneIdx, noteTime) as hit so its arrow plays its outcome.
+   * The outcome fires the moment the arrow reaches its face (or immediately
+   * if this call comes after that).
    * @param {"HIT"|"NEAR"} kind
    */
   function hit(laneIdx, noteTime, kind) {
