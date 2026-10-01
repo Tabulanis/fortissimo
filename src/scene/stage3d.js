@@ -366,6 +366,52 @@ export function createStage3D(canvas, layout, colors) {
     return null;
   }
 
+  // APPROACH RINGS + FIRELIGHT: one ring mesh and one glow sprite per drum,
+  // allocated once. The ring closes onto the drum edge exactly at the arrow's
+  // time — that closing moment is the hit moment. No per-frame allocation.
+  const ringGeo = new THREE.RingGeometry(0.92, 1.0, 48);
+  const rings = [];
+  const firelights = [];
+  for (let i = 0; i < 6; i++) {
+    const lane = i < 3 ? layout.top[i] : layout.bottom[i - 3];
+    const color = hexToColor(colors[lane.drum] || "#888888");
+    const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }));
+    const face = drumFace[i];
+    if (i < 3) {
+      // upright: facing the player, at the face (z = face + 0.01)
+      ring.position.set(face.x, face.y, face.z + 0.01);
+    } else {
+      // floor: flat on the head (y = head + 0.01)
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(face.x, face.y + 0.01, face.z);
+    }
+    ring.visible = false;
+    scene.add(ring);
+    rings.push({ mesh: ring, radius: LANES3D[i].radius });
+
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: flameTexture,
+      color,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+      transparent: true,
+      opacity: 0,
+    }));
+    glow.position.copy(face);
+    glow.scale.setScalar(2.2 * LANES3D[i].radius);
+    glow.visible = false;
+    scene.add(glow);
+    firelights.push({ glow, radius: LANES3D[i].radius });
+  }
+
   // path point p(f): lerp(spawn, face, f) + the parabolic arc lift.
   // Written into `out`; reuses module temps, allocates nothing.
   function pathPoint(e, f, out) {
@@ -536,6 +582,33 @@ export function createStage3D(canvas, layout, colors) {
       const s = 0.45 * (0.9 + 0.2 * Math.random());
       e.flame.scale.setScalar(s);
       e.glow.scale.setScalar(1.4 * (0.9 + 0.2 * Math.random()));
+    }
+
+    // approach rings + firelight: the next unhit arrow per lane drives both.
+    // Ring scale closes onto the drum edge exactly at dt = 0 (the hit moment).
+    for (let lane = 0; lane < 6; lane++) {
+      let next = null;
+      for (const e of activeNotes) {
+        if (e.laneIdx !== lane || e.hit) continue;
+        const dt = e.time - heardNow;
+        if (dt < 0 || dt > 1.0) continue;
+        if (!next || dt < next.dt) next = { dt };
+      }
+      const r = rings[lane];
+      const fl = firelights[lane];
+      if (next) {
+        const dt = next.dt;
+        r.mesh.visible = true;
+        r.mesh.scale.setScalar(r.radius * (1 + 1.4 * dt));
+        r.mesh.material.opacity = 0.25 + 0.65 * (1 - dt);
+        fl.glow.visible = true;
+        fl.glow.material.opacity = 0.6 * (1 - dt);
+      } else {
+        r.mesh.visible = false;
+        r.mesh.material.opacity = 0;
+        fl.glow.visible = false;
+        fl.glow.material.opacity = 0;
+      }
     }
 
     // effect pools: sparks (gravity + fade), smoke (rise + grow + fade)
