@@ -71,6 +71,22 @@ export class Ghosts {
     return out;
   }
 
+  /**
+   * Every recorded take as plain data: { lane: [{ pass, hits: [{ pos, velocity }] }] },
+   * oldest take first. For session serialization only — nothing DOM- or audio-shaped.
+   * @returns {Record<string, {pass: number, hits: {pos: number, velocity: number}[]}[]>}
+   */
+  toData() {
+    const out = {};
+    for (const [lane, takes] of this.ghosts) {
+      out[lane] = takes.map((tk) => ({
+        pass: tk.pass,
+        hits: tk.hits.map((h) => ({ pos: h.pos, velocity: h.velocity })),
+      }));
+    }
+    return out;
+  }
+
   /** Names of lanes that currently have a ghost. */
   get lanes() {
     return [...this.ghosts.keys()];

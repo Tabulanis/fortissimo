@@ -53,13 +53,11 @@ export class Ghosts {
     const kLo = Math.floor(relFrom / this.period);
     const kHi = Math.floor((toT - 1e-12) / this.period);
     for (const [lane, takes] of this.ghosts) {
-      let current = null;
       for (let k = kLo; k <= kHi; k++) {
-        let active = current;
-        const sup = takes.find((tk) => tk.pass === k - 1);
-        if (sup) {
-          active = sup;
-          current = sup;
+        // latest take recorded strictly before pass k
+        let active = null;
+        for (const tk of takes) {
+          if (tk.pass < k && (!active || tk.pass > active.pass)) active = tk;
         }
         if (!active) continue;
         for (const h of active.hits) {

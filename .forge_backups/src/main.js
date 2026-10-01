@@ -11,6 +11,7 @@ import { startClock } from "./audio/clock.js";
 import { nearestOnGrid, nearestInLoop, velocityFor, label, OFF_CHART } from "./game/judge.js";
 import { LAYOUT, CHART } from "./game/chart.js";
 import { Ghosts } from "./game/ghosts.js";
+import { SessionLog } from "./game/session.js";
 
 const { VoicePool, VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
 
@@ -46,6 +47,14 @@ for (const e of Object.values(KEYMAP)) KEYMAP_BY_LANE[e.ln.name] = e;
 // --- calibration ----------------------------------------------------------
 let calibration = loadCalib();   // seconds, subtracted from every press time
 let calib = null;                // active session: { hits: number[] }
+
+// --- freestyle mode ---------------------------------------------------------
+// "drum" = chart + timing judgement, as before. "free" = no chart notes, no
+// timing judgement, no timing-chart entries: every lane press plays its drum
+// immediately at velocity 1.0. Metronome click and ghost loops keep working
+// exactly as in drum mode (presses are still recorded into ghosts).
+let mode = "drum";
+let session = null;
 
 function loadCalib() {
   try {
@@ -111,10 +120,16 @@ function makeStartButton() {
     });
 
     ghosts = new Ghosts(CHART.loopBeats * clock.beatDur);
+    session = new SessionLog({
+      bpm: BPM,
+      loopBeats: CHART.loopBeats,
+      layout: LAYOUT,
+    });
     scheduledUntil = clock.first;
     setInterval(scheduleGhosts, 25);
 
     btn.remove();
+    hud.textContent = modeStr();
   });
   document.body.appendChild(btn);
   return btn;
@@ -168,6 +183,19 @@ function onKey(e) {
     return;
   }
 
+  if (e.key === "m" || e.key === "M") {
+    e.preventDefault();
+    mode = mode === "drum" ? "free" : "drum";
+    if (clock) hud.textContent = modeStr();
+    return;
+  }
+
+  if (e.key === "p" || e.key === "P") {
+    e.preventDefault();
+    saveSession();
+    return;
+  }
+
   if (e.key === "f" || e.key === "F" || e.key === " ") {
     e.preventDefault();
     const j = nearestOnGrid(clock.first, clock.beatDur, press);
@@ -197,9 +225,18 @@ function onKey(e) {
     clock.first, clock.beatDur, press,
   );
   // off-chart: no note nearby at all — play quietly, label OFF, stay out of the chart
-  const off = !j || Math.abs(j.offset) > OFF_CHART;
-  const vel = off ? 0.15 : velocityFor(j.offset);
-  const lab = off ? "OFF" : label(j.offset);
+  const free = mode === "free";
+  let vel, lab, off = false;
+  if (free) {
+    // freestyle: no judgement, no timing-chart entry — always full velocity
+    vel = 1.0;
+    lab = "FREE";
+  } else {
+    // off-chart: no note nearby at all — play quietly, label OFF, stay out of the chart
+    off = !j || Math.abs(j.offset) > OFF_CHART;
+    vel = off ? 0.15 : velocityFor(j.offset);
+    lab = off ? "OFF" : label(j.offset);
+  }
 
   // record exactly as played (real timing, real velocity, mistakes and OFF
   // included) — it becomes this lane's ghost from the next pass on
@@ -217,7 +254,40 @@ function onKey(e) {
     settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
   });
 
-  recordPress(idx, off ? null : j.offset, vel, lane.name, lab);
+  // every press, both modes, lands in the session log
+  if (session) session.add({
+    lane: lane.name,
+    drum: lane.drum,
+    t: press,
+    velocity: vel,
+    mode,
+    label: lab,
+  });
+
+  recordPress(idx, free ? null : (off ? null : j.offset), vel, lane.name, lab);
+}
+
+// --- freestyle + save -------------------------------------------------------
+function modeStr() {
+  return `${mode === "free" ? "FREESTYLE" : "DRUM"}  [M] mode   [P] save`;
+}
+
+function saveSession() {
+  if (!session || !clock) return;
+  const data = session.toJSON(clock.first, ghosts);
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  const d = new Date();
+  const p = (n, w = 2) => String(n).padStart(w, "0");
+  a.download =
+    `garden-rhythm-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}` +
+    `-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.json`;
+  a.href = URL.createObjectURL(blob);
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+  hud.textContent = `${modeStr()}   saved ${data.hits.length} hits`;
 }
 
 function recordPress(idx, offsetSec, vel, laneName, lab) {
@@ -244,8 +314,11 @@ function recordPress(idx, offsetSec, vel, laneName, lab) {
   const ghostStr = ghosts
     ? `  ghosts: ${ghosts.lanes.length} lanes (${ghostsOn ? "on" : "off"}) [G]`
     : "";
+  const modeStr2 = mode === "free"
+    ? "  FREESTYLE"
+    : "  DRUM";
   hud.textContent =
-    `${laneName}  ${lab}  ` +
+    `${laneName}  ${lab}${modeStr2}  ` +
     (ms == null
       ? "free"
       : `${ms >= 0 ? "+" : ""}${ms.toFixed(1)} ms  vel ${vel.toFixed(2)}`) +
@@ -411,7 +484,7 @@ function drawHighway(now) {
     ctx2d.fillText(LAYOUT.bottom[i].key.toUpperCase(), x, geo.bot.hitY - 20);
     ctx2d.fillStyle = "#567";
     ctx2d.font = "10px monospace";
-    ctx2d.fillText(LAYOUT.bottom[i].name, x, geo.bot.hitY - 32);
+    ctx2d.fillText(LAYOUT.bottom[i].name, x, geo.bot.hitY - 40);
     ctx2d.font = "16px monospace";
   }
   ctx2d.textAlign = "left";
