@@ -8,7 +8,8 @@
 import "./audio/voices.js";
 import { makeDrums } from "./audio/drums.js";
 import { startClock } from "./audio/clock.js";
-import { nearestOnGrid, velocityFor, label } from "./game/judge.js";
+import { nearestOnGrid, nearestInLoop, velocityFor, label } from "./game/judge.js";
+import { LAYOUT, CHART } from "./game/chart.js";
 
 const { VoicePool, VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
 
@@ -28,6 +29,16 @@ let clock = null;
 let offsets = [];          // every press offset (ms), after calibration
 let flashUntil = 0;        // performance-time until which the hit line flashes
 let flashHit = false;
+
+// --- drum-mode lane map ----------------------------------------------------
+// key -> { lane index (0..9), lane } built once from the layout.
+const KEYMAP = {};
+{
+  let idx = 0;
+  for (const ln of [...LAYOUT.top, ...LAYOUT.bottom]) {
+    KEYMAP[ln.key] = { idx: idx++, ln };
+  }
+}
 
 // --- calibration ----------------------------------------------------------
 let calibration = loadCalib();   // seconds, subtracted from every press time
@@ -102,50 +113,89 @@ function makeStartButton() {
   return btn;
 }
 
+// --- keydown ---------------------------------------------------------------
+// Drum mode: each lane key plays that lane's drum IMMEDIATELY on its own
+// channel; timing only changes loudness (velocityFor) — never delay or snap
+// the sound. Calibration keeps its old F/Space taps against the metronome.
 function onKey(e) {
   // start-up guard: drums, pool and clock must all exist before a press
   if (e.repeat || !ctx || !drums || !pool || !clock) return;
-  if (e.key !== "f" && e.key !== "F" && e.key !== " ") return;
-  e.preventDefault();
 
   // press time on the audio clock, from the event's own timestamp
   const ts = ctx.getOutputTimestamp();
-  let press = ts.contextTime + (e.timeStamp - ts.performanceTime) / 1000;
+  const press =
+    ts.contextTime + (e.timeStamp - ts.performanceTime) / 1000 - calibration;
 
-  // calibration removes the player's systematic offset before judging
-  press -= calibration;
-  const j = nearestOnGrid(clock.first, clock.beatDur, press);
-  const vel = velocityFor(j.offset);
+  if (e.key === "f" || e.key === "F" || e.key === " ") {
+    e.preventDefault();
+    const j = nearestOnGrid(clock.first, clock.beatDur, press);
+    const vel = velocityFor(j.offset);
+    pool.noteOn({
+      channel: 0,
+      midi: 36,
+      baseNote: 60,
+      buffer: drums.kick,
+      velocity: vel,
+      when: ctx.currentTime,
+      destination: masterGain,
+      settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
+    });
+    recordPress(j.offset, vel, "kick", label(j.offset));
+    return;
+  }
 
+  const entry = KEYMAP[e.key];
+  if (!entry) return;
+  e.preventDefault();
+  const { idx, ln: lane } = entry;
+
+  // timing against this lane's chart notes, loop-wrapped
+  const j = nearestInLoop(
+    CHART.notes[lane.drum], CHART.loopBeats,
+    clock.first, clock.beatDur, press,
+  );
+  const vel = j ? velocityFor(j.offset) : 0.5;
+  const lab = j ? label(j.offset) : "FREE";
+
+  // the player IS the instrument: play immediately, on this lane's channel
   pool.noteOn({
-    channel: 0,
-    midi: 36,
+    channel: idx,
+    midi: 60,
     baseNote: 60,
-    buffer: drums.kick,
+    buffer: drums[lane.drum],
     velocity: vel,
     when: ctx.currentTime,
     destination: masterGain,
     settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
   });
 
-  const ms = j.offset * 1000;
-  flashHit = label(j.offset) === "HIT";
+  recordPress(j ? j.offset : null, vel, lane.name, lab);
+}
+
+function recordPress(offsetSec, vel, laneName, lab) {
+  const ms = offsetSec == null ? null : offsetSec * 1000;
+  flashHit = lab === "HIT";
   flashUntil = performance.now() + 120;
 
   if (calib) {
-    calib.hits.push(j.offset);
-    if (calib.hits.length >= 16) {
-      calibration = median(calib.hits);
-      try { localStorage.setItem(CALIB_KEY, String(calibration)); } catch {}
-      calib = null;
+    if (offsetSec != null) {
+      calib.hits.push(offsetSec);
+      if (calib.hits.length >= 16) {
+        calibration = median(calib.hits);
+        try { localStorage.setItem(CALIB_KEY, String(calibration)); } catch {}
+        calib = null;
+      }
     }
-  } else {
+  } else if (offsetSec != null) {
     offsets.push(ms);
   }
 
   hud.textContent =
-    `${label(j.offset)}  ${ms >= 0 ? "+" : ""}${ms.toFixed(1)} ms  ` +
-    `vel ${vel.toFixed(2)}  lat ${(ctx.outputLatency * 1000).toFixed(1)} ms  ` +
+    `${laneName}  ${lab}  ` +
+    (ms == null
+      ? "free"
+      : `${ms >= 0 ? "+" : ""}${ms.toFixed(1)} ms  vel ${vel.toFixed(2)}`) +
+    `  lat ${(ctx.outputLatency * 1000).toFixed(1)} ms  ` +
     `calib: ${calibration >= 0 ? "+" : ""}${(calibration * 1000).toFixed(1)} ms`;
 }
 

@@ -18,6 +18,23 @@ export function nearestBeat(beatTimes, t) {
 }
 
 /**
+ * Judge against the beat GRID, which is known in advance — unlike the
+ * scheduled-only beat list, this never misjudges an early press against the
+ * previous beat.
+ * @param {number} first time of beat index 0 (seconds)
+ * @param {number} beatDur seconds per beat
+ * @param {number} t the moment to judge (seconds, same clock)
+ * @returns {{index: number, time: number, offset: number}}
+ *   offset = t - time (negative = early)
+ */
+export function nearestOnGrid(first, beatDur, t) {
+  let index = Math.round((t - first) / beatDur);
+  if (index < 0) index = 0;
+  const time = first + index * beatDur;
+  return { index, time, offset: t - time };
+}
+
+/**
  * Map timing error to a velocity (loudness/brightness) weight.
  * |offset| <= 0.020 -> 1.0 ; |offset| >= 0.150 -> 0.15 ; linear between.
  */

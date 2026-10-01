@@ -46,6 +46,29 @@ export function velocityFor(offsetSec) {
   return 1.0 - f * (1.0 - 0.15);
 }
 
+/**
+ * Judge a press against a repeating chart note.
+ * The note at beat b in loop k (k >= 0) sounds at first + (k*loopBeats + b)*beatDur;
+ * return the occurrence nearest to t. A press just before a loop boundary is
+ * judged EARLY against beat 0 of the NEXT loop, not late against the last
+ * note of the previous one.
+ * @returns {{offset: number, beat: number} | null} offset = t - time (s, negative = early)
+ */
+export function nearestInLoop(beats, loopBeats, first, beatDur, t) {
+  if (!beats.length) return null;
+  const period = loopBeats * beatDur;
+  const loops = Math.floor((t - first) / period);
+  let best = null;
+  for (let k = Math.max(0, loops - 1); k <= loops + 1; k++) {
+    for (const b of beats) {
+      const time = first + (k * loopBeats + b) * beatDur;
+      const d = Math.abs(t - time);
+      if (!best || d < best.d) best = { d, time, beat: b };
+    }
+  }
+  return { offset: t - best.time, beat: best.beat };
+}
+
 /** HIT within 50 ms; otherwise EARLY / LATE. */
 export function label(offsetSec) {
   const a = Math.abs(offsetSec);
