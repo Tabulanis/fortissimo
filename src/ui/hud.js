@@ -10,7 +10,7 @@ const CSS = `
 #gr-hud .chip { background: rgba(10, 8, 6, 0.55); border: 1px solid rgba(255, 200, 120, 0.25);
   border-radius: 10px; padding: 6px 12px; backdrop-filter: blur(3px); }
 #gr-hud .lives { letter-spacing: 3px; color: #ff6a50; font-size: 18px; }
-#gr-hud .bellbox { position: absolute; right: 26px; bottom: 140px; text-align: center; }
+#gr-hud .bellbox { position: absolute; right: 26px; bottom: 40px; text-align: center; }
 #gr-hud .bell { pointer-events: auto; cursor: pointer; width: 84px; height: 84px; border-radius: 50%;
   display: grid; place-items: center; font-size: 42px; user-select: none;
   background: radial-gradient(circle at 40% 35%, #ffd27a, #b8741c 70%);

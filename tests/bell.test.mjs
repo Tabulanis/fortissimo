@@ -108,8 +108,8 @@ const part = [
   const bell = new Bell({ first: F, beatDur: B });
   bell.ring(1.0);
   bell["__setRecording"](DIFFICULTY.easy.window);
-  const early = bell.tick(8.5 + 0.079, { part, diff: DIFFICULTY.easy, free: false });
-  assert.strictEqual(early, null, "before recordEnd + window, tick returns null");
+  const early = bell.tick(8.5 - DIFFICULTY.easy.window - 0.001, { part, diff: DIFFICULTY.easy, free: false });
+  assert.strictEqual(early, null, "before recordEnd - window the measure is not complete: null");
   assert.strictEqual(bell.state, "recording");
 }
 

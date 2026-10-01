@@ -15,6 +15,11 @@ import { LAYOUT, CHART } from "./game/chart.js";
 import { Ghosts } from "./game/ghosts.js";
 import { SessionLog } from "./game/session.js";
 import { createStage3D } from "./scene/stage3d.js";
+import { Bell } from "./game/bell.js";
+import { Loops } from "./game/loops.js";
+import { DIFFICULTY } from "./game/difficulty.js";
+import { SONG, partArrows, isShown } from "./game/stages.js";
+import { createHud } from "./ui/hud.js";
 
 const { VoicePool, VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
 
@@ -22,7 +27,8 @@ const hud = document.querySelector("#hud");
 const stage = document.querySelector("#stage");
 const chart = document.querySelector("#chart");
 const ctx2d = chart.getContext("2d");
-const BPM = 100;
+let difficulty = DIFFICULTY.easy;   // sets "correct enough" and the starting tempo
+const BPM = difficulty.bpm;
 const CALIB_KEY = "gr.calib";
 
 // --- drum colours (hex strings; shared by the 3D stage and the chart) ------
@@ -33,6 +39,69 @@ const DRUM_COLOR = {
 
 // --- the 3D stage (created once at load; canvas#stage becomes WebGL) --------
 const stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR);
+window.__gr = { stage3d };   // debug handle for the browser harness
+
+// --- the song: parts unlock two drums at a time; the ghost bell locks them ---
+const LANE_INDEX = {};                    // lane name -> 0..5
+[...LAYOUT.top, ...LAYOUT.bottom].forEach((ln, i) => { LANE_INDEX[ln.name] = i; });
+let stageIdx = 0;
+let bell = null;                          // created when the clock starts
+let loops = null;                         // locked measures, replayed exactly as played
+const songDone = () => stageIdx >= SONG.parts.length;
+const currentPart = () => (songDone() ? [] : SONG.parts[stageIdx].part);
+const hudUI = createHud({ onBell: ringBell });
+hudUI.setDifficulty(difficulty.name);
+hudUI.setLives(3);
+
+function applyStage() {
+  for (let i = 0; i < 6; i++) stage3d.setDrumVisible(i, isShown(stageIdx, i));
+  if (songDone()) {
+    hudUI.setPart("Free play");
+    hudUI.say("Song complete! Play anything — ring the bell 🔔 to add a measure", "good");
+  } else {
+    hudUI.setPart(`${SONG.parts[stageIdx].label} of ${SONG.parts.length}`);
+    hudUI.say("Follow the arrows. Got it? Ring the bell 🔔 (Space)");
+  }
+}
+
+function ringBell() {
+  if (!bell || !ctx) { hudUI.say("Press Start first", "bad", 1500); return; }
+  if (bell.state !== "idle") return;
+  bell.ring(ctx.getOutputTimestamp().contextTime);
+  hudUI.setBellState("armed");
+  hudUI.say("Get ready — recording starts on the next bar…");
+}
+
+// called every frame: has a recorded measure finished?
+function tickBell(heardNow) {
+  if (!bell) return;
+  const free = mode === "free" || songDone();
+  const r = bell.tick(heardNow, { part: currentPart(), diff: difficulty, free });
+  hudUI.setBellState(bell.state);
+  if (bell.state === "recording" && !r) hudUI.say("● Recording this measure…");
+  if (!r) return;
+  if (r.locked) {
+    loops.add(r.layer);
+    // the scheduler may already be past this loop's first notes (it looks
+    // 0.1 s ahead) — schedule the new layer's notes up to that point now
+    if (ctx && pool) {
+      const one = new Loops(4 * clock.beatDur); one.add(r.layer);
+      for (const e of one.events(ctx.currentTime, scheduledUntil, clock.first)) {
+        const entry = KEYMAP_BY_LANE[e.lane];
+        if (!entry) continue;
+        pool.noteOn({ channel: entry.idx + 10, midi: 60, baseNote: 60, buffer: drums[entry.ln.drum],
+          velocity: e.velocity * 0.85, when: e.time, destination: masterGain,
+          settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
+      }
+    }
+    if (!songDone()) stageIdx++;
+    applyStage();
+    hudUI.say(`Locked in! ✨ (${r.judge.matched}/${r.judge.total})`, "good", 2500);
+  } else {
+    hudUI.say(`Not quite (${r.judge.matched}/${r.judge.total}) — keep playing, it's still listening`, "bad");
+  }
+}
+applyStage();
 
 let ctx = null;
 let masterGain = null;
@@ -88,7 +157,7 @@ function makeCalibrateButton() {
   const btn = document.createElement("button");
   btn.textContent = "Calibrate";
   btn.style.cssText =
-    "position:fixed;top:8px;right:90px;z-index:21;font:14px monospace;" +
+    "position:fixed;bottom:24px;left:8px;z-index:21;font:13px monospace;" +
     "padding:6px 14px;background:#131;color:#fc6;border:1px solid #fc6;cursor:pointer";
   btn.addEventListener("click", () => {
     if (!clock || calib) return;
@@ -103,8 +172,8 @@ function makeStartButton() {
   const btn = document.createElement("button");
   btn.textContent = "Start";
   btn.style.cssText =
-    "position:fixed;top:8px;right:8px;z-index:21;font:14px monospace;" +
-    "padding:6px 14px;background:#123;color:#8f8;border:1px solid #8f8;cursor:pointer";
+    "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:21;font:22px system-ui;border-radius:12px;" +
+    "padding:18px 48px;background:#2a1606;color:#ffd27a;border:2px solid #ffb84a;cursor:pointer;box-shadow:0 0 30px rgba(255,170,60,.45)";
   btn.addEventListener("click", async () => {
     if (ctx) return;
     ctx = new AudioContext();
@@ -119,12 +188,14 @@ function makeStartButton() {
     clock = startClock(ctx, {
       bpm: BPM,
       onBeat: (time, n) => {
+        const active = bell && bell.state !== "idle";
+        if (active) setTimeout(() => hudUI.tick(), Math.max(0, (time - ctx.currentTime) * 1000));
         pool.noteOn({
           channel: 0,
-          midi: 72,
+          midi: active ? 84 : 72,          // the bell ticks brighter while it counts / records
           baseNote: 60,
           buffer: drums.click,
-          velocity: 0.5,
+          velocity: active ? 0.9 : 0.35,
           when: time,
           destination: masterGain,
           settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
@@ -132,7 +203,9 @@ function makeStartButton() {
       },
     });
 
-    ghosts = new Ghosts(CHART.loopBeats * clock.beatDur);
+    bell = new Bell({ first: clock.first, beatDur: clock.beatDur });
+    loops = new Loops(4 * clock.beatDur);
+    ghosts = loops;   // the scheduler below replays loop layers
     session = new SessionLog({
       bpm: BPM,
       loopBeats: CHART.loopBeats,
@@ -168,7 +241,7 @@ function scheduleGhosts() {
       midi: 60,
       baseNote: 60,
       buffer: drums[entry.ln.drum],
-      velocity: e.velocity * 0.5,
+      velocity: e.velocity * 0.85,   // exactly as played, a touch under live play
       when: e.time,
       destination: masterGain,
       settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
@@ -209,7 +282,20 @@ function onKey(e) {
     return;
   }
 
-  if (e.key === "f" || e.key === "F" || e.key === " ") {
+  if (e.key === " ") {
+    e.preventDefault();
+    ringBell();
+    return;
+  }
+
+  if (e.key === "h" || e.key === "H") {   // developer timing chart
+    e.preventDefault();
+    chart.style.display = chart.style.display === "block" ? "none" : "block";
+    resize();
+    return;
+  }
+
+  if (e.key === "f" || e.key === "F") {
     e.preventDefault();
     const j = nearestOnGrid(clock.first, clock.beatDur, press);
     const vel = velocityFor(j.offset);
@@ -233,16 +319,16 @@ function onKey(e) {
   const { idx, ln: lane } = entry;
 
   // timing against this lane's chart notes, loop-wrapped
-  const j = nearestInLoop(
-    CHART.notes[lane.drum], CHART.loopBeats,
-    clock.first, clock.beatDur, press,
-  );
+  const partBeats = currentPart().filter((n) => n.lane === lane.name).map((n) => n.beat);
+  const j = partBeats.length
+    ? nearestInLoop(partBeats, 4, clock.first, clock.beatDur, press)
+    : null;
   // off-chart: no note nearby at all — play quietly, label OFF, stay out of the chart
-  const free = mode === "free";
+  const free = mode === "free" || songDone() || !partBeats.length;   // not in this part: just play
   let vel, lab, off = false;
   if (free) {
     // freestyle: no judgement, no timing-chart entry — always full velocity
-    vel = 1.0;
+    vel = 0.9;
     lab = "FREE";
   } else {
     // off-chart: no note nearby at all — play quietly, label OFF, stay out of the chart
@@ -253,7 +339,7 @@ function onKey(e) {
 
   // record exactly as played (real timing, real velocity, mistakes and OFF
   // included) — it becomes this lane's ghost from the next pass on
-  if (ghosts) ghosts.record(lane.name, press, vel, clock.first);
+  if (bell) bell.add({ lane: lane.name, t: press, velocity: vel });
 
   // the player IS the instrument: play immediately, on this lane's channel
   pool.noteOn({
@@ -294,7 +380,7 @@ function modeStr() {
 
 function saveSession() {
   if (!session || !clock) return;
-  const data = session.toJSON(clock.first, ghosts);
+  const data = session.toJSON(clock.first, { toData: () => ({ layers: loops ? loops._layers : [] }) });
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   const d = new Date();
@@ -332,7 +418,7 @@ function recordPress(idx, offsetSec, vel, laneName, lab) {
   }
 
   const ghostStr = ghosts
-    ? `  ghosts: ${ghosts.lanes.length} lanes (${ghostsOn ? "on" : "off"}) [G]`
+    ? `  loops: ${loops ? loops.count : 0} (${ghostsOn ? "on" : "off"}) [G]`
     : "";
   const modeStr2 = mode === "free"
     ? "  FREESTYLE"
@@ -353,23 +439,10 @@ function recordPress(idx, offsetSec, vel, laneName, lab) {
 const APPROACH_S = 3.2;   // must match stage3d.js
 
 function buildUpcoming(heardNow) {
-  const out = [];
-  if (mode === "free") return out;
-  const period = CHART.loopBeats * clock.beatDur;
-  const kLo = Math.max(0, Math.floor((heardNow - clock.first) / period) - 1);
-  const lanes = [...LAYOUT.top, ...LAYOUT.bottom];
-  for (let li = 0; li < lanes.length; li++) {
-    const beats = CHART.notes[lanes[li].drum];
-    if (!beats.length) continue;
-    for (let k = kLo; k <= kLo + 2; k++) {
-      for (const b of beats) {
-        const noteTime = clock.first + (k * CHART.loopBeats + b) * clock.beatDur;
-        if (noteTime - heardNow < -0.6 || noteTime - heardNow > APPROACH_S) continue;
-        out.push({ laneIdx: li, time: noteTime });
-      }
-    }
-  }
-  return out;
+  // arrows only for the part you're learning; none in free play
+  if (mode === "free" || songDone()) return [];
+  return partArrows(currentPart(), (n) => LANE_INDEX[n], clock.first, 4 * clock.beatDur,
+                    clock.beatDur, heardNow - 0.6, heardNow + APPROACH_S);
 }
 
 // --- timing chart (its own canvas) ------------------------------------------
@@ -435,6 +508,7 @@ function frame() {
   if (clock && ctx) {
     const heardNow = ctx.getOutputTimestamp().contextTime;
     stage3d.update(heardNow, buildUpcoming(heardNow));
+    tickBell(heardNow);
   } else {
     // before Start: keep the courtyard (and its drums) visible, no arrows
     stage3d.update(0, []);

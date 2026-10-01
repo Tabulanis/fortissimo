@@ -83,7 +83,7 @@ export function createStage3D(canvas, layout, colors) {
     60, canvas.clientWidth / canvas.clientHeight, 0.1, 200,
   );
   camera.position.set(0, 1.3, 2.0);
-  camera.lookAt(new THREE.Vector3(0, 2.1, -10));   // horizon up: the far wall and the arcs are in view
+  camera.lookAt(new THREE.Vector3(0, 1.75, -10));   // horizon up: the far wall and the arcs are in view
 
   // ground: dark stone, flat at y = 0
   const ground = new THREE.Mesh(
@@ -204,7 +204,7 @@ export function createStage3D(canvas, layout, colors) {
   const drumMeshes = [];
   const drumFade = [];
   for (let i = 0; i < 6; i++) {
-    drumMeshes.push(scene.children.find((o) => o.isMesh && drumMat.includes(o.material)));
+    drumMeshes.push(scene.children.find((o) => o.isMesh && o.material === drumMat[i]));   // THIS drum's mesh (includes() matched drum 0 every time)
     drumFade.push({ active: false, started: 0 });
   }
   const FADE_S = 0.6;
@@ -760,5 +760,10 @@ export function createStage3D(canvas, layout, colors) {
   }
 
   resize();
-  return { resize, update, hit, press, setDrumVisible };
+  // debug: what each drum actually is right now (used by the browser harness)
+  function debugDrums() {
+    return drumMeshes.map((m, i) => ({ i, visible: m.visible, opacity: +drumMat[i].opacity.toFixed(2), transparent: drumMat[i].transparent, fading: drumFade[i].active }));
+  }
+
+  return { resize, update, hit, press, setDrumVisible, debugDrums };
 }

@@ -61,7 +61,9 @@ export class Bell {
     if (this._mode === "armed" && now >= this._recordStart) this._mode = "recording";
     if (this._mode !== "recording") return null;
     this._window = diff.window;
-    if (now < this.recordEnd + diff.window) return null;
+    // the measure is complete at end - w: every later hit belongs to the next bar.
+    // Judging here (not end + w) lets a locked loop start ON its first beat.
+    if (now < this.recordEnd - diff.window) return null;
     // this measure = hits in [start - w, end - w): an early beat-1 hit is in,
     // an early hit for the NEXT bar's beat 1 is out (it stays buffered).
     const lo = this._recordStart - diff.window, hi = this.recordEnd - diff.window;

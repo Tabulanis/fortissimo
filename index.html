@@ -9,6 +9,7 @@
       #stage { display: block; width: 100vw; height: 100vh; }
       #chart {
         position: fixed;
+        display: none;   /* developer timing chart: H toggles */
         bottom: 0;
         left: 0;
         width: 100vw;
@@ -16,7 +17,7 @@
         pointer-events: none;
         z-index: 10;
       }
-      #hud { position: fixed; top: 0; left: 0; padding: 4px 8px; font: 12px monospace; color: #8f8; z-index: 20; }
+      #hud { position: fixed; left: 0; bottom: 4px; padding: 2px 8px; font: 11px monospace; color: #8f8; opacity: 0.55; z-index: 20; pointer-events: none; }
     </style>
   </head>
   <body>
