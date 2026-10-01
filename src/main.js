@@ -56,11 +56,16 @@ hudUI.setLives(3);
 
 function applyStage() {
   for (let i = 0; i < 6; i++) stage3d.setDrumVisible(i, isShown(stageIdx, i));
+  stageMessage();
+}
+
+// the standing instruction for where you are in the song
+function stageMessage() {
+  if (bell && bell.state !== "idle") return;   // the bell's own messages win while it works
+  hudUI.setPart(songDone() ? "Free play" : `${SONG.parts[stageIdx].label} of ${SONG.parts.length}`);
   if (songDone()) {
-    hudUI.setPart("Free play");
     hudUI.say("Song complete! Play anything — ring the bell 🔔 to add a measure", "good");
   } else {
-    hudUI.setPart(`${SONG.parts[stageIdx].label} of ${SONG.parts.length}`);
     hudUI.say("Follow the arrows. Got it? Ring the bell 🔔 (Space)");
   }
 }
@@ -97,7 +102,8 @@ function tickBell(heardNow) {
     }
     if (!songDone()) stageIdx++;
     applyStage();
-    hudUI.say(`Locked in! ✨ (${r.judge.matched}/${r.judge.total})`, "good", 2500);
+    hudUI.say(`Locked in! ✨ (${r.judge.matched}/${r.judge.total})`, "good");
+    setTimeout(stageMessage, 2500);   // then back to the standing instruction (it used to go blank)
   } else {
     hudUI.say(`Not quite (${r.judge.matched}/${r.judge.total}) — keep playing, it's still listening`, "bad");
   }
