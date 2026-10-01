@@ -373,6 +373,7 @@ function onKey(e) {
   // the scene reacts: every press flashes the drum; judged presses also mark
   // the arrow they struck (HIT vanishes at once, NEAR sticks briefly)
   stage3d.press(idx, lab);
+  stage3d.strike(idx, lab);   // the player's hand hits that drum, right now
   if (!free && !off) {
     stage3d.hit(idx, j.time, lab === "HIT" ? "HIT" : "NEAR");
   }
@@ -514,7 +515,12 @@ function resize() {
 function frame() {
   if (clock && ctx) {
     const heardNow = ctx.getOutputTimestamp().contextTime;
-    stage3d.update(heardNow, buildUpcoming(heardNow));
+    // loop hits around now, so each spirit stick can lift BEFORE its beat
+    const ghostHits = (loops && ghostsOn)
+      ? loops.events(heardNow - 0.3, heardNow + 0.6, clock.first)
+          .map((e) => ({ laneIdx: LANE_INDEX[e.lane], time: e.time, velocity: e.velocity }))
+      : [];
+    stage3d.update(heardNow, buildUpcoming(heardNow), ghostHits);
     tickBell(heardNow);
   } else {
     // before Start: keep the courtyard (and its drums) visible, no arrows
