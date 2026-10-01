@@ -199,6 +199,40 @@ export function createStage3D(canvas, layout, colors) {
 
   const activeNotes = [];   // entries currently in flight / stuck
 
+  // drum visibility (per song part): hidden drums get no arrows and no ring
+  const drumVisible = [true, true, true, true, true, true];
+  const drumMeshes = [];
+  const drumFade = [];
+  for (let i = 0; i < 6; i++) {
+    drumMeshes.push(scene.children.find((o) => o.isMesh && drumMat.includes(o.material)));
+    drumFade.push({ active: false, started: 0 });
+  }
+  const FADE_S = 0.6;
+  function setDrumVisible(laneIdx, visible) {
+    if (laneIdx < 0 || laneIdx > 5) return;
+    const mesh = drumMeshes[laneIdx];
+    const mat = drumMat[laneIdx];
+    const f = drumFade[laneIdx];
+    if (visible === drumVisible[laneIdx]) return;
+    drumVisible[laneIdx] = visible;
+    if (visible) {
+      f.active = true;
+      f.started = performance.now();
+      mesh.visible = true;
+      mat.transparent = true;
+      mat.opacity = 0;
+      if (!f.arming) {
+        f.arming = true;
+        requestAnimationFrame(() => { f.arming = false; _fadeTick(); });
+      }
+    } else {
+      f.active = false;
+      mesh.visible = false;
+      mat.transparent = false;
+      mat.opacity = 1;
+    }
+  }
+
   // effect pools: allocated up front, reused forever, nothing per frame.
   // sparks: additive, drum-colour mixed with white, gravity, fade over 0.5 s
   const sparks = [];
@@ -450,6 +484,7 @@ export function createStage3D(canvas, layout, colors) {
   function update(heardNow, upcoming) {
     // spawn / retire
     for (const u of upcoming) {
+      if (!drumVisible[u.laneIdx]) continue;         // hidden drums get no arrows
       if (u.time - heardNow < -STUCK_S) continue;   // already expired
       let e = findEntry(u.laneIdx, u.time);
       if (!e) {
@@ -595,7 +630,7 @@ export function createStage3D(canvas, layout, colors) {
       }
       const r = rings[lane];
       const fl = firelights[lane];
-      if (next) {
+      if (next && drumVisible[lane]) {
         const dt = next.dt;
         r.mesh.visible = true;
         r.mesh.scale.setScalar(r.radius * (1 + 1.4 * dt));
@@ -699,6 +734,25 @@ export function createStage3D(canvas, layout, colors) {
     requestAnimationFrame(tick);
   }
 
+  const _fadeTick = () => {
+    let any = false;
+    for (let i = 0; i < 6; i++) {
+      const f = drumFade[i];
+      if (!f.active) continue;
+      any = true;
+      const p = (performance.now() - f.started) / (FADE_S * 1000);
+      const mat = drumMat[i];
+      if (p >= 1) {
+        f.active = false;
+        mat.opacity = 1;
+        mat.transparent = false;
+      } else {
+        mat.opacity = p;
+      }
+    }
+    if (any) requestAnimationFrame(_fadeTick);
+  };
+
   function drumOf(laneIdx) {
     return laneIdx < 3
       ? layout.top[laneIdx].drum
@@ -706,5 +760,5 @@ export function createStage3D(canvas, layout, colors) {
   }
 
   resize();
-  return { resize, update, hit, press };
+  return { resize, update, hit, press, setDrumVisible };
 }
