@@ -97,9 +97,43 @@ export function createStage3D(canvas, layout, colors) {
   const drumMat = [];
   const drumPos = [];
   const drumFace = [];
+  const drumLabels = [];
+  const drumLabelMats = [];
+  const labelGeo = new THREE.PlaneGeometry(0.34, 0.34);
+  const labelTex = (key) => {
+    const c = document.createElement("canvas");
+    c.width = 128;
+    c.height = 128;
+    const g = c.getContext("2d");
+    g.clearRect(0, 0, 128, 128);
+    g.font = "bold 88px sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.strokeStyle = "#1a0f08";
+    g.lineWidth = 8;
+    g.strokeText(key.toUpperCase(), 64, 64);
+    g.fillStyle = "#f4e9d8";
+    g.fillText(key.toUpperCase(), 64, 64);
+    return new THREE.CanvasTexture(c);
+  };
   for (let i = 0; i < 6; i++) {
     const lane = i < 3 ? layout.top[i] : layout.bottom[i - 3];
     const color = hexToColor(colors[lane.drum] || "#888888");
+    const labelMat = new THREE.MeshBasicMaterial({
+      map: labelTex(lane.key || "?"),
+      transparent: true,
+      depthWrite: false,
+    });
+    const label = new THREE.Mesh(labelGeo, labelMat);
+    if (LANES3D[i].upright) {
+      label.position.set(LANES3D[i].x, LANES3D[i].y, LANES3D[i].z + LANES3D[i].depth / 2 + 0.012);
+    } else {
+      label.rotation.x = -Math.PI / 2;   // flat on the head, readable from the seat
+      label.position.set(LANES3D[i].x, LANES3D[i].y + LANES3D[i].depth / 2 + 0.012, LANES3D[i].z);
+    }
+    scene.add(label);
+    drumLabels.push(label);
+    drumLabelMats.push(labelMat);
     const mat = new THREE.MeshStandardMaterial({
       color,
       emissive: 0x000000,
@@ -221,6 +255,8 @@ export function createStage3D(canvas, layout, colors) {
       mesh.visible = true;
       mat.transparent = true;
       mat.opacity = 0;
+      drumLabels[laneIdx].visible = true;
+      drumLabelMats[laneIdx].opacity = 0;
       if (!f.arming) {
         f.arming = true;
         requestAnimationFrame(() => { f.arming = false; _fadeTick(); });
@@ -228,8 +264,10 @@ export function createStage3D(canvas, layout, colors) {
     } else {
       f.active = false;
       mesh.visible = false;
+      drumLabels[laneIdx].visible = false;
       mat.transparent = false;
       mat.opacity = 1;
+      drumLabelMats[laneIdx].opacity = 1;
     }
   }
 
@@ -742,12 +780,15 @@ export function createStage3D(canvas, layout, colors) {
       any = true;
       const p = (performance.now() - f.started) / (FADE_S * 1000);
       const mat = drumMat[i];
+      const lmat = drumLabelMats[i];
       if (p >= 1) {
         f.active = false;
         mat.opacity = 1;
         mat.transparent = false;
+        lmat.opacity = 1;
       } else {
         mat.opacity = p;
+        lmat.opacity = p;
       }
     }
     if (any) requestAnimationFrame(_fadeTick);
