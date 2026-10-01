@@ -10,6 +10,10 @@
    inside a natural drummer's-eye spread (kick dead centre). Faders are linear
    gain; setVolume() takes 0..1 from the settings screen. */
 
+// Drum samples are normalised near full scale; this leaves ~9 dB of headroom
+// so several drums + reverb sum without touching the limiter.
+const HEADROOM = 0.35;
+
 // Per-drum voicing. eq: [type, freq, gain dB, Q]; send = reverb amount.
 const STRIPS = {
   kick:      { pan: 0.0,   level: 1.0,  send: 0.05, eq: [["highpass", 28, 0, 0.7], ["lowshelf", 70, 3, 0], ["peaking", 380, -4, 1.1], ["highshelf", 4500, 3, 0]] },
@@ -44,9 +48,9 @@ function makeHall(ctx, seconds = 2.2, predelay = 0.015) {
 export function createMixer(ctx) {
   // --- master: fader -> limiter -> speakers
   const master = ctx.createGain();
-  master.gain.value = 0.9;
+  master.gain.value = 1.6;   // ~+4 dB: a single block lands near -6 dBFS, plenty of room before the limiter
   const limiter = ctx.createDynamicsCompressor();
-  limiter.threshold.value = -2.5;
+  limiter.threshold.value = -1.0;   // safety only: touches nothing but the very top
   limiter.knee.value = 0;
   limiter.ratio.value = 20;
   limiter.attack.value = 0.002;
@@ -65,7 +69,11 @@ export function createMixer(ctx) {
   glue.release.value = 0.16;
   const drumFader = ctx.createGain();
   drumFader.gain.value = 1.0;
-  drumBus.connect(glue).connect(drumFader).connect(master);
+  // NO glue compression in the path: loudness IS the game's reward (a block must
+  // be clearly louder than a near miss) and a bus compressor flattened that —
+  // measured 2026-10-01: block vs 50 ms near miss went from 10.7 dB apart to 1.1.
+  void glue;
+  drumBus.connect(drumFader).connect(master);
 
   // --- reverb: the courtyard
   const reverb = ctx.createConvolver();
@@ -91,7 +99,7 @@ export function createMixer(ctx) {
     const pan = ctx.createStereoPanner();
     pan.pan.value = s.pan;
     const level = ctx.createGain();
-    level.gain.value = s.level;
+    level.gain.value = s.level * HEADROOM;
     const send = ctx.createGain();
     send.gain.value = s.send;
     node.connect(pan).connect(level).connect(drumBus);
