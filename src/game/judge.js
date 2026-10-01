@@ -75,3 +75,11 @@ export function label(offsetSec) {
   if (a <= 0.050) return "HIT";
   return offsetSec < 0 ? "EARLY" : "LATE";
 }
+
+/** A press farther than this from its lane's nearest note is OFF-CHART. */
+export const OFF_CHART = 0.25; // seconds
+
+/** Pure helper: true when the judge result marks an off-chart press. */
+export function isOffChart(j) {
+  return !j || Math.abs(j.offset) > OFF_CHART;
+}

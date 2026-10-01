@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { nearestBeat, nearestOnGrid, nearestInLoop, velocityFor, label } from "../src/game/judge.js";
+import { nearestBeat, nearestOnGrid, nearestInLoop, velocityFor, label, isOffChart, OFF_CHART } from "../src/game/judge.js";
 
 assert.strictEqual(velocityFor(0), 1);
 assert.strictEqual(velocityFor(0.02), 1);
@@ -29,5 +29,17 @@ assert.strictEqual(g1.index, 1);
 assert.ok(Math.abs(g1.offset - (-0.2)) < 1e-9, "early press -> offset ~ -0.2, not +0.4");
 const g0 = nearestOnGrid(0.5, 0.6, 0.0);
 assert.strictEqual(g0.index, 0);
+
+// loop-wrapped judging: a press just before a loop boundary is EARLY against
+// beat 0 of the NEXT loop, not late against the previous loop's last note.
+const l1 = nearestInLoop([0, 2], 16, 0.5, 0.6, 0.5 + 0.03);
+assert.strictEqual(l1.beat, 0);
+assert.ok(Math.abs(l1.offset - 0.03) < 1e-9, "late press -> offset ~ +0.03, beat 0");
+
+const l2 = nearestInLoop([0], 16, 0.5, 0.6, 0.5 + 16 * 0.6 - 0.04);
+assert.strictEqual(l2.beat, 0);
+assert.ok(Math.abs(l2.offset - (-0.04)) < 1e-9, "pre-boundary press -> offset ~ -0.04 (next loop's beat 0, EARLY)");
+
+assert.strictEqual(nearestInLoop([], 16, 0.5, 0.6, 1.0), null);
 
 console.log("judge: all passed");

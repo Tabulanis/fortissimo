@@ -8,7 +8,7 @@
 import "./audio/voices.js";
 import { makeDrums } from "./audio/drums.js";
 import { startClock } from "./audio/clock.js";
-import { nearestOnGrid, nearestInLoop, velocityFor, label } from "./game/judge.js";
+import { nearestOnGrid, nearestInLoop, velocityFor, label, OFF_CHART } from "./game/judge.js";
 import { LAYOUT, CHART } from "./game/chart.js";
 
 const { VoicePool, VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
@@ -27,8 +27,7 @@ let clock = null;
 
 // --- timing chart ---------------------------------------------------------
 let offsets = [];          // every press offset (ms), after calibration
-let flashUntil = 0;        // performance-time until which the hit line flashes
-let flashHit = false;
+let flashes = [];          // lane-segment flashes: { idx, kind, until }
 
 // --- drum-mode lane map ----------------------------------------------------
 // key -> { lane index (0..9), lane } built once from the layout.
@@ -145,7 +144,7 @@ function onKey(e) {
   }
 
   const entry = KEYMAP[e.key];
-  if (!entry) return;
+  if (!entry) return;   // keys outside the layout do nothing, HUD untouched
   e.preventDefault();
   const { idx, ln: lane } = entry;
 
@@ -154,8 +153,10 @@ function onKey(e) {
     CHART.notes[lane.drum], CHART.loopBeats,
     clock.first, clock.beatDur, press,
   );
-  const vel = j ? velocityFor(j.offset) : 0.5;
-  const lab = j ? label(j.offset) : "FREE";
+  // off-chart: no note nearby at all — play quietly, label OFF, stay out of the chart
+  const off = !j || Math.abs(j.offset) > OFF_CHART;
+  const vel = off ? 0.15 : velocityFor(j.offset);
+  const lab = off ? "OFF" : label(j.offset);
 
   // the player IS the instrument: play immediately, on this lane's channel
   pool.noteOn({
@@ -169,13 +170,16 @@ function onKey(e) {
     settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
   });
 
-  recordPress(j ? j.offset : null, vel, lane.name, lab);
+  recordPress(idx, off ? null : j.offset, vel, lane.name, lab);
 }
 
-function recordPress(offsetSec, vel, laneName, lab) {
+function recordPress(idx, offsetSec, vel, laneName, lab) {
   const ms = offsetSec == null ? null : offsetSec * 1000;
-  flashHit = lab === "HIT";
-  flashUntil = performance.now() + 120;
+  flashes.push({
+    idx,
+    kind: lab === "HIT" ? "hit" : lab === "OFF" ? "off" : "miss",
+    until: performance.now() + 120,
+  });
 
   if (calib) {
     if (offsetSec != null) {
@@ -199,17 +203,138 @@ function recordPress(offsetSec, vel, laneName, lab) {
     `calib: ${calibration >= 0 ? "+" : ""}${(calibration * 1000).toFixed(1)} ms`;
 }
 
-// --- lane picture ----------------------------------------------------------
-const HIT_FRAC = 0.8;      // hit line at 80% down
-const PX_PER_S = 300;      // approach speed, px/s
+// --- highway picture -------------------------------------------------------
+const TOP_HIT_FRAC = 0.42;   // top hit line at 42% of the playfield height
+const BOT_HIT_FRAC = 0.58;   // bottom hit line at 58%
+const PX_PER_S = 300;        // approach speed, px/s
+const LANE_W = 90;           // highway lane width, CSS px
 
 const CHART_BAND = 120;   // chart band, CSS px, pinned to the bottom
+
+// --- drum colours ----------------------------------------------------------
+const DRUM_COLOR = {
+  hat: "#8ac", snare: "#f8a", crash: "#ce8",
+  kick: "#a8f", tomLow: "#da6", tomHigh: "#fa4",
+};
+
+// geometry cache, refreshed on resize
+let geo = null;
+function computeGeo() {
+  const W = stage.clientWidth, H = stage.clientHeight;
+  const pfH = H - CHART_BAND;
+  const top = {
+    hitY: pfH * TOP_HIT_FRAC,
+    x0: W / 2 - (LAYOUT.top.length * LANE_W) / 2,
+  };
+  const bot = {
+    hitY: pfH * BOT_HIT_FRAC,
+    x0: W / 2 - (LAYOUT.bottom.length * LANE_W) / 2,
+  };
+  geo = { W, H, pfH, top, bot };
+}
+
+function laneX(side, i) {
+  return (side === "top" ? geo.top.x0 : geo.bot.x0) + i * LANE_W + LANE_W / 2;
+}
+
+function drawHighway(now) {
+  const heardNow = ctx.getOutputTimestamp().contextTime;
+  const nowP = performance.now();
+  const lanes = [...LAYOUT.top, ...LAYOUT.bottom];
+
+  // faint lane dividers + hit segments (flashing after a press)
+  for (const side of ["top", "bot"]) {
+    const row = side === "top" ? LAYOUT.top : LAYOUT.bottom;
+    const x0 = side === "top" ? geo.top.x0 : geo.bot.x0;
+    ctx2d.strokeStyle = "#1a222a";
+    ctx2d.lineWidth = 1;
+    for (let i = 0; i <= row.length; i++) {
+      const x = x0 + i * LANE_W;
+      ctx2d.beginPath();
+      ctx2d.moveTo(x, 0);
+      ctx2d.lineTo(x, geo.pfH);
+      ctx2d.stroke();
+    }
+    // hit segments, flashing per lane after a press
+    const hitY = side === "top" ? geo.top.hitY : geo.bot.hitY;
+    for (let i = 0; i < row.length; i++) {
+      const x = x0 + i * LANE_W;
+      let color = "#345", width = 1.5;
+      for (const f of flashes) {
+        const gi = (side === "top" ? f.idx : f.idx + LAYOUT.top.length);
+        if (gi !== i || nowP >= f.until) continue;
+        color = f.kind === "hit" ? "#4f4" : f.kind === "off" ? "#888" : "#fa0";
+        width = 4;
+      }
+      ctx2d.strokeStyle = color;
+      ctx2d.lineWidth = width;
+      ctx2d.beginPath();
+      ctx2d.moveTo(x + 4, hitY);
+      ctx2d.lineTo(x + LANE_W - 4, hitY);
+      ctx2d.stroke();
+    }
+  }
+  flashes = flashes.filter((f) => nowP < f.until);
+
+  // notes within the next 2 s
+  for (let li = 0; li < lanes.length; li++) {
+    const lane = lanes[li];
+    const side = li < LAYOUT.top.length ? "top" : "bot";
+    const li2 = side === "top" ? li : li - LAYOUT.top.length;
+    const hitY = side === "top" ? geo.top.hitY : geo.bot.hitY;
+    const beats = CHART.notes[lane.drum];
+    if (!beats.length) continue;
+    const period = CHART.loopBeats * clock.beatDur;
+    const kLo = Math.floor((heardNow - clock.first) / period) - 1;
+    const color = DRUM_COLOR[lane.drum] || "#8ac";
+    for (let k = Math.max(0, kLo); k <= kLo + 2; k++) {
+      for (const b of beats) {
+        const noteTime = clock.first + (k * CHART.loopBeats + b) * clock.beatDur;
+        const dt = noteTime - heardNow;
+        if (dt < -0.5 || dt > 2) continue;
+        const y = side === "top"
+          ? geo.top.hitY - dt * PX_PER_S
+          : geo.bot.hitY + dt * PX_PER_S;
+        if (y < -20 || y > geo.pfH + 20) continue;
+        const x = laneX(side, li2);
+        ctx2d.beginPath();
+        ctx2d.arc(x, y, 8, 0, Math.PI * 2);
+        ctx2d.fillStyle = color;
+        ctx2d.fill();
+      }
+    }
+  }
+
+  // key letter (uppercase) + lane name under each lane's hit line
+  ctx2d.textAlign = "center";
+  ctx2d.font = "16px monospace";
+  for (let i = 0; i < LAYOUT.top.length; i++) {
+    const x = laneX("top", i);
+    ctx2d.fillStyle = "#cde";
+    ctx2d.fillText(LAYOUT.top[i].key.toUpperCase(), x, geo.top.hitY - 14);
+    ctx2d.fillStyle = "#567";
+    ctx2d.font = "10px monospace";
+    ctx2d.fillText(LAYOUT.top[i].name, x, geo.top.hitY - 2);
+    ctx2d.font = "16px monospace";
+  }
+  for (let i = 0; i < LAYOUT.bottom.length; i++) {
+    const x = laneX("bot", i);
+    ctx2d.fillStyle = "#cde";
+    ctx2d.fillText(LAYOUT.bottom[i].key.toUpperCase(), x, geo.bot.hitY + 22);
+    ctx2d.fillStyle = "#567";
+    ctx2d.font = "10px monospace";
+    ctx2d.fillText(LAYOUT.bottom[i].name, x, geo.bot.hitY + 34);
+    ctx2d.font = "16px monospace";
+  }
+  ctx2d.textAlign = "left";
+}
 
 function resize() {
   const dpr = window.devicePixelRatio || 1;
   stage.width = Math.round(stage.clientWidth * dpr);
   stage.height = Math.round(stage.clientHeight * dpr);
   ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+  computeGeo();
 }
 
 function drawLane(now) {
@@ -217,38 +342,7 @@ function drawLane(now) {
   ctx2d.fillStyle = "#0b0e11";
   ctx2d.fillRect(0, 0, W, H);
 
-  const laneX = W / 2;
-  const laneH = H - CHART_BAND;
-  const hitY = laneH * HIT_FRAC;
-
-  // upcoming beats from the grid, next 2 seconds
-  if (clock && ctx) {
-    const heardNow = ctx.getOutputTimestamp().contextTime;
-    for (let t = heardNow; t < heardNow + 2; t += clock.beatDur) {
-      const idx = Math.round((t - clock.first) / clock.beatDur);
-      const beatT = clock.first + idx * clock.beatDur;
-      const y = hitY - (beatT - heardNow) * PX_PER_S;
-      if (y < -20 || y > H + 20) continue;
-      ctx2d.beginPath();
-      ctx2d.arc(laneX, y, 9, 0, Math.PI * 2);
-      ctx2d.fillStyle = "#345";
-      ctx2d.fill();
-      ctx2d.strokeStyle = "#8f8";
-      ctx2d.lineWidth = 1.5;
-      ctx2d.stroke();
-    }
-  }
-
-  // hit line, flashing after each press
-  const flashing = performance.now() < flashUntil;
-  ctx2d.strokeStyle = flashing
-    ? (flashHit ? "#4f4" : "#fa0")
-    : "#345";
-  ctx2d.lineWidth = flashing ? 4 : 1.5;
-  ctx2d.beginPath();
-  ctx2d.moveTo(laneX - 40, hitY);
-  ctx2d.lineTo(laneX + 40, hitY);
-  ctx2d.stroke();
+  if (clock && ctx) drawHighway(now);
 
   drawChart(now);
 }

@@ -123,7 +123,7 @@ async function renderSnare(sampleRate) {
   hp.frequency.value = 1200;
 
   const gNoise = off.createGain();
-  gNoise.gain.setValueAtTime(0.8, 0);
+  gNoise.gain.setValueAtTime(0.5, 0);
   gNoise.gain.exponentialRampToValueAtTime(0.001, dur);
 
   const osc = off.createOscillator();
@@ -131,7 +131,7 @@ async function renderSnare(sampleRate) {
   osc.frequency.setValueAtTime(185, 0);
 
   const gTone = off.createGain();
-  gTone.gain.setValueAtTime(0.5, 0);
+  gTone.gain.setValueAtTime(0.3, 0);
   gTone.gain.exponentialRampToValueAtTime(0.001, 0.12);
 
   src.connect(hp);

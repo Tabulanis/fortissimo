@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { nearestBeat, nearestOnGrid, nearestInLoop, velocityFor, label } from "../src/game/judge.js";
+import { nearestBeat, nearestOnGrid, nearestInLoop, velocityFor, label, isOffChart, OFF_CHART } from "../src/game/judge.js";
 
 assert.strictEqual(velocityFor(0), 1);
 assert.strictEqual(velocityFor(0.02), 1);
@@ -41,5 +41,11 @@ assert.strictEqual(l2.beat, 0);
 assert.ok(Math.abs(l2.offset - (-0.04)) < 1e-9, "pre-boundary press -> offset ~ -0.04 (next loop's beat 0, EARLY)");
 
 assert.strictEqual(nearestInLoop([], 16, 0.5, 0.6, 1.0), null);
+
+// off-chart presses: null judge, or |offset| beyond OFF_CHART
+assert.strictEqual(isOffChart(null), true, "null judge is off-chart");
+assert.strictEqual(isOffChart({ offset: 0.1 }), false, "0.1 s is on-chart");
+assert.strictEqual(isOffChart({ offset: -0.4 }), true, "-0.4 s is off-chart");
+assert.ok(OFF_CHART === 0.25, "OFF_CHART constant");
 
 console.log("judge: all passed");
