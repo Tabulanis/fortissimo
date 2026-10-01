@@ -267,6 +267,143 @@ export function createStage3D(canvas, layout, colors) {
     }
   }
 
+  // ---- player hands + taiko sticks (procedural placeholders; the owner
+  //      swaps in his own models later — each hand+stick stays in one Group
+  //      per hand so it can be replaced wholesale). Pooled: built once, reused.
+  const STICK_LEN = 0.42;
+  const handGeo = new THREE.SphereGeometry(0.07, 20, 14);
+  handGeo.scale(1, 0.8, 1.3);   // slightly squashed fist
+  const stickGeo = new THREE.CylinderGeometry(0.016, 0.018, STICK_LEN, 10);
+  stickGeo.translate(0, STICK_LEN / 2, 0);   // fist at origin, tip at +y
+  const handMat = new THREE.MeshStandardMaterial({ color: 0xc8916a, roughness: 0.8, metalness: 0.05 });
+  const stickMat = new THREE.MeshStandardMaterial({ color: 0xd9b07a, roughness: 0.6, metalness: 0.05 });
+
+  // rest poses: widened and lowered so the fists never sit on a drum on
+  // screen (a fist at y 0.95 would occlude the upright drums' heads)
+  const HAND_REST = [
+    new THREE.Vector3(-0.5, 0.74, 1.25),
+    new THREE.Vector3(0.5, 0.74, 1.25),
+  ];
+  // rest stick heading: up-forward ~35° from vertical (toward the drums)
+  const REST_DIR = new THREE.Vector3(0, Math.cos(35 * Math.PI / 180), -Math.sin(35 * Math.PI / 180));
+
+  const hands = [];
+  for (let h = 0; h < 2; h++) {
+    const group = new THREE.Group();
+    const fist = new THREE.Mesh(handGeo, handMat);
+    const stick = new THREE.Mesh(stickGeo, stickMat);
+    group.add(fist, stick);
+    group.position.copy(HAND_REST[h]);
+    group.quaternion.setFromUnitVectors(UP, REST_DIR);
+    scene.add(group);
+    hands.push({
+      group,
+      active: false,
+      dir: new THREE.Vector3().copy(REST_DIR),
+      impact: new THREE.Vector3().copy(HAND_REST[h]),
+      rest: new THREE.Vector3().copy(HAND_REST[h]),
+      startDir: new THREE.Vector3().copy(REST_DIR),
+      startPos: new THREE.Vector3().copy(HAND_REST[h]),
+      t0: 0,
+      last: 0,
+    });
+  }
+  const _hDir = new THREE.Vector3();
+  const _hPos = new THREE.Vector3();
+
+  const FLASH_MS = 80;
+  const REBOUND_MS = 180;
+
+  // which hand plays a lane: outer lanes fixed, middle lanes alternate
+  // like a drummer (whichever hand struck LESS recently)
+  function handFor(laneIdx) {
+    if (laneIdx === 0 || laneIdx === 3) return 0;
+    if (laneIdx === 2 || laneIdx === 5) return 1;
+    return hands[0].last <= hands[1].last ? 0 : 1;
+  }
+
+  /**
+   * Strike a lane with the player's hand: the hand is AT the impact pose on
+   * the very next frame (the sound plays at the press), then rebounds to
+   * rest over 180 ms with an upward overshoot. A new strike on the same
+   * hand interrupts the recoil and snaps to the new impact.
+   * @param {number} laneIdx 0-5
+   * @param {"HIT"|"NEAR"|string} kind "HIT" fires a short bright tip flash
+   */
+  function strike(laneIdx, kind) {
+    if (laneIdx < 0 || laneIdx > 5) return;
+    const h = handFor(laneIdx);
+    const hand = hands[h];
+    const face = drumFace[laneIdx];
+    // stick points from the fist to the face; the fist sits STICK_LEN back
+    // along that line so the tip lands on the face/head
+    _hDir.copy(face).sub(hand.group.position).normalize();
+    hand.impact.copy(face).addScaledVector(_hDir, -STICK_LEN);
+    hand.dir.copy(_hDir);
+    hand.group.position.copy(hand.impact);
+    hand.group.quaternion.setFromUnitVectors(UP, hand.dir);
+    hand.startPos.copy(hand.impact);
+    hand.startDir.copy(hand.dir);
+    hand.active = true;
+    hand.t0 = performance.now();
+    hand.last = performance.now();
+    if (kind === "HIT") {
+      hand.group.add(hand.flash);
+      hand.flash.position.set(0, STICK_LEN, 0);
+      hand.flashT0 = performance.now();
+      hand.flash.visible = true;
+      hand.flash.material.opacity = 1;
+    }
+  }
+
+  function updateHands(now) {
+    for (const hand of hands) {
+      if (!hand.active) continue;
+      const t = now - hand.t0;
+      if (t >= REBOUND_MS) {
+        hand.active = false;
+        hand.group.position.copy(hand.rest);
+        hand.group.quaternion.setFromUnitVectors(UP, REST_DIR);
+      } else {
+        const p = Math.min(1, t / REBOUND_MS);
+        const e = 1 - (1 - p) * (1 - p);   // ease-out
+        const overshoot = 0.16 * Math.sin(Math.PI * e);   // slight upward rebound
+        _hPos.copy(hand.startPos).lerp(hand.rest, e);
+        _hPos.y += overshoot;
+        hand.group.position.copy(_hPos);
+        _hDir.copy(hand.startDir).lerp(REST_DIR, e);
+        hand.group.quaternion.setFromUnitVectors(UP, _hDir.normalize());
+      }
+      if (hand.flash && hand.flash.visible) {
+        const f = (now - hand.flashT0) / FLASH_MS;
+        if (f >= 1) {
+          hand.flash.visible = false;
+          hand.flash.material.opacity = 0;
+          hand.group.remove(hand.flash);
+        } else {
+          hand.flash.material.opacity = 1 - f;
+        }
+      }
+    }
+  }
+
+  const flashMat = new THREE.SpriteMaterial({ fog: false,
+    map: flameTexture,
+    color: 0xffffff,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: false,
+    transparent: true,
+    opacity: 0,
+  });
+  for (const hand of hands) {
+    const flash = new THREE.Sprite(flashMat);
+    flash.position.set(0, STICK_LEN, 0);
+    flash.scale.setScalar(0.22);
+    flash.visible = false;
+    hand.flash = flash;
+  }
+
   // effect pools: allocated up front, reused forever, nothing per frame.
   // sparks: additive, drum-colour mixed with white, gravity, fade over 0.5 s
   const sparks = [];
@@ -763,6 +900,7 @@ export function createStage3D(canvas, layout, colors) {
    *   within the next APPROACH_S seconds (both rows)
    */
   function update(heardNow, upcoming) {
+    updateHands(performance.now());
     // spawn / retire
     for (const u of upcoming) {
       if (!drumVisible[u.laneIdx]) continue;         // hidden drums get no arrows
@@ -1074,5 +1212,5 @@ export function createStage3D(canvas, layout, colors) {
     return drumMeshes.map((m, i) => ({ i, visible: m.visible, opacity: +drumMat[i].opacity.toFixed(2), transparent: drumMat[i].transparent, fading: drumFade[i].active }));
   }
 
-  return { resize, update, hit, press, setDrumVisible, debugDrums };
+  return { resize, update, hit, press, strike, setDrumVisible, debugDrums };
 }
