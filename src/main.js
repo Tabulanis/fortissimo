@@ -291,39 +291,46 @@ function drawHighway(now) {
       for (const b of beats) {
         const noteTime = clock.first + (k * CHART.loopBeats + b) * clock.beatDur;
         const dt = noteTime - heardNow;
-        if (dt < -0.5 || dt > 2) continue;
-        const y = side === "top"
+        if (dt < -0.12 || dt > 2) continue;
+        // after its time a note clamps to the hit line and fades out
+        const alpha = dt >= 0 ? 1 : 1 + dt / 0.12;
+        let y = side === "top"
           ? geo.top.hitY - dt * PX_PER_S
           : geo.bot.hitY + dt * PX_PER_S;
+        if (dt < 0) y = hitY;   // never past the hit line, fade in place
         if (y < -20 || y > geo.pfH + 20) continue;
         const x = laneX(side, li2);
+        ctx2d.globalAlpha = alpha;
         ctx2d.beginPath();
         ctx2d.arc(x, y, 8, 0, Math.PI * 2);
         ctx2d.fillStyle = color;
         ctx2d.fill();
+        ctx2d.globalAlpha = 1;
       }
     }
   }
 
-  // key letter (uppercase) + lane name under each lane's hit line
+  // key letter (uppercase) + lane name in the middle gap between the
+  // two hit lines: top labels just below the top line, bottom labels
+  // just above the bottom line.
   ctx2d.textAlign = "center";
   ctx2d.font = "16px monospace";
   for (let i = 0; i < LAYOUT.top.length; i++) {
     const x = laneX("top", i);
     ctx2d.fillStyle = "#cde";
-    ctx2d.fillText(LAYOUT.top[i].key.toUpperCase(), x, geo.top.hitY - 14);
+    ctx2d.fillText(LAYOUT.top[i].key.toUpperCase(), x, geo.top.hitY + 20);
     ctx2d.fillStyle = "#567";
     ctx2d.font = "10px monospace";
-    ctx2d.fillText(LAYOUT.top[i].name, x, geo.top.hitY - 2);
+    ctx2d.fillText(LAYOUT.top[i].name, x, geo.top.hitY + 32);
     ctx2d.font = "16px monospace";
   }
   for (let i = 0; i < LAYOUT.bottom.length; i++) {
     const x = laneX("bot", i);
     ctx2d.fillStyle = "#cde";
-    ctx2d.fillText(LAYOUT.bottom[i].key.toUpperCase(), x, geo.bot.hitY + 22);
+    ctx2d.fillText(LAYOUT.bottom[i].key.toUpperCase(), x, geo.bot.hitY - 20);
     ctx2d.fillStyle = "#567";
     ctx2d.font = "10px monospace";
-    ctx2d.fillText(LAYOUT.bottom[i].name, x, geo.bot.hitY + 34);
+    ctx2d.fillText(LAYOUT.bottom[i].name, x, geo.bot.hitY - 32);
     ctx2d.font = "16px monospace";
   }
   ctx2d.textAlign = "left";

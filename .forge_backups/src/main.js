@@ -256,6 +256,7 @@ function drawHighway(now) {
       ctx2d.stroke();
     }
     // hit segments, flashing per lane after a press
+    const hitY = side === "top" ? geo.top.hitY : geo.bot.hitY;
     for (let i = 0; i < row.length; i++) {
       const x = x0 + i * LANE_W;
       let color = "#345", width = 1.5;
@@ -290,16 +291,21 @@ function drawHighway(now) {
       for (const b of beats) {
         const noteTime = clock.first + (k * CHART.loopBeats + b) * clock.beatDur;
         const dt = noteTime - heardNow;
-        if (dt < -0.5 || dt > 2) continue;
-        const y = side === "top"
+        if (dt < -0.12 || dt > 2) continue;
+        // after its time a note clamps to the hit line and fades out
+        const alpha = dt >= 0 ? 1 : 1 + dt / 0.12;
+        let y = side === "top"
           ? geo.top.hitY - dt * PX_PER_S
           : geo.bot.hitY + dt * PX_PER_S;
+        if (dt < 0) y = hitY;   // never past the hit line, fade in place
         if (y < -20 || y > geo.pfH + 20) continue;
         const x = laneX(side, li2);
+        ctx2d.globalAlpha = alpha;
         ctx2d.beginPath();
         ctx2d.arc(x, y, 8, 0, Math.PI * 2);
         ctx2d.fillStyle = color;
         ctx2d.fill();
+        ctx2d.globalAlpha = 1;
       }
     }
   }
