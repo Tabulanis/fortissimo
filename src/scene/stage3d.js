@@ -7,7 +7,7 @@
 
 import * as THREE from "three";
 
-const APPROACH_S = 2.0;   // seconds of visible flight before a note's time
+const APPROACH_S = 3.2;   // seconds of visible flight: launched from the far wall, tracked all the way
 const STUCK_S = 0.6;      // seconds an unhit arrow stays stuck at the face
 
 // module-level temps: no per-frame allocations
@@ -29,21 +29,20 @@ const LANES3D = [
   { x: 0.75, y: 0.36, z: -0.25, radius: 0.32, depth: 0.36, upright: false },
 ];
 
-// arrow spawn points per lane.
-// Upright drums (0-2) take arrows from the courtyard walls at the sides, so
-// they are seen side-on at impact; floor drums (3-5) drop from overhead.
+// arrow spawn points per lane: archers spread across the FAR courtyard wall
+// (~70 m out). Every arrow is visible from launch and lobs in on a high arc;
+// the horizontal fan keeps each shaft readable side-on, never a dot.
 const SPAWNS = [
-  new THREE.Vector3(-9.8, 2.4, -6),
-  new THREE.Vector3(-9.0, 2.6, -7),
-  new THREE.Vector3(9.8, 2.4, -6),
-  new THREE.Vector3(-0.75 * 1.6, 5.5, -24),
-  new THREE.Vector3(0.0 * 1.6, 5.5, -24),
-  new THREE.Vector3(0.75 * 1.6, 5.5, -24),
+  new THREE.Vector3(-38, 3.0, -55),   // upright 0  — far left
+  new THREE.Vector3(-24, 3.0, -62),   // upright 1  — left of centre (never dead centre: a centre arc is seen edge-on)
+  new THREE.Vector3(38, 3.0, -55),    // upright 2  — far right
+  new THREE.Vector3(-30, 2.5, -48),   // floor 3
+  new THREE.Vector3(26, 2.5, -60),    // floor 4    — right of centre
+  new THREE.Vector3(30, 2.5, -48),    // floor 5
 ];
 
-// arc height of the parabolic lift applied on top of the lerp:
-// floor drums take the high arc dropping onto the head; uprights a lower arc.
-const ARC_LIFT = [0.8, 0.8, 0.8, 3.0, 3.0, 3.0];
+// arc height of the parabolic lift on top of the straight line: a real lob
+const ARC_LIFT = [6.5, 6.5, 6.5, 8, 8, 8];
 
 function hexToColor(s) {
   return new THREE.Color(s);   // accepts "#rrggbb"
@@ -73,7 +72,7 @@ export function createStage3D(canvas, layout, colors) {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x05070d);
-  scene.fog = new THREE.FogExp2(0x05070d, 0.045);
+  scene.fog = new THREE.FogExp2(0x05070d, 0.02);   // fire ignores fog (fog:false on sprites)
 
   scene.add(new THREE.AmbientLight(0x404860, 0.6));
   const dir = new THREE.DirectionalLight(0x8090c0, 0.4);
@@ -83,12 +82,12 @@ export function createStage3D(canvas, layout, colors) {
   const camera = new THREE.PerspectiveCamera(
     60, canvas.clientWidth / canvas.clientHeight, 0.1, 200,
   );
-  camera.position.set(0, 1.15, 1.7);
-  camera.lookAt(new THREE.Vector3(0, 0.6, -0.6));
+  camera.position.set(0, 1.3, 2.0);
+  camera.lookAt(new THREE.Vector3(0, 2.1, -10));   // horizon up: the far wall and the arcs are in view
 
   // ground: dark stone, flat at y = 0
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(80, 80),
+    new THREE.PlaneGeometry(400, 400),
     new THREE.MeshStandardMaterial({ color: 0x1a1714, roughness: 1 }),
   );
   ground.rotation.x = -Math.PI / 2;
@@ -160,7 +159,7 @@ export function createStage3D(canvas, layout, colors) {
     const group = new THREE.Group();
     const shaft = new THREE.Mesh(shaftGeo, SHAFT_MAT);
     const head = new THREE.Mesh(headGeo, HEAD_MAT);
-    const flame = new THREE.Sprite(new THREE.SpriteMaterial({
+    const flame = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
       map: flameTexture,
       color: 0xffffff,
       blending: THREE.AdditiveBlending,
@@ -169,7 +168,7 @@ export function createStage3D(canvas, layout, colors) {
     }));
     flame.position.set(0, 0.3, 0);
     flame.scale.setScalar(0.45);
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
       map: flameTexture,
       color: 0xffffff,
       blending: THREE.AdditiveBlending,
@@ -204,7 +203,7 @@ export function createStage3D(canvas, layout, colors) {
   // sparks: additive, drum-colour mixed with white, gravity, fade over 0.5 s
   const sparks = [];
   for (let i = 0; i < 200; i++) {
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
       map: flameTexture,
       color: 0xffffff,
       blending: THREE.AdditiveBlending,
@@ -227,7 +226,7 @@ export function createStage3D(canvas, layout, colors) {
   // smoke: normal blending, grey, rising, growing, fading over 0.5 s
   const smokes = [];
   for (let i = 0; i < 40; i++) {
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
       map: flameTexture,
       color: 0x888888,
       blending: THREE.NormalBlending,
@@ -250,7 +249,7 @@ export function createStage3D(canvas, layout, colors) {
   // smouldering (per stuck arrow): one dim flicker sprite + three puffs
   const smould = [];
   for (let i = 0; i < 12; i++) {
-    const flicker = new THREE.Sprite(new THREE.SpriteMaterial({
+    const flicker = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
       map: flameTexture,
       color: 0xff6a20,
       blending: THREE.AdditiveBlending,
@@ -262,7 +261,7 @@ export function createStage3D(canvas, layout, colors) {
     scene.add(flicker);
     const puffs = [];
     for (let k = 0; k < 3; k++) {
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
         map: flameTexture,
         color: 0x777777,
         blending: THREE.NormalBlending,
@@ -396,7 +395,7 @@ export function createStage3D(canvas, layout, colors) {
     scene.add(ring);
     rings.push({ mesh: ring, radius: LANES3D[i].radius });
 
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
       map: flameTexture,
       color,
       blending: THREE.AdditiveBlending,

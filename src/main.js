@@ -350,7 +350,7 @@ function recordPress(idx, offsetSec, vel, laneName, lab) {
 // --- upcoming notes (the arrows) -------------------------------------------
 // Every chart note for both rows within the next APPROACH window, as
 // { laneIdx, time } on the audio clock. Freestyle passes nothing.
-const APPROACH_S = 2.0;
+const APPROACH_S = 3.2;   // must match stage3d.js
 
 function buildUpcoming(heardNow) {
   const out = [];
