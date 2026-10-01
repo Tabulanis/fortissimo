@@ -253,8 +253,9 @@ export function createStage3D(canvas, layout, colors) {
             // first frame past the time: arm the timer, park at the face
             e.stuckUntil = e.time + STUCK_S;
             e.group.position.copy(e.face);
-            pathPoint(e, 1, _pB);
-            pathPoint(e, Math.min(1, 1 + 0.01), _pA);
+            // backward difference: at f = 1 a forward step is zero-length
+            pathPoint(e, 1, _pA);
+            pathPoint(e, 0.99, _pB);
             _tan.copy(_pA).sub(_pB).normalize();
             e.group.quaternion.setFromUnitVectors(UP, _tan);
             continue;
@@ -268,9 +269,10 @@ export function createStage3D(canvas, layout, colors) {
       pathPoint(e, clamped, _pB);
       e.group.position.copy(_pB);
       // orient along the path tangent: side-on, never a dot
-      const f2 = Math.min(1, clamped + 0.01);
-      pathPoint(e, clamped, _pB);
-      pathPoint(e, f2, _pA);
+      // backward difference, so a stuck arrow (clamped = 1) keeps its heading
+      const f1 = Math.max(0, Math.min(clamped, 1) - 0.01);
+      pathPoint(e, Math.max(clamped, 0.01), _pA);
+      pathPoint(e, f1, _pB);
       _tan.copy(_pA).sub(_pB).normalize();
       e.group.quaternion.setFromUnitVectors(UP, _tan);
       // flame flicker
