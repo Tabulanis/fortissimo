@@ -311,7 +311,7 @@ export function createStage3D(canvas, layout, colors) {
       const s = freeSpark();
       if (!s) break;
       s.active = true;
-      s.t0 = heardNow;
+      s.t0 = heardNow; s.tPrev = heardNow;
       s.life = 0.5;
       s.scale0 = 0.06 + Math.random() * 0.06;
       _eDir.copy(outwardDir(laneIdx, _eDir));
@@ -343,13 +343,13 @@ export function createStage3D(canvas, layout, colors) {
     _eVel.multiplyScalar(4.0).addScaledVector(_eSide, (Math.random() - 0.5) * 2 * push);
     e.vel = _eVel;
     e.spin = (Math.random() - 0.5) * 12;
-    e.t0 = heardNow;
+    e.t0 = heardNow; e.tPrev = heardNow;
     e.life = 0.4;
   }
 
   function spawnPuff(s, heardNow) {
     s.active = true;
-    s.t0 = heardNow;
+    s.t0 = heardNow; s.tPrev = heardNow;
     s.life = 0.5;
     s.scale0 = 0.1;
     s.pos.set(0, 0, 0);
@@ -621,9 +621,11 @@ export function createStage3D(canvas, layout, colors) {
         s.sprite.material.opacity = 0;
         continue;
       }
-      _eVel.copy(s.vel).addScaledVector(_eGrav, heardNow - s.t0);
-      s.pos.addScaledVector(s.vel, heardNow - s.t0);
-      s.pos.y -= 0.5 * 6 * (heardNow - s.t0) * (heardNow - s.t0);
+      // integrate by the slice since the LAST frame (using the total age here
+      // re-applied the whole flight every frame and flung sparks off-screen)
+      const sdt = Math.max(0, heardNow - (s.tPrev ?? s.t0)); s.tPrev = heardNow;
+      s.vel.y -= 6 * sdt;
+      s.pos.addScaledVector(s.vel, sdt);
       s.sprite.position.copy(s.pos);
       s.sprite.material.opacity = 1 - g;
     }
@@ -636,7 +638,8 @@ export function createStage3D(canvas, layout, colors) {
         s.sprite.material.opacity = 0;
         continue;
       }
-      s.pos.addScaledVector(s.vel, heardNow - s.t0);
+      const mdt = Math.max(0, heardNow - (s.tPrev ?? s.t0)); s.tPrev = heardNow;
+      s.pos.addScaledVector(s.vel, mdt);
       s.sprite.position.copy(s.pos);
       s.sprite.material.opacity = 0.25 * (1 - g);
       s.sprite.scale.setScalar(0.1 + 0.4 * g);
@@ -653,7 +656,8 @@ export function createStage3D(canvas, layout, colors) {
           p.sprite.material.opacity = 0;
           continue;
         }
-        p.pos.addScaledVector(p.vel, heardNow - p.t0);
+        const pdt = Math.max(0, heardNow - (p.tPrev ?? p.t0)); p.tPrev = heardNow;
+        p.pos.addScaledVector(p.vel, pdt);
         p.sprite.position.copy(p.pos);
         p.sprite.material.opacity = 0.25 * (1 - g);
         p.sprite.scale.setScalar(0.1 + 0.4 * g);
