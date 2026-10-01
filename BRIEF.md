@@ -40,6 +40,33 @@ literally what you played. The garden shows how the band is doing.
 - The garden/zombie idea is superseded by this; ghost loops and the
   music-is-the-punishment rule carry over.
 
+## Progression — the ghost bell (decided 2026-10-01)
+- **The bell is one tool everywhere:** ring it (Space, or click it on the HUD)
+  -> it ticks with the song like a metronome -> it records the NEXT measure,
+  exactly as played -> that measure repeats forever as a ghost.
+- **Guided levels (early):** play WITH a backing song. Start with 2 drums, slow
+  (e.g. 60 bpm, bass on 1-2-3-4, Easy); only the active part gets arrows.
+  Practise, ring the bell; each recorded measure is checked against the part —
+  the first measure that is correct enough FOR THE DIFFICULTY becomes the loop;
+  failed measures are discarded and it keeps listening. Then two more drums
+  appear with the next part. Repeat until the band is complete.
+- **Later levels:** the backing thins out — you MAKE the song from your loops.
+- **Free mode (unlockable):** bring your kit, set the tempo, play anything, ring
+  the bell — any measure is accepted. Pure looper.
+- Ghosts replay EXACTLY what the player did (raw timing and loudness).
+- **Difficulty** sets "correct enough" (e.g. Easy 3/4 hits within ±80 ms,
+  Normal all within ±50 ms, Hard all within ±30 ms) and the starting tempo.
+- **HUD:** ghost bell, lives (what costs a life: decide after playtesting),
+  current part, difficulty.
+- **Settings:** hit volume, backing volume, difficulty, tempo, key bindings,
+  controller. VR mode after the core works.
+
+## Export — real music, all your own
+- `.it` (editable, OpenMPT/Schism) and WAV/MP3 (rendered offline).
+- Exports INCLUDE the backing track — free advertising. Stamp every export:
+  .it song message + audio title/artist tags credit the game with a link.
+- Condition: backing tracks must be music the owner has the right to give away.
+
 ## Layout (drum-mode demo)
 - Two highways: **TOP** and **BOTTOM**, each **2–5 lanes** (configurable).
   Up to 10 notes on screen at once.
