@@ -768,6 +768,10 @@ export function createStage3D(canvas, layout, colors) {
       if (!drumVisible[u.laneIdx]) continue;         // hidden drums get no arrows
       if (u.time - heardNow < -STUCK_S) continue;   // already expired
       let e = findEntry(u.laneIdx, u.time);
+      // only a note still IN FLIGHT may get a new arrow: a blocked arrow is
+      // recycled at impact, and re-spawning it here (its note is still listed
+      // for STUCK_S) made a ghost arrow stick in the drum after every block
+      if (!e && u.time <= heardNow) continue;
       if (!e) {
         e = pool.find((p) => !p.active);
         if (!e) continue;
@@ -981,6 +985,22 @@ export function createStage3D(canvas, layout, colors) {
         p.sprite.position.copy(p.pos);
         p.sprite.material.opacity = 0.25 * (1 - g);
         p.sprite.scale.setScalar(0.1 + 0.4 * g);
+      }
+    }
+
+    // splinters + the tumbling arrowhead: fly, fall, spin, gone after 0.8 s
+    // (they were spawned but never updated — frozen in the drum forever)
+    for (const group of [splinters, tumblers]) {
+      for (const x of group) {
+        if (!x.active) continue;
+        if (heardNow - x.t0 >= 0.8) { x.active = false; x.mesh.visible = false; continue; }
+        const dt = Math.max(0, heardNow - x.tPrev); x.tPrev = heardNow;
+        x.vel.y -= 9.8 * dt;
+        x.pos.addScaledVector(x.vel, dt);
+        x.mesh.position.copy(x.pos);
+        x.mesh.rotation.x += x.spin.x * dt;
+        x.mesh.rotation.y += x.spin.y * dt;
+        x.mesh.rotation.z += x.spin.z * dt;
       }
     }
 
