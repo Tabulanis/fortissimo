@@ -177,12 +177,9 @@ export function createStage3D(canvas, layout, colors) {
   const headGeo = new THREE.ConeGeometry(0.05, 0.12, 8);
   headGeo.translate(0, 0.3, 0);     // head at the tip
 
-  const SHAFT_MAT = new THREE.MeshStandardMaterial({
-    color: 0x3a2a1a, roughness: 0.9,
-  });
-  const HEAD_MAT = new THREE.MeshStandardMaterial({
-    color: 0x555555, roughness: 0.4, metalness: 0.6,
-  });
+  // lit by their own flame: unlit warm colours, never swallowed by fog
+  const SHAFT_MAT = new THREE.MeshBasicMaterial({ color: 0xb07840, fog: false });
+  const HEAD_MAT = new THREE.MeshBasicMaterial({ color: 0xffd9a0, fog: false });
 
   // arrow POOL: allocated up front, never per frame.
   // depthTest: false on the GLOW only — the big halo is meant to spill over
@@ -209,7 +206,7 @@ export function createStage3D(canvas, layout, colors) {
       depthWrite: false,
       depthTest: false,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.6,
     }));
     glow.position.set(0, 0.3, 0);
     glow.scale.setScalar(1.4);
@@ -651,9 +648,14 @@ export function createStage3D(canvas, layout, colors) {
       _tan.copy(_pA).sub(_pB).normalize();
       e.group.quaternion.setFromUnitVectors(UP, _tan);
       // flame flicker
-      const s = 0.45 * (0.9 + 0.2 * Math.random());
+      // grow with distance so a far arrow is still a clear burning point,
+      // not a speck that seems to fade out (screen size ~constant beyond 5 m)
+      const far = Math.max(1, e.group.position.distanceTo(camera.position) / 5);
+      // flame core keeps a readable size far away; the halo grows only a little,
+      // so distant arrows are sharp points of fire, not blobs
+      const s = 0.45 * Math.min(far, 5) * (0.9 + 0.2 * Math.random());
       e.flame.scale.setScalar(s);
-      e.glow.scale.setScalar(1.4 * (0.9 + 0.2 * Math.random()));
+      e.glow.scale.setScalar(1.4 * Math.min(far, 1.8) * (0.9 + 0.2 * Math.random()));
     }
 
     // approach rings + firelight: the next unhit arrow per lane drives both.

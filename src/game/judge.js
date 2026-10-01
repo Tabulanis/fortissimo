@@ -39,12 +39,22 @@ export function nearestOnGrid(first, beatDur, t) {
  * |offset| <= 0.020 -> 1.0 ; |offset| >= 0.150 -> 0.15 ; linear between.
  */
 export function velocityFor(offsetSec) {
+  // Loudness is heard in decibels, not linear gain: a linear ramp left a note
+  // 50 ms off at 80% (only ~2 dB down) and misses sounded nearly as loud as
+  // blocks. Full volume when you block it (<= 20 ms), falling on a dB curve to
+  // -24 dB at 150 ms. 50 ms off ~ -8 dB, 100 ms off ~ -17 dB.
   const a = Math.abs(offsetSec);
   if (a <= 0.020) return 1.0;
-  if (a >= 0.150) return 0.15;
-  const f = (a - 0.020) / (0.150 - 0.020);
-  return 1.0 - f * (1.0 - 0.15);
+  if (a >= 0.150) return MISS_VEL;
+  const x = (a - 0.020) / (0.150 - 0.020);
+  return Math.pow(10, (-24 * Math.pow(x, 0.8)) / 20);
 }
+
+/** Velocity at / beyond the miss edge: -24 dB. */
+export const MISS_VEL = Math.pow(10, -24 / 20);   // ~0.063
+
+/** Velocity of an off-chart press (no note anywhere near): barely there, -30 dB. */
+export const OFF_VEL = Math.pow(10, -30 / 20);    // ~0.032
 
 /**
  * Judge a press against a repeating chart note.

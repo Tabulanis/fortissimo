@@ -1,10 +1,14 @@
 import assert from "node:assert";
-import { nearestBeat, nearestOnGrid, nearestInLoop, velocityFor, label, isOffChart, OFF_CHART } from "../src/game/judge.js";
+import { nearestBeat, nearestOnGrid, nearestInLoop, velocityFor, label, isOffChart, OFF_CHART, MISS_VEL, OFF_VEL } from "../src/game/judge.js";
 
 assert.strictEqual(velocityFor(0), 1);
 assert.strictEqual(velocityFor(0.02), 1);
-assert.strictEqual(velocityFor(-0.2), 0.15);
-assert.ok(velocityFor(0.085) > 0.5 && velocityFor(0.085) < 0.6, "velocityFor(0.085) in (0.5, 0.6)");
+assert.strictEqual(velocityFor(-0.2), MISS_VEL);
+// heard loudness (dB): a block is 0 dB, 50 ms off clearly quieter, 100 ms off faint
+const dB = (v) => 20 * Math.log10(v);
+assert.ok(Math.abs(dB(velocityFor(0.050)) - (-7.6)) < 1.0, "50 ms off is ~8 dB down: " + dB(velocityFor(0.05)).toFixed(1));
+assert.ok(dB(velocityFor(0.100)) < -15, "100 ms off is faint (< -15 dB): " + dB(velocityFor(0.1)).toFixed(1));
+assert.ok(Math.abs(dB(MISS_VEL) + 24) < 0.01 && Math.abs(dB(OFF_VEL) + 30) < 0.01, "miss -24 dB, off-chart -30 dB");
 
 // non-increasing over |offset| from 0 to 0.2 in 1 ms steps
 let prev = Infinity;

@@ -10,7 +10,7 @@
 import "./audio/voices.js";
 import { makeDrums } from "./audio/drums.js";
 import { startClock } from "./audio/clock.js";
-import { nearestOnGrid, nearestInLoop, velocityFor, label, OFF_CHART } from "./game/judge.js";
+import { nearestOnGrid, nearestInLoop, velocityFor, label, OFF_CHART, OFF_VEL } from "./game/judge.js";
 import { LAYOUT, CHART } from "./game/chart.js";
 import { Ghosts } from "./game/ghosts.js";
 import { SessionLog } from "./game/session.js";
@@ -20,6 +20,7 @@ import { Loops } from "./game/loops.js";
 import { DIFFICULTY } from "./game/difficulty.js";
 import { SONG, partArrows, isShown } from "./game/stages.js";
 import { createHud } from "./ui/hud.js";
+import { createMixer } from "./audio/mixer.js";
 
 const { VoicePool, VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
 
@@ -90,7 +91,7 @@ function tickBell(heardNow) {
         const entry = KEYMAP_BY_LANE[e.lane];
         if (!entry) continue;
         pool.noteOn({ channel: entry.idx + 10, midi: 60, baseNote: 60, buffer: drums[entry.ln.drum],
-          velocity: e.velocity * 0.85, when: e.time, destination: masterGain,
+          velocity: e.velocity * 0.85, when: e.time, destination: mixer.lane(entry.ln.name),
           settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
       }
     }
@@ -105,6 +106,7 @@ applyStage();
 
 let ctx = null;
 let masterGain = null;
+let mixer = null;          // the mixing desk: lane strips, drum bus, reverb, limiter
 let drums = null;
 let pool = null;
 let clock = null;
@@ -178,9 +180,8 @@ function makeStartButton() {
     if (ctx) return;
     ctx = new AudioContext();
     await ctx.resume();
-    masterGain = ctx.createGain();
-    masterGain.gain.value = 0.8;
-    masterGain.connect(ctx.destination);
+    mixer = createMixer(ctx);
+    masterGain = mixer.master;
 
     drums = await makeDrums(ctx.sampleRate);
     pool = new VoicePool(ctx);
@@ -197,7 +198,7 @@ function makeStartButton() {
           buffer: drums.click,
           velocity: active ? 0.9 : 0.35,
           when: time,
-          destination: masterGain,
+          destination: mixer.metronome,
           settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
         });
       },
@@ -243,7 +244,7 @@ function scheduleGhosts() {
       buffer: drums[entry.ln.drum],
       velocity: e.velocity * 0.85,   // exactly as played, a touch under live play
       when: e.time,
-      destination: masterGain,
+      destination: mixer.lane(entry.ln.name),
       settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
     });
   }
@@ -306,7 +307,7 @@ function onKey(e) {
       buffer: drums.kick,
       velocity: vel,
       when: ctx.currentTime,
-      destination: masterGain,
+      destination: mixer.lane("kick"),
       settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
     });
     recordPress(j.offset, vel, "kick", label(j.offset));
@@ -333,7 +334,7 @@ function onKey(e) {
   } else {
     // off-chart: no note nearby at all — play quietly, label OFF, stay out of the chart
     off = !j || Math.abs(j.offset) > OFF_CHART;
-    vel = off ? 0.15 : velocityFor(j.offset);
+    vel = off ? OFF_VEL : velocityFor(j.offset);   // off-chart: barely there (-30 dB)
     lab = off ? "OFF" : label(j.offset);
   }
 
@@ -349,7 +350,7 @@ function onKey(e) {
     buffer: drums[lane.drum],
     velocity: vel,
     when: ctx.currentTime,
-    destination: masterGain,
+    destination: mixer.lane(lane.name),
     settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
   });
 

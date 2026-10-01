@@ -56,9 +56,11 @@ export function createMixer(ctx) {
   // --- drum bus: glue compression
   const drumBus = ctx.createGain();
   const glue = ctx.createDynamicsCompressor();
-  glue.threshold.value = -16;
-  glue.knee.value = 8;
-  glue.ratio.value = 3;
+  // gentle: glue the kit without flattening it — a block must stay audibly
+  // louder than a near miss (only the loudest hits reach the threshold)
+  glue.threshold.value = -9;
+  glue.knee.value = 6;
+  glue.ratio.value = 2;
   glue.attack.value = 0.012;
   glue.release.value = 0.16;
   const drumFader = ctx.createGain();
