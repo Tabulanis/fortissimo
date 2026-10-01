@@ -271,18 +271,23 @@ export function createStage3D(canvas, layout, colors) {
   //      swaps in his own models later — each hand+stick stays in one Group
   //      per hand so it can be replaced wholesale). Pooled: built once, reused.
   const STICK_LEN = 0.42;
-  const handGeo = new THREE.SphereGeometry(0.07, 20, 14);
+  const handGeo = new THREE.SphereGeometry(0.1, 20, 14);   // big enough to read as a fist
   handGeo.scale(1, 0.8, 1.3);   // slightly squashed fist
-  const stickGeo = new THREE.CylinderGeometry(0.016, 0.018, STICK_LEN, 10);
+  const stickGeo = new THREE.CylinderGeometry(0.022, 0.026, STICK_LEN, 10);
   stickGeo.translate(0, STICK_LEN / 2, 0);   // fist at origin, tip at +y
-  const handMat = new THREE.MeshStandardMaterial({ color: 0xc8916a, roughness: 0.8, metalness: 0.05 });
-  const stickMat = new THREE.MeshStandardMaterial({ color: 0xd9b07a, roughness: 0.6, metalness: 0.05 });
+  // warm and partly self-lit, like the arrows: dark-brown hands vanished in the night scene
+  const handMat = new THREE.MeshStandardMaterial({ color: 0xe0a47c, roughness: 0.8, metalness: 0.05,
+    emissive: 0x8a5034, emissiveIntensity: 0.55 });
+  const stickMat = new THREE.MeshStandardMaterial({ color: 0xf0cc90, roughness: 0.6, metalness: 0.05,
+    emissive: 0x9a7040, emissiveIntensity: 0.55 });
 
   // rest poses: widened and lowered so the fists never sit on a drum on
   // screen (a fist at y 0.95 would occlude the upright drums' heads)
+  // in the bottom CORNERS of the view: visible, and outside every drum on screen
+  // (at y 0.74 they were off-screen; the bottom edge at z 1.35 is ~y 0.95)
   const HAND_REST = [
-    new THREE.Vector3(-0.5, 0.74, 1.25),
-    new THREE.Vector3(0.5, 0.74, 1.25),
+    new THREE.Vector3(-0.55, 1.0, 1.35),
+    new THREE.Vector3(0.55, 1.0, 1.35),
   ];
   // rest stick heading: up-forward ~35° from vertical (toward the drums)
   const REST_DIR = new THREE.Vector3(0, Math.cos(35 * Math.PI / 180), -Math.sin(35 * Math.PI / 180));
