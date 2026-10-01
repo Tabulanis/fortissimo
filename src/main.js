@@ -1,9 +1,11 @@
 /* main.js — Garden Rhythm beat core.
    Start button -> AudioContext (created inside the click), drums rendered,
-   metronome click scheduled ahead of the audio clock, instant kick on F/Space
-   with timing judged against the beat GRID (known in advance), mapped to
-   velocity. Lane picture on the canvas, a timing histogram, and a
-   calibration mode that removes the player's systematic offset. */
+   metronome click scheduled ahead of the audio clock, instant kicks on lane
+   keys with timing judged against the chart (known in advance), mapped to
+   velocity. First-person 3D courtyard on canvas#stage: flaming arrows fly in
+   on the audio clock (the arrows ARE the notes). The timing histogram lives on
+   its own canvas#chart. A calibration mode removes the player's systematic
+   offset. */
 
 import "./audio/voices.js";
 import { makeDrums } from "./audio/drums.js";
@@ -12,14 +14,25 @@ import { nearestOnGrid, nearestInLoop, velocityFor, label, OFF_CHART } from "./g
 import { LAYOUT, CHART } from "./game/chart.js";
 import { Ghosts } from "./game/ghosts.js";
 import { SessionLog } from "./game/session.js";
+import { createStage3D } from "./scene/stage3d.js";
 
 const { VoicePool, VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
 
 const hud = document.querySelector("#hud");
 const stage = document.querySelector("#stage");
-const ctx2d = stage.getContext("2d");
+const chart = document.querySelector("#chart");
+const ctx2d = chart.getContext("2d");
 const BPM = 100;
 const CALIB_KEY = "gr.calib";
+
+// --- drum colours (hex strings; shared by the 3D stage and the chart) ------
+const DRUM_COLOR = {
+  hat: "#8ac", snare: "#f8a", crash: "#ce8",
+  kick: "#a8f", tomLow: "#da6", tomHigh: "#fa4",
+};
+
+// --- the 3D stage (created once at load; canvas#stage becomes WebGL) --------
+const stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR);
 
 let ctx = null;
 let masterGain = null;
@@ -32,7 +45,7 @@ let offsets = [];          // every press offset (ms), after calibration
 let flashes = [];          // lane-segment flashes: { idx, kind, until }
 
 // --- drum-mode lane map ----------------------------------------------------
-// key -> { lane index (0..9), lane } built once from the layout.
+// key -> { lane index (0..5), lane } built once from the layout.
 const KEYMAP = {};
 {
   let idx = 0;
@@ -75,7 +88,7 @@ function makeCalibrateButton() {
   const btn = document.createElement("button");
   btn.textContent = "Calibrate";
   btn.style.cssText =
-    "position:fixed;top:8px;right:90px;z-index:11;font:14px monospace;" +
+    "position:fixed;top:8px;right:90px;z-index:21;font:14px monospace;" +
     "padding:6px 14px;background:#131;color:#fc6;border:1px solid #fc6;cursor:pointer";
   btn.addEventListener("click", () => {
     if (!clock || calib) return;
@@ -90,7 +103,7 @@ function makeStartButton() {
   const btn = document.createElement("button");
   btn.textContent = "Start";
   btn.style.cssText =
-    "position:fixed;top:8px;right:8px;z-index:11;font:14px monospace;" +
+    "position:fixed;top:8px;right:8px;z-index:21;font:14px monospace;" +
     "padding:6px 14px;background:#123;color:#8f8;border:1px solid #8f8;cursor:pointer";
   btn.addEventListener("click", async () => {
     if (ctx) return;
@@ -264,6 +277,13 @@ function onKey(e) {
     label: lab,
   });
 
+  // the scene reacts: every press flashes the drum; judged presses also mark
+  // the arrow they struck (HIT vanishes at once, NEAR sticks briefly)
+  stage3d.press(idx, lab);
+  if (!free && !off) {
+    stage3d.hit(idx, j.time, lab === "HIT" ? "HIT" : "NEAR");
+  }
+
   recordPress(idx, free ? null : (off ? null : j.offset), vel, lane.name, lab);
 }
 
@@ -327,189 +347,34 @@ function recordPress(idx, offsetSec, vel, laneName, lab) {
     ghostStr;
 }
 
-// --- highway picture -------------------------------------------------------
-const TOP_HIT_FRAC = 0.42;   // top hit line at 42% of the playfield height
-const BOT_HIT_FRAC = 0.58;   // bottom hit line at 58%
-const PX_PER_S = 300;        // approach speed, px/s
-const LANE_W = 90;           // highway lane width, CSS px
+// --- upcoming notes (the arrows) -------------------------------------------
+// Every chart note for both rows within the next APPROACH window, as
+// { laneIdx, time } on the audio clock. Freestyle passes nothing.
+const APPROACH_S = 2.0;
 
-const CHART_BAND = 120;   // chart band, CSS px, pinned to the bottom
-
-// --- drum colours ----------------------------------------------------------
-const DRUM_COLOR = {
-  hat: "#8ac", snare: "#f8a", crash: "#ce8",
-  kick: "#a8f", tomLow: "#da6", tomHigh: "#fa4",
-};
-
-// geometry cache, refreshed on resize
-let geo = null;
-function computeGeo() {
-  const W = stage.clientWidth, H = stage.clientHeight;
-  const pfH = H - CHART_BAND;
-  const top = {
-    hitY: pfH * TOP_HIT_FRAC,
-    x0: W / 2 - (LAYOUT.top.length * LANE_W) / 2,
-  };
-  const bot = {
-    hitY: pfH * BOT_HIT_FRAC,
-    x0: W / 2 - (LAYOUT.bottom.length * LANE_W) / 2,
-  };
-  geo = { W, H, pfH, top, bot };
-}
-
-function laneX(side, i) {
-  return (side === "top" ? geo.top.x0 : geo.bot.x0) + i * LANE_W + LANE_W / 2;
-}
-
-function drawHighway(now) {
-  const heardNow = ctx.getOutputTimestamp().contextTime;
-  const nowP = performance.now();
+function buildUpcoming(heardNow) {
+  const out = [];
+  if (mode === "free") return out;
+  const period = CHART.loopBeats * clock.beatDur;
+  const kLo = Math.max(0, Math.floor((heardNow - clock.first) / period) - 1);
   const lanes = [...LAYOUT.top, ...LAYOUT.bottom];
-
-  // faint lane dividers + hit segments (flashing after a press)
-  for (const side of ["top", "bot"]) {
-    const row = side === "top" ? LAYOUT.top : LAYOUT.bottom;
-    const x0 = side === "top" ? geo.top.x0 : geo.bot.x0;
-    ctx2d.strokeStyle = "#1a222a";
-    ctx2d.lineWidth = 1;
-    for (let i = 0; i <= row.length; i++) {
-      const x = x0 + i * LANE_W;
-      ctx2d.beginPath();
-      ctx2d.moveTo(x, 0);
-      ctx2d.lineTo(x, geo.pfH);
-      ctx2d.stroke();
-    }
-    // hit segments, flashing per lane after a press
-    const hitY = side === "top" ? geo.top.hitY : geo.bot.hitY;
-    for (let i = 0; i < row.length; i++) {
-      const x = x0 + i * LANE_W;
-      let color = "#345", width = 1.5;
-      for (const f of flashes) {
-        const gi = (side === "top" ? f.idx : f.idx + LAYOUT.top.length);
-        if (gi !== i || nowP >= f.until) continue;
-        color = f.kind === "hit" ? "#4f4" : f.kind === "off" ? "#888" : "#fa0";
-        width = 4;
-      }
-      ctx2d.strokeStyle = color;
-      ctx2d.lineWidth = width;
-      ctx2d.beginPath();
-      ctx2d.moveTo(x + 4, hitY);
-      ctx2d.lineTo(x + LANE_W - 4, hitY);
-      ctx2d.stroke();
-    }
-  }
-  flashes = flashes.filter((f) => nowP < f.until);
-
-  // notes within the next 2 s (drum mode only — freestyle draws no chart notes)
-  for (let li = 0; mode !== "free" && li < lanes.length; li++) {
-    const lane = lanes[li];
-    const side = li < LAYOUT.top.length ? "top" : "bot";
-    const li2 = side === "top" ? li : li - LAYOUT.top.length;
-    const hitY = side === "top" ? geo.top.hitY : geo.bot.hitY;
-    const beats = CHART.notes[lane.drum];
+  for (let li = 0; li < lanes.length; li++) {
+    const beats = CHART.notes[lanes[li].drum];
     if (!beats.length) continue;
-    const period = CHART.loopBeats * clock.beatDur;
-    const kLo = Math.floor((heardNow - clock.first) / period) - 1;
-    const color = DRUM_COLOR[lane.drum] || "#8ac";
-    for (let k = Math.max(0, kLo); k <= kLo + 2; k++) {
+    for (let k = kLo; k <= kLo + 2; k++) {
       for (const b of beats) {
         const noteTime = clock.first + (k * CHART.loopBeats + b) * clock.beatDur;
-        const dt = noteTime - heardNow;
-        if (dt < -0.12 || dt > 2) continue;
-        // after its time a note clamps to the hit line and fades out
-        const alpha = dt >= 0 ? 1 : 1 + dt / 0.12;
-        let y = side === "top"
-          ? geo.top.hitY - dt * PX_PER_S
-          : geo.bot.hitY + dt * PX_PER_S;
-        if (dt < 0) y = hitY;   // never past the hit line, fade in place
-        if (y < -20 || y > geo.pfH + 20) continue;
-        const x = laneX(side, li2);
-        ctx2d.globalAlpha = alpha;
-        ctx2d.beginPath();
-        ctx2d.arc(x, y, 8, 0, Math.PI * 2);
-        ctx2d.fillStyle = color;
-        ctx2d.fill();
-        ctx2d.globalAlpha = 1;
+        if (noteTime - heardNow < -0.6 || noteTime - heardNow > APPROACH_S) continue;
+        out.push({ laneIdx: li, time: noteTime });
       }
     }
   }
-
-  // ghost hits: small HOLLOW circles of the lane colour, moving like notes
-  if (ghosts && ghostsOn) {
-    for (const ev of ghosts.events(
-      heardNow, heardNow + 2, clock.first,
-    )) {
-      const entry = KEYMAP_BY_LANE[ev.lane];
-      if (!entry) continue;
-      const side = entry.idx < LAYOUT.top.length ? "top" : "bot";
-      const li2 = side === "top" ? entry.idx : entry.idx - LAYOUT.top.length;
-      const dt = ev.time - heardNow;
-      if (dt < -0.12 || dt > 2) continue;
-      const alpha = dt >= 0 ? 1 : 1 + dt / 0.12;
-      const hitY = side === "top" ? geo.top.hitY : geo.bot.hitY;
-      let y = side === "top"
-        ? geo.top.hitY - dt * PX_PER_S
-        : geo.bot.hitY + dt * PX_PER_S;
-      if (dt < 0) y = hitY;   // never past the hit line, fade in place
-      if (y < -20 || y > geo.pfH + 20) continue;
-      const x = laneX(side, li2);
-      const color = DRUM_COLOR[entry.ln.drum] || "#8ac";
-      ctx2d.globalAlpha = alpha;
-      ctx2d.beginPath();
-      ctx2d.arc(x, y, 4.5, 0, Math.PI * 2);
-      ctx2d.strokeStyle = color;
-      ctx2d.lineWidth = 1.5;
-      ctx2d.stroke();
-      ctx2d.globalAlpha = 1;
-    }
-  }
-
-  // key letter (uppercase) + lane name in the middle gap between the
-  // two hit lines: top labels just below the top line, bottom labels
-  // just above the bottom line.
-  ctx2d.textAlign = "center";
-  ctx2d.font = "16px monospace";
-  for (let i = 0; i < LAYOUT.top.length; i++) {
-    const x = laneX("top", i);
-    ctx2d.fillStyle = "#cde";
-    ctx2d.fillText(LAYOUT.top[i].key.toUpperCase(), x, geo.top.hitY + 20);
-    ctx2d.fillStyle = "#567";
-    ctx2d.font = "10px monospace";
-    ctx2d.fillText(LAYOUT.top[i].name, x, geo.top.hitY + 40);
-    ctx2d.font = "16px monospace";
-  }
-  for (let i = 0; i < LAYOUT.bottom.length; i++) {
-    const x = laneX("bot", i);
-    ctx2d.fillStyle = "#cde";
-    ctx2d.fillText(LAYOUT.bottom[i].key.toUpperCase(), x, geo.bot.hitY - 20);
-    ctx2d.fillStyle = "#567";
-    ctx2d.font = "10px monospace";
-    ctx2d.fillText(LAYOUT.bottom[i].name, x, geo.bot.hitY - 40);
-    ctx2d.font = "16px monospace";
-  }
-  ctx2d.textAlign = "left";
+  return out;
 }
 
-function resize() {
-  const dpr = window.devicePixelRatio || 1;
-  stage.width = Math.round(stage.clientWidth * dpr);
-  stage.height = Math.round(stage.clientHeight * dpr);
-  ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
-  computeGeo();
-}
-
-function drawLane(now) {
-  const W = stage.clientWidth, H = stage.clientHeight;
-  ctx2d.fillStyle = "#0b0e11";
-  ctx2d.fillRect(0, 0, W, H);
-
-  if (clock && ctx) drawHighway(now);
-
-  drawChart(now);
-}
-
-// --- timing chart ----------------------------------------------------------
+// --- timing chart (its own canvas) ------------------------------------------
 const BIN_MS = 10, LO = -150, NBINS = 30;
+const CHART_H = 120;   // CSS px height of the chart band
 
 function mean(xs) {
   return xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -520,19 +385,16 @@ function stddev(xs) {
 }
 
 function drawChart() {
-  const W = stage.clientWidth, H = stage.clientHeight;
-  const chH = CHART_BAND;
-  const top = H - chH;
-
+  const W = chart.clientWidth, H = chart.clientHeight;
   ctx2d.fillStyle = "rgba(10,14,18,0.9)";
-  ctx2d.fillRect(0, top, W, chH);
+  ctx2d.fillRect(0, 0, W, H);
   ctx2d.strokeStyle = "#223";
-  ctx2d.strokeRect(0.5, top + 0.5, W - 1, chH - 1);
+  ctx2d.strokeRect(0.5, 0.5, W - 1, H - 1);
 
   if (!offsets.length) {
     ctx2d.fillStyle = "#456";
     ctx2d.font = "11px monospace";
-    ctx2d.fillText("no presses yet", 8, top + 16);
+    ctx2d.fillText("no presses yet", 8, 16);
     return;
   }
 
@@ -546,9 +408,9 @@ function drawChart() {
   const max = Math.max(...bins);
   const bw = (W - 20) / NBINS;
   for (let i = 0; i < NBINS; i++) {
-    const h = max ? (bins[i] / max) * (chH - 24) : 0;
+    const h = max ? (bins[i] / max) * (H - 24) : 0;
     ctx2d.fillStyle = "#2a6";
-    ctx2d.fillRect(10 + i * bw, top + chH - 4 - h, Math.max(1, bw - 1), h);
+    ctx2d.fillRect(10 + i * bw, H - 4 - h, Math.max(1, bw - 1), h);
   }
 
   const m = mean(offsets), sd = stddev(offsets);
@@ -557,12 +419,27 @@ function drawChart() {
   ctx2d.fillText(
     `n ${offsets.length}   mean ${m >= 0 ? "+" : ""}${m.toFixed(1)} ms   ` +
     `spread ${sd.toFixed(1)} ms`,
-    10, top + 14,
+    10, 14,
   );
 }
 
+function resize() {
+  stage3d.resize();
+  const dpr = window.devicePixelRatio || 1;
+  chart.width = Math.round(chart.clientWidth * dpr);
+  chart.height = Math.round(chart.clientHeight * dpr);
+  ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
 function frame() {
-  drawLane(performance.now());
+  if (clock && ctx) {
+    const heardNow = ctx.getOutputTimestamp().contextTime;
+    stage3d.update(heardNow, buildUpcoming(heardNow));
+  } else {
+    // before Start: keep the courtyard (and its drums) visible, no arrows
+    stage3d.update(0, []);
+  }
+  drawChart();
   requestAnimationFrame(frame);
 }
 

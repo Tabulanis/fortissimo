@@ -7,11 +7,21 @@
     <style>
       html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
       #stage { display: block; width: 100vw; height: 100vh; }
-      #hud { position: fixed; top: 0; left: 0; padding: 4px 8px; font: 12px monospace; color: #8f8; z-index: 10; }
+      #chart {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 120px;
+        pointer-events: none;
+        z-index: 10;
+      }
+      #hud { position: fixed; top: 0; left: 0; padding: 4px 8px; font: 12px monospace; color: #8f8; z-index: 20; }
     </style>
   </head>
   <body>
     <canvas id="stage"></canvas>
+    <canvas id="chart"></canvas>
     <div id="hud"></div>
     <script type="module" src="/src/main.js"></script>
   </body>

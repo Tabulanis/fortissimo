@@ -39,6 +39,7 @@ assert.ok(Math.abs(l1.offset - 0.03) < 1e-9, "late press -> offset ~ +0.03, beat
 const l2 = nearestInLoop([0], 16, 0.5, 0.6, 0.5 + 16 * 0.6 - 0.04);
 assert.strictEqual(l2.beat, 0);
 assert.ok(Math.abs(l2.offset - (-0.04)) < 1e-9, "pre-boundary press -> offset ~ -0.04 (next loop's beat 0, EARLY)");
+assert.ok(Math.abs(l2.time - (0.5 + 16 * 0.6)) < 1e-9, "matched note's absolute time is returned");
 
 assert.strictEqual(nearestInLoop([], 16, 0.5, 0.6, 1.0), null);
 

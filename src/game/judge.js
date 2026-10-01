@@ -66,7 +66,7 @@ export function nearestInLoop(beats, loopBeats, first, beatDur, t) {
       if (!best || d < best.d) best = { d, time, beat: b };
     }
   }
-  return { offset: t - best.time, beat: best.beat };
+  return { offset: t - best.time, beat: best.beat, time: best.time };
 }
 
 /** HIT within 50 ms; otherwise EARLY / LATE. */
