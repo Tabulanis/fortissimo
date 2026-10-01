@@ -10,6 +10,7 @@ import { makeDrums } from "./audio/drums.js";
 import { startClock } from "./audio/clock.js";
 import { nearestOnGrid, nearestInLoop, velocityFor, label, OFF_CHART } from "./game/judge.js";
 import { LAYOUT, CHART } from "./game/chart.js";
+import { Ghosts } from "./game/ghosts.js";
 
 const { VoicePool, VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
 
@@ -38,6 +39,9 @@ const KEYMAP = {};
     KEYMAP[ln.key] = { idx: idx++, ln };
   }
 }
+// lane NAME -> entry (ghost events carry lane names)
+const KEYMAP_BY_LANE = {};
+for (const e of Object.values(KEYMAP)) KEYMAP_BY_LANE[e.ln.name] = e;
 
 // --- calibration ----------------------------------------------------------
 let calibration = loadCalib();   // seconds, subtracted from every press time
@@ -106,10 +110,43 @@ function makeStartButton() {
       },
     });
 
+    ghosts = new Ghosts(CHART.loopBeats * clock.beatDur);
+    scheduledUntil = clock.first;
+    setInterval(scheduleGhosts, 25);
+
     btn.remove();
   });
   document.body.appendChild(btn);
   return btn;
+}
+
+// --- ghost loops -----------------------------------------------------------
+// What was played in a pass replays as a ghost from the NEXT pass on, quieter
+// than live play, on its own channels (laneIndex + 10) so live presses never
+// cut a ghost. Recorded exactly as played — never snapped. G toggles.
+let ghosts = null;
+let ghostsOn = true;
+let scheduledUntil = 0;
+
+function scheduleGhosts() {
+  if (!ghosts || !ctx || !pool || !ghostsOn) return;
+  const until = ctx.currentTime + 0.1;
+  const evs = ghosts.events(scheduledUntil, until, clock.first);
+  for (const e of evs) {
+    const entry = KEYMAP_BY_LANE[e.lane];
+    if (!entry) continue;
+    pool.noteOn({
+      channel: entry.idx + 10,
+      midi: 60,
+      baseNote: 60,
+      buffer: drums[entry.ln.drum],
+      velocity: e.velocity * 0.5,
+      when: e.time,
+      destination: masterGain,
+      settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
+    });
+  }
+  scheduledUntil = until;
 }
 
 // --- keydown ---------------------------------------------------------------
@@ -124,6 +161,12 @@ function onKey(e) {
   const ts = ctx.getOutputTimestamp();
   const press =
     ts.contextTime + (e.timeStamp - ts.performanceTime) / 1000 - calibration;
+
+  if (e.key === "g" || e.key === "G") {
+    e.preventDefault();
+    ghostsOn = !ghostsOn;
+    return;
+  }
 
   if (e.key === "f" || e.key === "F" || e.key === " ") {
     e.preventDefault();
@@ -157,6 +200,10 @@ function onKey(e) {
   const off = !j || Math.abs(j.offset) > OFF_CHART;
   const vel = off ? 0.15 : velocityFor(j.offset);
   const lab = off ? "OFF" : label(j.offset);
+
+  // record exactly as played (real timing, real velocity, mistakes and OFF
+  // included) — it becomes this lane's ghost from the next pass on
+  if (ghosts) ghosts.record(lane.name, press, vel, clock.first);
 
   // the player IS the instrument: play immediately, on this lane's channel
   pool.noteOn({
@@ -194,13 +241,17 @@ function recordPress(idx, offsetSec, vel, laneName, lab) {
     offsets.push(ms);
   }
 
+  const ghostStr = ghosts
+    ? `  ghosts: ${ghosts.lanes.length} lanes (${ghostsOn ? "on" : "off"}) [G]`
+    : "";
   hud.textContent =
     `${laneName}  ${lab}  ` +
     (ms == null
       ? "free"
       : `${ms >= 0 ? "+" : ""}${ms.toFixed(1)} ms  vel ${vel.toFixed(2)}`) +
     `  lat ${(ctx.outputLatency * 1000).toFixed(1)} ms  ` +
-    `calib: ${calibration >= 0 ? "+" : ""}${(calibration * 1000).toFixed(1)} ms`;
+    `calib: ${calibration >= 0 ? "+" : ""}${(calibration * 1000).toFixed(1)} ms` +
+    ghostStr;
 }
 
 // --- highway picture -------------------------------------------------------
@@ -310,25 +361,57 @@ function drawHighway(now) {
     }
   }
 
-  // key letter (uppercase) + lane name under each lane's hit line
+  // ghost hits: small HOLLOW circles of the lane colour, moving like notes
+  if (ghosts && ghostsOn) {
+    for (const ev of ghosts.events(
+      heardNow, heardNow + 2, clock.first,
+    )) {
+      const entry = KEYMAP_BY_LANE[ev.lane];
+      if (!entry) continue;
+      const side = entry.idx < LAYOUT.top.length ? "top" : "bot";
+      const li2 = side === "top" ? entry.idx : entry.idx - LAYOUT.top.length;
+      const dt = ev.time - heardNow;
+      if (dt < -0.12 || dt > 2) continue;
+      const alpha = dt >= 0 ? 1 : 1 + dt / 0.12;
+      const hitY = side === "top" ? geo.top.hitY : geo.bot.hitY;
+      let y = side === "top"
+        ? geo.top.hitY - dt * PX_PER_S
+        : geo.bot.hitY + dt * PX_PER_S;
+      if (dt < 0) y = hitY;   // never past the hit line, fade in place
+      if (y < -20 || y > geo.pfH + 20) continue;
+      const x = laneX(side, li2);
+      const color = DRUM_COLOR[entry.ln.drum] || "#8ac";
+      ctx2d.globalAlpha = alpha;
+      ctx2d.beginPath();
+      ctx2d.arc(x, y, 4.5, 0, Math.PI * 2);
+      ctx2d.strokeStyle = color;
+      ctx2d.lineWidth = 1.5;
+      ctx2d.stroke();
+      ctx2d.globalAlpha = 1;
+    }
+  }
+
+  // key letter (uppercase) + lane name in the middle gap between the
+  // two hit lines: top labels just below the top line, bottom labels
+  // just above the bottom line.
   ctx2d.textAlign = "center";
   ctx2d.font = "16px monospace";
   for (let i = 0; i < LAYOUT.top.length; i++) {
     const x = laneX("top", i);
     ctx2d.fillStyle = "#cde";
-    ctx2d.fillText(LAYOUT.top[i].key.toUpperCase(), x, geo.top.hitY - 14);
+    ctx2d.fillText(LAYOUT.top[i].key.toUpperCase(), x, geo.top.hitY + 20);
     ctx2d.fillStyle = "#567";
     ctx2d.font = "10px monospace";
-    ctx2d.fillText(LAYOUT.top[i].name, x, geo.top.hitY - 2);
+    ctx2d.fillText(LAYOUT.top[i].name, x, geo.top.hitY + 40);
     ctx2d.font = "16px monospace";
   }
   for (let i = 0; i < LAYOUT.bottom.length; i++) {
     const x = laneX("bot", i);
     ctx2d.fillStyle = "#cde";
-    ctx2d.fillText(LAYOUT.bottom[i].key.toUpperCase(), x, geo.bot.hitY + 22);
+    ctx2d.fillText(LAYOUT.bottom[i].key.toUpperCase(), x, geo.bot.hitY - 20);
     ctx2d.fillStyle = "#567";
     ctx2d.font = "10px monospace";
-    ctx2d.fillText(LAYOUT.bottom[i].name, x, geo.bot.hitY + 34);
+    ctx2d.fillText(LAYOUT.bottom[i].name, x, geo.bot.hitY - 32);
     ctx2d.font = "16px monospace";
   }
   ctx2d.textAlign = "left";
