@@ -153,13 +153,23 @@ function onKey(e) {
 const HIT_FRAC = 0.8;      // hit line at 80% down
 const PX_PER_S = 300;      // approach speed, px/s
 
+const CHART_BAND = 120;   // chart band, CSS px, pinned to the bottom
+
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  stage.width = Math.round(stage.clientWidth * dpr);
+  stage.height = Math.round(stage.clientHeight * dpr);
+  ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
 function drawLane(now) {
-  const W = stage.width, H = stage.height;
+  const W = stage.clientWidth, H = stage.clientHeight;
   ctx2d.fillStyle = "#0b0e11";
   ctx2d.fillRect(0, 0, W, H);
 
   const laneX = W / 2;
-  const hitY = H * HIT_FRAC;
+  const laneH = H - CHART_BAND;
+  const hitY = laneH * HIT_FRAC;
 
   // upcoming beats from the grid, next 2 seconds
   if (clock && ctx) {
@@ -194,7 +204,7 @@ function drawLane(now) {
 }
 
 // --- timing chart ----------------------------------------------------------
-const BIN_MS = 10, LO = -150, HI = 150, NBINS = 30;
+const BIN_MS = 10, LO = -150, NBINS = 30;
 
 function mean(xs) {
   return xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -205,9 +215,9 @@ function stddev(xs) {
 }
 
 function drawChart() {
-  const W = stage.width, H = stage.height;
-  const chH = Math.min(90, H * 0.2);
-  const top = H - chH - 4;
+  const W = stage.clientWidth, H = stage.clientHeight;
+  const chH = CHART_BAND;
+  const top = H - chH;
 
   ctx2d.fillStyle = "rgba(10,14,18,0.9)";
   ctx2d.fillRect(0, top, W, chH);
