@@ -8,7 +8,8 @@ export class Ghosts {
   /** @param {number} period loop length in seconds */
   constructor(period) {
     this.period = period;
-    // lane name -> latest recording: { pos, velocity, pass }
+    // lane name -> list of takes [{ pass, hits: [{ pos, velocity }] }],
+    // oldest take first; each take is every hit of one pass, in time order.
     this.ghosts = new Map();
   }
 
@@ -23,7 +24,19 @@ export class Ghosts {
     const rel = t - first;
     const pass = Math.floor(rel / this.period);
     const pos = rel - pass * this.period;   // exact, never snapped
-    this.ghosts.set(lane, { pos, velocity, pass });
+    // Every hit of the pass accumulates into this pass's take; a later pass
+    // records a fresh take, which supersedes the old one from its next pass on.
+    let takes = this.ghosts.get(lane);
+    if (!takes) {
+      takes = [];
+      this.ghosts.set(lane, takes);
+    }
+    const last = takes[takes.length - 1];
+    if (last && last.pass === pass) {
+      last.hits.push({ pos, velocity });
+    } else {
+      takes.push({ pass, hits: [{ pos, velocity }] });
+    }
   }
 
   /**
@@ -32,17 +45,27 @@ export class Ghosts {
    * @returns {{lane: string, time: number, velocity: number}[]}
    */
   events(fromT, toT, first) {
+    // For absolute pass k, the lane's ghost is its latest take with
+    // take.pass < k: the old take keeps playing during the replacing pass
+    // itself, and only takes over from the replacing pass's next pass on.
     const out = [];
-    for (const [lane, g] of this.ghosts) {
-      // replay starts in pass g.pass + 1; find the first such occurrence at or
-      // after fromT, then step by period until past toT.
-      const relFrom = fromT - first;
-      let k = Math.max(g.pass + 1, Math.ceil((relFrom - g.pos) / this.period));
-      for (;;) {
-        const time = first + k * this.period + g.pos;
-        if (time >= toT) break;
-        if (time >= fromT) out.push({ lane, time, velocity: g.velocity });
-        k++;
+    const relFrom = fromT - first;
+    const kLo = Math.floor(relFrom / this.period);
+    const kHi = Math.floor((toT - 1e-12) / this.period);
+    for (const [lane, takes] of this.ghosts) {
+      for (let k = kLo; k <= kHi; k++) {
+        // latest take recorded strictly before pass k
+        let active = null;
+        for (const tk of takes) {
+          if (tk.pass < k && (!active || tk.pass > active.pass)) active = tk;
+        }
+        if (!active) continue;
+        for (const h of active.hits) {
+          const time = first + k * this.period + h.pos;
+          if (time >= fromT && time < toT) {
+            out.push({ lane, time, velocity: h.velocity });
+          }
+        }
       }
     }
     return out;
