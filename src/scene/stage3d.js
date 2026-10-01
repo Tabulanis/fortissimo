@@ -1,23 +1,46 @@
-/* stage3d.js — first-person 3D courtyard stand-in.
-   Drums in two rows facing the player; flaming billboard arrows fly in on
-   the audio clock (the arrows ARE the notes). All effect lighting is fake:
-   additive sprite flames and glows, no PointLights. */
+/* stage3d.js — seated first-person 3D layout.
+   Lanes 0-2 (layout.top): upright hand drums facing the player.
+   Lanes 3-5 (layout.bottom): floor drums in front, heads facing up.
+   Flaming billboard arrows fly in on the audio clock (the arrows ARE the
+   notes), arcing in so they are always seen side-on. All effect lighting
+   is fake: additive sprite flames and glows, no PointLights. */
 
 import * as THREE from "three";
 
-const LOOK_AT = new THREE.Vector3(0, 1.15, 0);
 const APPROACH_S = 2.0;   // seconds of visible flight before a note's time
 const STUCK_S = 0.6;      // seconds an unhit arrow stays stuck at the face
 
-// lane index -> drum row position (x, y) and depth
+// module-level temps: no per-frame allocations
+const UP = new THREE.Vector3(0, 1, 0);
+const _tan = new THREE.Vector3();
+const _pA = new THREE.Vector3();
+const _pB = new THREE.Vector3();
+
+// lane index -> drum placement.
+// lanes 0-2: upright hand drums (cylinder axis along z, face toward +z).
+// lanes 3-5: floor drums (cylinder axis vertical, head up).
 const LANES3D = [
-  { x: -1.3, y: 1.75, d: 0.18 },
-  { x: 0.0, y: 1.75, d: 0.18 },
-  { x: 1.3, y: 1.75, d: 0.18 },
-  { x: -1.3, y: 0.85, d: 0.4 },
-  { x: 0.0, y: 0.85, d: 0.4 },
-  { x: 1.3, y: 0.85, d: 0.4 },
+  { x: -0.8, y: 1.2, z: -1.4, radius: 0.3, depth: 0.16, upright: true },
+  { x: 0.0, y: 1.2, z: -1.4, radius: 0.3, depth: 0.16, upright: true },
+  { x: 0.8, y: 1.2, z: -1.4, radius: 0.3, depth: 0.16, upright: true },
+  { x: -0.75, y: 0.36, z: -0.25, radius: 0.32, depth: 0.36, upright: false },
+  { x: 0.0, y: 0.36, z: -0.25, radius: 0.32, depth: 0.36, upright: false },
+  { x: 0.75, y: 0.36, z: -0.25, radius: 0.32, depth: 0.36, upright: false },
 ];
+
+// arrow spawn points per lane
+const SPAWNS = [
+  new THREE.Vector3(-0.8 - 6, 2.0, -22),   // lane 0, side -1
+  new THREE.Vector3(0.0 - 6, 2.0, -22),    // lane 1, side -1
+  new THREE.Vector3(0.8 + 6, 2.0, -22),    // lane 2, side +1
+  new THREE.Vector3(-0.75 * 1.6, 5.5, -24),
+  new THREE.Vector3(0.0 * 1.6, 5.5, -24),
+  new THREE.Vector3(0.75 * 1.6, 5.5, -24),
+];
+
+// arc height of the parabolic lift applied on top of the lerp:
+// floor drums take the high arc dropping onto the head; uprights a lower arc.
+const ARC_LIFT = [0.8, 0.8, 0.8, 3.0, 3.0, 3.0];
 
 function hexToColor(s) {
   return new THREE.Color(s);   // accepts "#rrggbb"
@@ -46,8 +69,8 @@ export function createStage3D(canvas, layout, colors) {
   const camera = new THREE.PerspectiveCamera(
     60, canvas.clientWidth / canvas.clientHeight, 0.1, 200,
   );
-  camera.position.set(0, 1.6, 4.2);
-  camera.lookAt(LOOK_AT);
+  camera.position.set(0, 1.15, 1.7);
+  camera.lookAt(new THREE.Vector3(0, 0.6, -0.6));
 
   // ground: dark stone, flat at y = 0
   const ground = new THREE.Mesh(
@@ -57,7 +80,7 @@ export function createStage3D(canvas, layout, colors) {
   ground.rotation.x = -Math.PI / 2;
   scene.add(ground);
 
-  // drums: row-facing cylinders, face toward the camera (+z)
+  // drums
   const drumMat = [];
   const drumPos = [];
   const drumFace = [];
@@ -73,15 +96,17 @@ export function createStage3D(canvas, layout, colors) {
     drumMat.push(mat);
 
     const L = LANES3D[i];
-    const radius = i < 3 ? 0.38 : 0.5;
-    const depth = L.d;
-    const geo = new THREE.CylinderGeometry(radius, radius, depth, 24);
-    geo.rotateX(Math.PI / 2);   // axis along z, face toward +z
+    const geo = new THREE.CylinderGeometry(L.radius, L.radius, L.depth, 24);
+    if (L.upright) geo.rotateX(Math.PI / 2);   // axis along z, face toward +z
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(L.x, L.y, 0);
+    mesh.position.set(L.x, L.y, L.z);
     scene.add(mesh);
-    drumPos.push(new THREE.Vector3(L.x, L.y, 0));
-    drumFace.push(new THREE.Vector3(L.x, L.y, depth / 2 + 0.02));
+    drumPos.push(new THREE.Vector3(L.x, L.y, L.z));
+    if (L.upright) {
+      drumFace.push(new THREE.Vector3(L.x, L.y, L.z + L.depth / 2 + 0.02));
+    } else {
+      drumFace.push(new THREE.Vector3(L.x, L.y + L.depth / 2 + 0.02, L.z));
+    }
   }
 
   // flame texture: built ONCE, a 64x64 radial gradient
@@ -149,13 +174,20 @@ export function createStage3D(canvas, layout, colors) {
       time: 0,
       spawn: new THREE.Vector3(),
       face: new THREE.Vector3(),
-      dir: new THREE.Vector3(),
       hit: null,        // "HIT" | "NEAR" once judged
       stuckUntil: 0,
     });
   }
 
   const activeNotes = [];   // entries currently in flight / stuck
+
+  // path point p(f): lerp(spawn, face, f) + the parabolic arc lift.
+  // Written into `out`; reuses module temps, allocates nothing.
+  function pathPoint(e, f, out) {
+    out.copy(e.spawn).lerp(e.face, f);
+    out.y += ARC_LIFT[e.laneIdx] * 4 * f * (1 - f);
+    return out;
+  }
 
   function resize() {
     const w = canvas.clientWidth || 1;
@@ -197,14 +229,12 @@ export function createStage3D(canvas, layout, colors) {
         e.laneIdx = u.laneIdx;
         e.time = u.time;
         e.hit = null;
+        e.stuckUntil = 0;
         e.group.visible = true;
         e.flame.material.color.copy(hexToColor(colors[drumOf(u.laneIdx)] || "#888888"));
         e.glow.material.color.copy(hexToColor(colors[drumOf(u.laneIdx)] || "#888888"));
-        const face = drumFace[u.laneIdx];
-        const spawn = new THREE.Vector3(face.x, face.y + 0.9, -28);
-        e.spawn.copy(spawn);
-        e.face.copy(face);
-        e.dir.copy(face).sub(spawn).normalize();
+        e.spawn.copy(SPAWNS[u.laneIdx]);
+        e.face.copy(drumFace[u.laneIdx]);
         activeNotes.push(e);
       }
     }
@@ -219,17 +249,30 @@ export function createStage3D(canvas, layout, colors) {
           continue;
         }
         if (heardNow > e.stuckUntil) {
-          if (e.stuckUntil === 0) e.stuckUntil = e.time + STUCK_S;
+          if (e.stuckUntil === 0) {
+            // first frame past the time: arm the timer, park at the face
+            e.stuckUntil = e.time + STUCK_S;
+            e.group.position.copy(e.face);
+            pathPoint(e, 1, _pB);
+            pathPoint(e, Math.min(1, 1 + 0.01), _pA);
+            _tan.copy(_pA).sub(_pB).normalize();
+            e.group.quaternion.setFromUnitVectors(UP, _tan);
+            continue;
+          }
           recycle(e);
           continue;
         }
       }
       const f = 1 - dt / APPROACH_S;   // 0 at spawn, 1 at the face
       const clamped = Math.min(1, Math.max(0, f));
-      e.group.position.copy(e.spawn).lerp(e.face, clamped);
-      e.group.quaternion.setFromUnitVectors(
-        new THREE.Vector3(0, 1, 0), e.dir,
-      );
+      pathPoint(e, clamped, _pB);
+      e.group.position.copy(_pB);
+      // orient along the path tangent: side-on, never a dot
+      const f2 = Math.min(1, clamped + 0.01);
+      pathPoint(e, clamped, _pB);
+      pathPoint(e, f2, _pA);
+      _tan.copy(_pA).sub(_pB).normalize();
+      e.group.quaternion.setFromUnitVectors(UP, _tan);
       // flame flicker
       const s = 0.45 * (0.9 + 0.2 * Math.random());
       e.flame.scale.setScalar(s);
