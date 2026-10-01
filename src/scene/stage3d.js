@@ -6,6 +6,7 @@
    is fake: additive sprite flames and glows, no PointLights. */
 
 import * as THREE from "three";
+import { createSpirits } from "./spirits.js";
 
 const APPROACH_S = 3.2;   // seconds of visible flight: launched from the far wall, tracked all the way
 const STUCK_S = 0.6;      // seconds an unhit arrow stays stuck at the face
@@ -169,6 +170,11 @@ export function createStage3D(canvas, layout, colors) {
     g.fillRect(0, 0, 64, 64);
     return new THREE.CanvasTexture(c);
   })();
+
+  // GHOSTS PLAY VISIBLY: a spirit stick per drum strikes each loop hit
+  const spirits = createSpirits(scene, LANES3D,
+    [0, 1, 2, 3, 4, 5].map((i) => hexToColor(colors[drumOf(i)] || "#888888")),
+    flameTexture, drumMat);
 
   // shared arrow geometry (one allocation)
   const shaftGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.6, 6);
@@ -677,7 +683,8 @@ export function createStage3D(canvas, layout, colors) {
   }
 
   // perfect block: the strike detonates at the drum face.
-  function explode(laneIdx, heardNow) {
+  function explode(laneIdx, heardNow, power = 1) {
+    const P = 0.35 + 0.65 * Math.max(0, Math.min(1, power));   // dead-on = full blast
     const face = drumFace[laneIdx];
     const drumColor = hexToColor(colors[drumOf(laneIdx)] || "#888888");
 
@@ -692,6 +699,7 @@ export function createStage3D(canvas, layout, colors) {
       fl.sprite.material.color.copy(fl.color);
       fl.sprite.position.copy(face);
       fl.sprite.visible = true;
+      fl.power = P;
     }
 
     // 2. SHOCKWAVE — thin additive ring on the drumhead plane,
@@ -709,12 +717,13 @@ export function createStage3D(canvas, layout, colors) {
       if (laneIdx >= 3) sw.mesh.rotation.set(-Math.PI / 2, 0, 0);   // flat on floor heads
       else sw.mesh.rotation.set(0, 0, 0);                            // facing the player on upright
       sw.mesh.visible = true;
+      sw.power = P;
     }
 
     // 3. BLAST SPARKS — 60, speeds 4-9 m/s, mostly along the head normal
     //    in a wide cone, gravity, fading over 0.7 s.
     headNormal(laneIdx, _eDir);
-    for (let k = 0; k < 60; k++) {
+    for (let k = 0; k < Math.round(60 * P); k++) {
       const s = freeSpark();
       if (!s) break;
       s.active = true;
@@ -741,7 +750,7 @@ export function createStage3D(canvas, layout, colors) {
 
     // a third leave short streaks: stretched sprites rotated to the
     // screen-space velocity direction, brighter than plain sparks.
-    for (let k = 0; k < 20; k++) {
+    for (let k = 0; k < Math.round(20 * P); k++) {
       const st = freeStreak();
       if (!st) break;
       st.active = true;
@@ -809,7 +818,7 @@ export function createStage3D(canvas, layout, colors) {
       for (const x of embers) if (!x.active) { em = x; break; }
       if (!em) break;
       em.active = true;
-      em.t0 = heardNow;
+      em.t0 = heardNow; em.tPrev = heardNow;
       em.life = 1.5;
       em.vel.set((Math.random() - 0.5) * 0.2, 0.3 + Math.random() * 0.5, (Math.random() - 0.5) * 0.2);
       em.pos.copy(face);
@@ -827,6 +836,7 @@ export function createStage3D(canvas, layout, colors) {
   // time — that closing moment is the hit moment. No per-frame allocation.
   const ringGeo = new THREE.RingGeometry(0.92, 1.0, 48);
   const rings = [];
+  const _mc = new THREE.Color(), _white = new THREE.Color(0xffffff);
   const firelights = [];
   for (let i = 0; i < 6; i++) {
     const lane = i < 3 ? layout.top[i] : layout.bottom[i - 3];
@@ -865,7 +875,7 @@ export function createStage3D(canvas, layout, colors) {
     glow.scale.setScalar(2.2 * LANES3D[i].radius);
     glow.visible = false;
     scene.add(glow);
-    firelights.push({ glow, radius: LANES3D[i].radius });
+    firelights.push({ glow, radius: LANES3D[i].radius, base: hexToColor(colors[drumOf(i)] || "#888888").clone() });
   }
 
   // path point p(f): lerp(spawn, face, f) + the parabolic arc lift.
@@ -904,13 +914,17 @@ export function createStage3D(canvas, layout, colors) {
    * @param {Array<{laneIdx: number, time: number}>} upcoming chart notes
    *   within the next APPROACH_S seconds (both rows)
    */
-  function update(heardNow, upcoming) {
+  let _frameNo = 0;
+  function update(heardNow, upcoming, ghosts = []) {
+    spirits.update(heardNow, ghosts);
+    _frameNo++;
     updateHands(performance.now());
     // spawn / retire
     for (const u of upcoming) {
       if (!drumVisible[u.laneIdx]) continue;         // hidden drums get no arrows
       if (u.time - heardNow < -STUCK_S) continue;   // already expired
       let e = findEntry(u.laneIdx, u.time);
+      if (e) e.seen = _frameNo;
       // only a note still IN FLIGHT may get a new arrow: a blocked arrow is
       // recycled at impact, and re-spawning it here (its note is still listed
       // for STUCK_S) made a ghost arrow stick in the drum after every block
@@ -921,6 +935,7 @@ export function createStage3D(canvas, layout, colors) {
         e.active = true;
         e.laneIdx = u.laneIdx;
         e.time = u.time;
+        e.seen = _frameNo;
         e.hit = null;
         e.hitAt = -1;
         e.stuckUntil = 0;
@@ -933,6 +948,13 @@ export function createStage3D(canvas, layout, colors) {
       }
     }
 
+    // an arrow still in flight whose note is no longer wanted (the part just
+    // locked into a loop) leaves quietly instead of sticking in the drum
+    for (let i = activeNotes.length - 1; i >= 0; i--) {   // backwards: recycle() splices
+      const e = activeNotes[i];
+      if (e.time > heardNow && e.seen !== _frameNo && !e.hit) recycle(e);
+    }
+
     // position + flame flicker + retirement
     for (const e of activeNotes) {
       const dt = e.time - heardNow;
@@ -942,7 +964,7 @@ export function createStage3D(canvas, layout, colors) {
           if (e.hitAt < 0) {
             e.hitAt = heardNow;
             if (e.hit === "HIT") {
-              explode(e.laneIdx, heardNow);
+              explode(e.laneIdx, heardNow, e.power ?? 1);
             } else {
               spawnGlance(e, heardNow);
               spawnBurst(e.laneIdx, heardNow, 6, 1.0, 2.0, false);
@@ -1051,28 +1073,32 @@ export function createStage3D(canvas, layout, colors) {
       e.glow.scale.setScalar(1.4 * Math.min(far, 1.8) * (0.9 + 0.2 * Math.random()));
     }
 
-    // approach rings + firelight: the next unhit arrow per lane drives both.
-    // Ring scale closes onto the drum edge exactly at dt = 0 (the hit moment).
+    // MAGIC CHARGE (owner's design, replaces the shrinking ring): the drumhead
+    // light fades in as the arrow comes, accelerating, and is BRIGHTEST —
+    // whitening and flashing — exactly at the hit time, then drops in 0.12 s.
+    // Hit at the peak = the magic at full strength = the arrow explodes.
     for (let lane = 0; lane < 6; lane++) {
       let next = null;
       for (const e of activeNotes) {
         if (e.laneIdx !== lane || e.hit) continue;
         const dt = e.time - heardNow;
-        if (dt < 0 || dt > 1.0) continue;
-        if (!next || dt < next.dt) next = { dt };
+        if (dt < -0.12 || dt > 1.2) continue;
+        if (!next || Math.abs(dt) < Math.abs(next.dt)) next = { dt };
       }
       const r = rings[lane];
       const fl = firelights[lane];
+      r.mesh.visible = false;
       if (next && drumVisible[lane]) {
         const dt = next.dt;
-        r.mesh.visible = true;
-        r.mesh.scale.setScalar(r.radius * (1 + 1.4 * dt));
-        r.mesh.material.opacity = 0.25 + 0.65 * (1 - dt);
+        // charge 0..1: cubic so the brightening is fastest right before the beat
+        const c = dt >= 0 ? Math.pow(1 - dt / 1.2, 3) : Math.max(0, 1 + dt / 0.12);
+        const peak = Math.abs(dt) < 0.025 ? 1 : 0;              // the flash AT the beat
         fl.glow.visible = true;
-        fl.glow.material.opacity = 0.6 * (1 - dt);
+        fl.glow.material.opacity = Math.min(1, 0.08 + 0.85 * c + 0.25 * peak);
+        fl.glow.scale.setScalar(fl.radius * 2.6 * (0.75 + 0.45 * c + 0.3 * peak));
+        _mc.copy(fl.base).lerp(_white, 0.55 * c * c + 0.3 * peak);   // white-hot at the peak
+        fl.glow.material.color.copy(_mc);
       } else {
-        r.mesh.visible = false;
-        r.mesh.material.opacity = 0;
         fl.glow.visible = false;
         fl.glow.material.opacity = 0;
       }
@@ -1131,6 +1157,49 @@ export function createStage3D(canvas, layout, colors) {
       }
     }
 
+    // FLASH / SHOCKWAVE / STREAKS / EMBERS — these were spawned but never
+    // animated (opacity stayed 0: invisible, frozen, pools ran dry)
+    for (const f of flashes) {
+      if (!f.active) continue;
+      const t = heardNow - f.t0;
+      if (t >= 0.24) { f.active = false; f.sprite.visible = false; f.sprite.material.opacity = 0; continue; }
+      const grow = Math.min(1, t / 0.06);                      // 0 -> full over 60 ms
+      f.sprite.scale.setScalar(1.8 * (f.power ?? 1) * grow);
+      f.sprite.material.opacity = t < 0.06 ? 1 : 1 - (t - 0.06) / 0.18;
+    }
+    for (const w of shockwaves) {
+      if (!w.active) continue;
+      const g = (heardNow - w.t0) / 0.3;
+      if (g >= 1) { w.active = false; w.mesh.visible = false; w.mesh.material.opacity = 0; continue; }
+      w.mesh.scale.setScalar(w.r0 * (1 + 2 * (w.power ?? 1) * g));
+      w.mesh.material.opacity = 1 - g;
+    }
+    for (const st of streaks) {
+      if (!st.active) continue;
+      const g = (heardNow - st.t0) / st.life;
+      if (g >= 1) { st.active = false; st.mesh.visible = false; st.mesh.material.opacity = 0; continue; }
+      const sdt = Math.max(0, heardNow - st.tPrev); st.tPrev = heardNow;
+      st.vel.y -= 6 * sdt;
+      st.pos.addScaledVector(st.vel, sdt);
+      st.mesh.position.copy(st.pos);
+      // face the camera, long axis along the on-screen velocity
+      st.mesh.quaternion.copy(camera.quaternion);
+      _eTang.copy(st.pos).project(camera);
+      _eSide.copy(st.pos).add(st.vel).project(camera);
+      st.mesh.rotateZ(Math.atan2(_eSide.y - _eTang.y, _eSide.x - _eTang.x) - Math.PI / 2);
+      st.mesh.scale.set(0.03, 0.15 + st.vel.length() * 0.03, 1);
+      st.mesh.material.opacity = 1 - g;
+    }
+    for (const em of embers) {
+      if (!em.active) continue;
+      const g = (heardNow - em.t0) / em.life;
+      if (g >= 1) { em.active = false; em.sprite.visible = false; em.sprite.material.opacity = 0; continue; }
+      const edt = Math.max(0, heardNow - (em.tPrev ?? em.t0)); em.tPrev = heardNow;
+      em.pos.addScaledVector(em.vel, edt);
+      em.sprite.position.copy(em.pos);
+      em.sprite.material.opacity = (1 - g) * (0.7 + 0.3 * Math.random());   // flicker
+    }
+
     // splinters + the tumbling arrowhead: fly, fall, spin, gone after 0.8 s
     // (they were spawned but never updated — frozen in the drum forever)
     for (const group of [splinters, tumblers]) {
@@ -1156,9 +1225,9 @@ export function createStage3D(canvas, layout, colors) {
    * if this call comes after that).
    * @param {"HIT"|"NEAR"} kind
    */
-  function hit(laneIdx, noteTime, kind) {
+  function hit(laneIdx, noteTime, kind, power = 1) {
     const e = findEntry(laneIdx, noteTime);
-    if (e) e.hit = kind;
+    if (e) { e.hit = kind; e.power = power; }
   }
 
   /**

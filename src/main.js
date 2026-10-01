@@ -375,7 +375,7 @@ function onKey(e) {
   stage3d.press(idx, lab);
   stage3d.strike(idx, lab);   // the player's hand hits that drum, right now
   if (!free && !off) {
-    stage3d.hit(idx, j.time, lab === "HIT" ? "HIT" : "NEAR");
+    stage3d.hit(idx, j.time, lab === "HIT" ? "HIT" : "NEAR", vel);   // vel = how close to the magic peak
   }
 
   recordPress(idx, free ? null : (off ? null : j.offset), vel, lane.name, lab);
