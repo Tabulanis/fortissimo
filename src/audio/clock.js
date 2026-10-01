@@ -31,5 +31,7 @@ export function startClock(ctx, { bpm, onBeat }) {
       clearInterval(timer);
     },
     get beatTimes() { return beatTimes; },
+    get first() { return first; },
+    get beatDur() { return beatDur; },
   };
 }

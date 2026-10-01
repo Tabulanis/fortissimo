@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { nearestBeat, velocityFor, label } from "../src/game/judge.js";
+import { nearestBeat, nearestOnGrid, velocityFor, label } from "../src/game/judge.js";
 
 assert.strictEqual(velocityFor(0), 1);
 assert.strictEqual(velocityFor(0.02), 1);
@@ -21,5 +21,13 @@ assert.ok(Math.abs(j.offset - 0.05) < 1e-9, "offset ~ 0.05");
 assert.strictEqual(label(0.04), "HIT");
 assert.strictEqual(label(-0.07), "EARLY");
 assert.strictEqual(label(0.09), "LATE");
+
+// regression: an early press must be judged EARLY against the grid,
+// not LATE against the previous scheduled beat (the old +388 ms bug).
+const g1 = nearestOnGrid(0.5, 0.6, 1.1 - 0.2);
+assert.strictEqual(g1.index, 1);
+assert.ok(Math.abs(g1.offset - (-0.2)) < 1e-9, "early press -> offset ~ -0.2, not +0.4");
+const g0 = nearestOnGrid(0.5, 0.6, 0.0);
+assert.strictEqual(g0.index, 0);
 
 console.log("judge: all passed");
