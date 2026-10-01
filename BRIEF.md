@@ -20,6 +20,26 @@ literally what you played. The garden shows how the band is doing.
    player can always find the beat and recover.
 5. **Your garden is your song** — export is the stack of ghosts you kept alive.
 
+## The look (decided 2026-09-30) — readable at a glance, one meaning per signal
+- **3D, first person, Beat Saber-like.** A Chinese courtyard at night (the owner
+  builds the environments; the game drops its drums and arrows into them).
+- **Drums in front of you, two rows.** Top row = bright sounds (gong, cymbals,
+  woodblock); bottom row = deep drums (war drum, small drum, second big drum).
+- **Flaming arrows fly in at the drums. The arrows ARE the sheet music.**
+  Flame colour = which drum. Distance = when. An approach ring closing on the
+  drumhead shows the exact moment.
+- **On time: the arrow shatters** (spark + ember burst), full boom.
+  **A bit off:** it glances off / cracks, quieter boom.
+  **Miss:** it sticks in the drum and smoulders; that beat is silent.
+- **Ghost loops = spirit drummers** — translucent echoes playing your past takes.
+- **All lighting is fake:** flames, glows, sparks and the light on drumheads are
+  additive billboards (camera-facing sprites). No real lights for effects.
+- **Environment contract (to write up):** a .glb scene with named markers —
+  player position, drum anchors, arrow spawn points. Any environment that has
+  the markers just works.
+- The garden/zombie idea is superseded by this; ghost loops and the
+  music-is-the-punishment rule carry over.
+
 ## Layout (drum-mode demo)
 - Two highways: **TOP** and **BOTTOM**, each **2–5 lanes** (configurable).
   Up to 10 notes on screen at once.
