@@ -16,12 +16,12 @@ const HEADROOM = 0.35;
 
 // Per-drum voicing. eq: [type, freq, gain dB, Q]; send = reverb amount.
 const STRIPS = {
-  kick:      { pan: 0.0,   level: 1.0,  send: 0.05, eq: [["highpass", 28, 0, 0.7], ["lowshelf", 70, 3, 0], ["peaking", 380, -4, 1.1], ["highshelf", 4500, 3, 0]] },
-  snare:     { pan: 0.05,  level: 0.85, send: 0.24, eq: [["highpass", 90, 0, 0.7], ["peaking", 200, 2, 1.0], ["peaking", 900, -2, 1.2], ["highshelf", 6000, 3, 0]] },
-  hat:       { pan: -0.35, level: 0.55, send: 0.08, eq: [["highpass", 380, 0, 0.7], ["highshelf", 9000, 2, 0]] },
-  crash:     { pan: 0.42,  level: 0.5,  send: 0.3,  eq: [["highpass", 300, 0, 0.7], ["peaking", 3500, -2, 1.0]] },
-  "tom low": { pan: -0.15, level: 0.85, send: 0.2,  eq: [["highpass", 50, 0, 0.7], ["peaking", 320, -3, 1.0]] },
-  "tom high":{ pan: 0.3,   level: 0.8,  send: 0.2,  eq: [["highpass", 70, 0, 0.7], ["peaking", 450, -3, 1.0]] },
+  kick:      { pan: 0.0,   level: 1.0,  drive: 0,  send: 0.05, eq: [["highpass", 28, 0, 0.7], ["lowshelf", 70, 3, 0], ["peaking", 380, -4, 1.1], ["highshelf", 4500, 3, 0]] },
+  snare:     { pan: 0.05,  level: 5.0,  drive: 12, send: 0.24, eq: [["highpass", 90, 0, 0.7], ["peaking", 200, 2, 1.0], ["peaking", 900, -2, 1.2], ["highshelf", 6000, 3, 0]] },
+  hat:       { pan: -0.35, level: 3.1,  drive: 18, send: 0.08, eq: [["highpass", 380, 0, 0.7], ["highshelf", 9000, 2, 0]] },
+  crash:     { pan: 0.42,  level: 0.85, drive: 8,  send: 0.3,  eq: [["highpass", 300, 0, 0.7], ["peaking", 3500, -2, 1.0]] },
+  "tom low": { pan: -0.15, level: 0.98, drive: 0,  send: 0.2,  eq: [["highpass", 50, 0, 0.7], ["peaking", 320, -3, 1.0]] },
+  "tom high":{ pan: 0.3,   level: 1.07, drive: 0,  send: 0.2,  eq: [["highpass", 70, 0, 0.7], ["peaking", 450, -3, 1.0]] },
 };
 
 /** A stereo hall impulse: decaying noise that darkens as it decays. */
@@ -87,6 +87,21 @@ export function createMixer(ctx) {
   for (const [name, s] of Object.entries(STRIPS)) {
     const input = ctx.createGain();
     let node = input;
+    if (s.drive) {
+      // saturation: tanh(k*x)/tanh(k) — rounds a spiky hit so its body comes
+      // up without the peak growing (spiky snares/hats otherwise sound faint)
+      const k = Math.pow(10, s.drive / 20);
+      const curve = new Float32Array(2048);
+      for (let i = 0; i < curve.length; i++) {
+        const x = (i / (curve.length - 1)) * 2 - 1;
+        curve[i] = Math.tanh(k * x) / Math.tanh(k);
+      }
+      const sat = ctx.createWaveShaper();
+      sat.curve = curve;
+      sat.oversample = "4x";
+      node.connect(sat);
+      node = sat;
+    }
     for (const [type, freq, gain, q] of s.eq) {
       const f = ctx.createBiquadFilter();
       f.type = type;
@@ -121,6 +136,8 @@ export function createMixer(ctx) {
   return {
     /** Where a drum's notes go: mixer.lane("snare") */
     lane(name) { return (strips[name] || strips.snare).input; },
+    /** debug/tuning: a lane's strip nodes */
+    strip(name) { return strips[name]; },
     get metronome() { return metronome; },
     get backing() { return backing; },
     get master() { return master; },

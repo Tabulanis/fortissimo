@@ -1,0 +1,16 @@
+<!doctype html><body><script type="module">
+const say=(t,b)=>fetch("http://127.0.0.1:8899/"+t,{method:"POST",body:b});
+try{
+ await import("/src/audio/voices.js");
+ const {makeDrums}=await import("/src/audio/drums.js"); const {createMixer}=await import("/src/audio/mixer.js");
+ const dr=await makeDrums(48000); const {VoicePool,VOICE_PRESETS,voiceSettings}=window.HB_VOICES; const S=voiceSettings({voice:VOICE_PRESETS["One shot"]});
+ async function m(lane,buf,lvl){ const off=new OfflineAudioContext(2,48000*5,48000); const mx=createMixer(off); const pool=new VoicePool(off);
+  if(lvl!=null) mx.strip(lane).level.gain.value=lvl;
+  pool.noteOn({channel:9,midi:61,baseNote:60,buffer:buf,velocity:1,when:0.1,destination:mx.lane(lane),settings:S});
+  pool.noteOn({channel:1,midi:60,baseNote:60,buffer:buf,velocity:1,when:4.0,destination:mx.lane(lane),settings:S});
+  const o=await off.startRendering(); const L=o.getChannelData(0),R=o.getChannelData(1); let ss=0,pk=0; for(let s=192000;s<199200;s++){const v=(L[s]+R[s])/2; ss+=v*v; pk=Math.max(pk,Math.abs(L[s]));} return `${(10*Math.log10(ss/7200)).toFixed(1)} dB (peak ${(20*Math.log10(pk)).toFixed(1)})`;}
+ const r=[]; for(const g of [0.1,0.3,1.0,3.0]) r.push(`hat level.gain=${g}: ${await m("hat",dr.hat,g)}`);
+ for(const g of [0.1,0.3,1.0]) r.push(`tomLow level.gain=${g}: ${await m("tom low",dr.tomLow,g)}`);
+ say("t",r.join("\n")); say("done","ok");
+}catch(e){say("harnesserror",String(e.stack||e));}
+</script>

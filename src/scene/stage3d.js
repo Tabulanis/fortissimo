@@ -54,7 +54,6 @@ const _ePos = new THREE.Vector3();
 const _eDir = new THREE.Vector3();
 const _eTang = new THREE.Vector3();
 const _eSide = new THREE.Vector3();
-const _eGrav = new THREE.Vector3(0, -6, 0);
 const _eQ = new THREE.Quaternion();
 const _eAxis = new THREE.Vector3();
 const _eWhite = new THREE.Color(0xffffff);
@@ -271,7 +270,7 @@ export function createStage3D(canvas, layout, colors) {
   // effect pools: allocated up front, reused forever, nothing per frame.
   // sparks: additive, drum-colour mixed with white, gravity, fade over 0.5 s
   const sparks = [];
-  for (let i = 0; i < 200; i++) {
+  for (let i = 0; i < 400; i++) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
       map: flameTexture,
       color: 0xffffff,
@@ -434,6 +433,253 @@ export function createStage3D(canvas, layout, colors) {
     return null;
   }
 
+  // EXPLOSION (perfect block only): flash, shockwave ring, blast streaks,
+  // splinters, embers. Every pool allocated up front; nothing per frame.
+  const flashes = [];
+  for (let i = 0; i < 6; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
+      map: flameTexture,
+      color: 0xffffff,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0,
+    }));
+    sp.visible = false;
+    scene.add(sp);
+    flashes.push({ sprite: sp, active: false, t0: 0, color: new THREE.Color() });
+  }
+
+  const shockGeo = new THREE.RingGeometry(1.0, 1.08, 48);
+  const shockwaves = [];
+  for (let i = 0; i < 6; i++) {
+    const mesh = new THREE.Mesh(shockGeo, new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }));
+    mesh.visible = false;
+    scene.add(mesh);
+    shockwaves.push({ mesh, active: false, t0: 0, laneIdx: -1, r0: 0.3, color: new THREE.Color() });
+  }
+
+  const streakGeo = new THREE.PlaneGeometry(1, 1);
+  const streaks = [];
+  for (let i = 0; i < 24; i++) {
+    const mesh = new THREE.Mesh(streakGeo, new THREE.MeshBasicMaterial({
+      color: 0xffd090,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }));
+    mesh.visible = false;
+    scene.add(mesh);
+    streaks.push({
+      mesh, active: false,
+      pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+      t0: 0, tPrev: 0, life: 0.7, speed: 0,
+    });
+  }
+
+  const splinterGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.15, 6);   // shaft geometry at 0.25 length
+  const splinters = [];
+  for (let i = 0; i < 48; i++) {
+    const mesh = new THREE.Mesh(splinterGeo, SHAFT_MAT);
+    mesh.visible = false;
+    scene.add(mesh);
+    splinters.push({
+      mesh, active: false,
+      pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+      spin: new THREE.Vector3(), t0: 0, tPrev: 0,
+    });
+  }
+  const tumblers = [];
+  for (let i = 0; i < 6; i++) {
+    const mesh = new THREE.Mesh(headGeo, HEAD_MAT);
+    mesh.visible = false;
+    scene.add(mesh);
+    tumblers.push({
+      mesh, active: true === false,
+      pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+      spin: new THREE.Vector3(), t0: 0, tPrev: 0,
+    });
+  }
+
+  const embers = [];
+  for (let i = 0; i < 120; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
+      map: flameTexture,
+      color: 0xff9a40,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      transparent: true,
+      opacity: 0,
+    }));
+    sp.visible = false;
+    scene.add(sp);
+    embers.push({
+      sprite: sp, active: false,
+      pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+      t0: 0, life: 1.5,
+    });
+  }
+
+  function freeStreak() {
+    for (const s of streaks) if (!s.active) return s;
+    return null;
+  }
+
+  // perfect block: the strike detonates at the drum face.
+  function explode(laneIdx, heardNow) {
+    const face = drumFace[laneIdx];
+    const drumColor = hexToColor(colors[drumOf(laneIdx)] || "#888888");
+
+    // 1. FLASH — white-hot core tinted by the drum colour,
+    //    scale 0 -> 1.8 m over 60 ms, then fade over 180 ms.
+    let fl = null;
+    for (const f of flashes) if (!f.active) { fl = f; break; }
+    if (fl) {
+      fl.active = true;
+      fl.t0 = heardNow;
+      fl.color.copy(_eWhite).lerp(drumColor, 0.35);
+      fl.sprite.material.color.copy(fl.color);
+      fl.sprite.position.copy(face);
+      fl.sprite.visible = true;
+    }
+
+    // 2. SHOCKWAVE — thin additive ring on the drumhead plane,
+    //    radius r0 -> 3*r0 over 300 ms, opacity 1 -> 0.
+    let sw = null;
+    for (const w of shockwaves) if (!w.active) { sw = w; break; }
+    if (sw) {
+      sw.active = true;
+      sw.t0 = heardNow;
+      sw.laneIdx = laneIdx;
+      sw.r0 = LANES3D[laneIdx].radius;
+      sw.color.copy(_eWhite).lerp(drumColor, 0.25);
+      sw.mesh.material.color.copy(sw.color);
+      sw.mesh.position.copy(face);
+      if (laneIdx >= 3) sw.mesh.rotation.set(-Math.PI / 2, 0, 0);   // flat on floor heads
+      else sw.mesh.rotation.set(0, 0, 0);                            // facing the player on upright
+      sw.mesh.visible = true;
+    }
+
+    // 3. BLAST SPARKS — 60, speeds 4-9 m/s, mostly along the head normal
+    //    in a wide cone, gravity, fading over 0.7 s.
+    headNormal(laneIdx, _eDir);
+    for (let k = 0; k < 60; k++) {
+      const s = freeSpark();
+      if (!s) break;
+      s.active = true;
+      s.t0 = heardNow; s.tPrev = heardNow;
+      s.life = 0.7;
+      s.scale0 = 0.08 + Math.random() * 0.08;
+      _eTang.set(0, 0, 1);
+      if (Math.abs(_eDir.z) < 0.9) _eTang.set(1, 0, 0);
+      _eSide.crossVectors(_eDir, _eTang).normalize();
+      const spread = (Math.random() - 0.5) * 1.1;
+      _eVel.copy(_eDir).addScaledVector(_eSide, spread).addScaledVector(_eTang, (Math.random() - 0.5) * 1.1);
+      _eVel.normalize();
+      s.vel.copy(_eVel).multiplyScalar(4 + Math.random() * 5);
+      s.pos.copy(face);
+      s.pos.x += (Math.random() - 0.5) * 0.05;
+      s.pos.y += (Math.random() - 0.5) * 0.05;
+      s.pos.z += (Math.random() - 0.5) * 0.05;
+      s.sprite.visible = true;
+      s.sprite.position.copy(s.pos);
+      s.sprite.scale.setScalar(s.scale0);
+      s.sprite.material.color.copy(_eWhite);
+      if (Math.random() < 0.5) s.sprite.material.color.copy(drumColor);
+    }
+
+    // a third leave short streaks: stretched sprites rotated to the
+    // screen-space velocity direction, brighter than plain sparks.
+    for (let k = 0; k < 20; k++) {
+      const st = freeStreak();
+      if (!st) break;
+      st.active = true;
+      st.t0 = heardNow; st.tPrev = heardNow;
+      st.life = 0.7;
+      _eTang.set(0, 0, 1);
+      if (Math.abs(_eDir.z) < 0.9) _eTang.set(1, 0, 0);
+      _eSide.crossVectors(_eDir, _eTang).normalize();
+      _eVel.copy(_eDir).addScaledVector(_eSide, (Math.random() - 0.5) * 1.1).addScaledVector(_eTang, (Math.random() - 0.5) * 1.1);
+      _eVel.normalize();
+      st.speed = 4 + Math.random() * 5;
+      st.vel.copy(_eVel).multiplyScalar(st.speed);
+      st.pos.copy(face);
+      st.pos.x += (Math.random() - 0.5) * 0.05;
+      st.pos.y += (Math.random() - 0.5) * 0.05;
+      st.pos.z += (Math.random() - 0.5) * 0.05;
+      st.mesh.visible = true;
+    }
+
+    // 4. SPLINTERS — the arrow shatters: 6 short shaft pieces spinning out
+    //    at 3-6 m/s, gone after 0.8 s; plus the arrowhead tumbling away.
+    for (let k = 0; k < 6; k++) {
+      let sp2 = null;
+      for (const x of splinters) if (!x.active) { sp2 = x; break; }
+      if (!sp2) break;
+      sp2.active = true;
+      sp2.t0 = heardNow; sp2.tPrev = heardNow;
+      _eVel.copy(headNormal(laneIdx, _eVel));
+      _eVel.x += (Math.random() - 0.5) * 1.6;
+      _eVel.y += (Math.random() - 0.5) * 1.6;
+      _eVel.z += (Math.random() - 0.5) * 1.6;
+      _eVel.normalize();
+      sp2.vel.copy(_eVel).multiplyScalar(3 + Math.random() * 3);
+      sp2.pos.copy(face);
+      sp2.pos.x += (Math.random() - 0.5) * 0.08;
+      sp2.pos.y += (Math.random() - 0.5) * 0.08;
+      sp2.pos.z += (Math.random() - 0.5) * 0.08;
+      sp2.spin.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(24);
+      sp2.mesh.visible = true;
+      sp2.mesh.position.copy(sp2.pos);
+    }
+    for (const tb of tumblers) {
+      if (tb.active) continue;
+      tb.active = true;
+      tb.t0 = heardNow; tb.tPrev = heardNow;
+      _eVel.copy(headNormal(laneIdx, _eVel));
+      _eVel.x += (Math.random() - 0.5) * 1.6;
+      _eVel.y += (Math.random() - 0.5) * 1.6;
+      _eVel.z += (Math.random() - 0.5) * 1.6;
+      _eVel.normalize();
+      tb.vel.copy(_eVel).multiplyScalar(3 + Math.random() * 3);
+      tb.pos.copy(face);
+      tb.pos.x += (Math.random() - 0.5) * 0.08;
+      tb.pos.y += (Math.random() - 0.5) * 0.08;
+      tb.pos.z += (Math.random() - 0.5) * 0.08;
+      tb.spin.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(28);
+      tb.mesh.visible = true;
+      tb.mesh.position.copy(tb.pos);
+      break;   // one arrowhead per explosion
+    }
+
+    // 5. EMBERS — 20 slow glowing afterglow particles drifting up, fading over 1.5 s.
+    for (let k = 0; k < 20; k++) {
+      let em = null;
+      for (const x of embers) if (!x.active) { em = x; break; }
+      if (!em) break;
+      em.active = true;
+      em.t0 = heardNow;
+      em.life = 1.5;
+      em.vel.set((Math.random() - 0.5) * 0.2, 0.3 + Math.random() * 0.5, (Math.random() - 0.5) * 0.2);
+      em.pos.copy(face);
+      em.pos.x += (Math.random() - 0.5) * 0.1;
+      em.pos.y += (Math.random() - 0.5) * 0.1;
+      em.pos.z += (Math.random() - 0.5) * 0.1;
+      em.sprite.visible = true;
+      em.sprite.position.copy(em.pos);
+      em.sprite.scale.setScalar(0.05 + Math.random() * 0.04);
+    }
+  }
+
   // APPROACH RINGS + FIRELIGHT: one ring mesh and one glow sprite per drum,
   // allocated once. The ring closes onto the drum edge exactly at the arrow's
   // time — that closing moment is the hit moment. No per-frame allocation.
@@ -549,7 +795,7 @@ export function createStage3D(canvas, layout, colors) {
           if (e.hitAt < 0) {
             e.hitAt = heardNow;
             if (e.hit === "HIT") {
-              spawnBurst(e.laneIdx, heardNow, 24, 1.5, 4, true);
+              explode(e.laneIdx, heardNow);
             } else {
               spawnGlance(e, heardNow);
               spawnBurst(e.laneIdx, heardNow, 6, 1.0, 2.0, false);

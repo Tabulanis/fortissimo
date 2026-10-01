@@ -1,0 +1,22 @@
+<!doctype html><body><script type="module">
+const say=(t,b)=>fetch("http://127.0.0.1:8899/"+t,{method:"POST",body:b});
+try{
+ await import("/src/audio/voices.js");
+ const {makeDrums}=await import("/src/audio/drums.js"); const {createMixer}=await import("/src/audio/mixer.js");
+ const dr=await makeDrums(48000); const {VoicePool,VOICE_PRESETS,voiceSettings}=window.HB_VOICES; const S=voiceSettings({voice:VOICE_PRESETS["One shot"]});
+ const lanes=[["kick","kick"],["snare","snare"],["hat","hat"],["crash","crash"],["tom low","tomLow"],["tom high","tomHigh"]];
+ const res=[];
+ for(const [ln,b] of lanes){
+  // own render per drum; warm-up hit at 0.1 s, test hit at 4.0 s (the 2.2 s reverb tail is long gone)
+  const off=new OfflineAudioContext(2,48000*5,48000); const mx=createMixer(off); const pool=new VoicePool(off);
+  pool.noteOn({channel:9,midi:61,baseNote:60,buffer:dr[b],velocity:1,when:0.1,destination:mx.lane(ln),settings:S});
+  pool.noteOn({channel:1,midi:60,baseNote:60,buffer:dr[b],velocity:1,when:4.0,destination:mx.lane(ln),settings:S});
+  const o=await off.startRendering(); const L=o.getChannelData(0),R=o.getChannelData(1);
+  let ss=0,pk=0,fl=0; const s0=192000,n=7200;
+  for(let s=s0;s<s0+n;s++){const v=(L[s]+R[s])/2; ss+=v*v; pk=Math.max(pk,Math.abs(L[s]),Math.abs(R[s]));}
+  for(let s=s0-4800;s<s0-100;s++){const v=(L[s]+R[s])/2; fl+=v*v;}
+  res.push(`${ln.padEnd(9)} punch ${(10*Math.log10(ss/n)).toFixed(1)} dB   peak ${(20*Math.log10(pk)).toFixed(1)} dBFS   (floor before hit ${(10*Math.log10(fl/4700+1e-20)).toFixed(0)} dB)`);
+ }
+ say("lvl",res.join("\n")); say("done","ok");
+}catch(e){say("harnesserror",String(e.stack||e));}
+</script>
