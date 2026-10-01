@@ -14,14 +14,16 @@
 // so several drums + reverb sum without touching the limiter.
 const HEADROOM = 0.35;
 
-// Per-drum voicing. eq: [type, freq, gain dB, Q]; send = reverb amount.
+// Per-drum voicing. Levels set from measurement (2026-10-01): kick -12 dB punch,
+// snare ~4.5 under, toms ~3.5 under, crash ~9, hat ~10; every lone hit peaks
+// <= -4 dBFS so the limiter only ever catches coincident hits. eq: [type, freq, gain dB, Q]; send = reverb amount.
 const STRIPS = {
-  kick:      { pan: 0.0,   level: 1.0,  drive: 0,  send: 0.05, eq: [["highpass", 28, 0, 0.7], ["lowshelf", 70, 3, 0], ["peaking", 380, -4, 1.1], ["highshelf", 4500, 3, 0]] },
-  snare:     { pan: 0.05,  level: 5.0,  drive: 12, send: 0.24, eq: [["highpass", 90, 0, 0.7], ["peaking", 200, 2, 1.0], ["peaking", 900, -2, 1.2], ["highshelf", 6000, 3, 0]] },
-  hat:       { pan: -0.35, level: 3.1,  drive: 18, send: 0.08, eq: [["highpass", 380, 0, 0.7], ["highshelf", 9000, 2, 0]] },
-  crash:     { pan: 0.42,  level: 0.85, drive: 8,  send: 0.3,  eq: [["highpass", 300, 0, 0.7], ["peaking", 3500, -2, 1.0]] },
-  "tom low": { pan: -0.15, level: 0.98, drive: 0,  send: 0.2,  eq: [["highpass", 50, 0, 0.7], ["peaking", 320, -3, 1.0]] },
-  "tom high":{ pan: 0.3,   level: 1.07, drive: 0,  send: 0.2,  eq: [["highpass", 70, 0, 0.7], ["peaking", 450, -3, 1.0]] },
+  kick:      { pan: 0.0,   level: 1.07,  drive: 0,  send: 0.05, eq: [["highpass", 28, 0, 0.7], ["lowshelf", 70, 3, 0], ["peaking", 380, -4, 1.1], ["highshelf", 4500, 3, 0]] },
+  snare:     { pan: 0.05,  level: 0.51,  drive: 24, send: 0.24, eq: [["highpass", 90, 0, 0.7], ["peaking", 200, 2, 1.0], ["peaking", 900, -2, 1.2], ["highshelf", 6000, 3, 0]] },
+  hat:       { pan: -0.35, level: 0.57,  drive: 18, send: 0.08, eq: [["highpass", 380, 0, 0.7], ["highshelf", 9000, 2, 0]] },
+  crash:     { pan: 0.42,  level: 0.42, drive: 8,  send: 0.3,  eq: [["highpass", 300, 0, 0.7], ["peaking", 3500, -2, 1.0]] },
+  "tom low": { pan: -0.15, level: 1.03, drive: 0,  send: 0.2,  eq: [["highpass", 50, 0, 0.7], ["peaking", 320, -3, 1.0]] },
+  "tom high":{ pan: 0.3,   level: 1.14, drive: 0,  send: 0.2,  eq: [["highpass", 70, 0, 0.7], ["peaking", 450, -3, 1.0]] },
 };
 
 /** A stereo hall impulse: decaying noise that darkens as it decays. */
@@ -48,14 +50,38 @@ function makeHall(ctx, seconds = 2.2, predelay = 0.015) {
 export function createMixer(ctx) {
   // --- master: fader -> limiter -> speakers
   const master = ctx.createGain();
-  master.gain.value = 1.6;   // ~+4 dB: a single block lands near -6 dBFS, plenty of room before the limiter
+  master.gain.value = 1.6;   // a lone block peaks ~-4 dBFS; stacked hits ride the soft clipper, never past full scale
   const limiter = ctx.createDynamicsCompressor();
   limiter.threshold.value = -1.0;   // safety only: touches nothing but the very top
   limiter.knee.value = 0;
   limiter.ratio.value = 20;
   limiter.attack.value = 0.002;
   limiter.release.value = 0.12;
-  master.connect(limiter).connect(ctx.destination);
+  // Safety is a SOFT CLIPPER, not the DynamicsCompressor: measured 2026-10-01,
+  // the built-in limiter crushed the bright spiky drums (snare/hat/crash) even
+  // with peaks under its threshold — a 30x fader change on the hat moved the
+  // output 3.7 dB. This curve is exactly linear below 0.7 (-3 dBFS) and only
+  // rounds what's above, so normal hits pass untouched.
+  void limiter;
+  const clip = ctx.createWaveShaper();
+  {
+    // curve index spans the clipper INPUT -1..1, which is the signal -2..2
+    // (clipIn halves it); output is the signal itself: linear to 0.7, then a
+    // soft knee that never reaches 1.0 — nothing leaves above full scale
+    const N = 4096, knee = 0.7, curve = new Float32Array(N);
+    for (let i = 0; i < N; i++) {
+      const x = ((i / (N - 1)) * 2 - 1) * 2;      // the signal value this index represents
+      const a = Math.abs(x);
+      const y = a <= knee ? a : knee + (1 - knee) * Math.tanh((a - knee) / (1 - knee));
+      curve[i] = Math.sign(x) * y;
+    }
+    clip.curve = curve;
+    clip.oversample = "4x";
+  }
+  // halve going in so the curve covers signals up to ±2
+  const clipIn = ctx.createGain(); clipIn.gain.value = 0.5;
+  const clipOut = ctx.createGain(); clipOut.gain.value = 1.0;
+  master.connect(clipIn).connect(clip).connect(clipOut).connect(ctx.destination);
 
   // --- drum bus: glue compression
   const drumBus = ctx.createGain();
