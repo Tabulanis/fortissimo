@@ -15,10 +15,11 @@
                              so fast arrows leave an unbroken ribbon
      smoulder(pos, rate, dt) a small steady fire (stuck arrows, landed decoys)
      burst(pos, power)       an impact: fireball, sparks, a puff of smoke
+     steam(pos, power)       fire meets water: a hiss of steam that rises and drifts
      forget(id)              the arrow is gone: next trail() starts fresh */
 import * as THREE from "three";
 
-const FLAME = 0, EMBER = 1, SMOKE = 2;
+const FLAME = 0, EMBER = 1, SMOKE = 2, STEAM = 3;
 
 const vert = /* glsl */ `
   attribute vec3 iPos;
@@ -84,8 +85,13 @@ const smokeFrag = /* glsl */ `
     float r = length(d) * 2.0;
     float n = fbm(vUv * 2.0 + vec2(vSeed * 11.0, -vAge * 1.5 - uTime * 0.2));
     float shape = smoothstep(1.0, 0.0, r + (n - 0.5) * 0.8);
-    float a = shape * 0.18 * smoothstep(0.0, 0.2, vAge) * (1.0 - vAge);
-    gl_FragColor = vec4(vec3(0.06, 0.05, 0.05) + vec3(0.05, 0.02, 0.0) * (1.0 - vAge), a);
+    if (vKind > 1.5) {                                   // STEAM: pale, soft, lit warm by the dusk
+      float a = shape * shape * 0.2 * smoothstep(0.0, 0.08, vAge) * pow(1.0 - vAge, 1.8);   // wispy, thins as it spreads
+      gl_FragColor = vec4(vec3(0.62, 0.58, 0.62), a);
+    } else {
+      float a = shape * 0.18 * smoothstep(0.0, 0.2, vAge) * (1.0 - vAge);
+      gl_FragColor = vec4(vec3(0.06, 0.05, 0.05) + vec3(0.05, 0.02, 0.0) * (1.0 - vAge), a);
+    }
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }`;
@@ -214,6 +220,21 @@ export function createFire(scene, { layer = 0, maxFire = 14000, maxSmoke = 3000 
     }
   }
 
+  /** fire meets water: a burst of steam that billows up and drifts; power 0..1 */
+  function steam(p, power = 1) {
+    const n = Math.round(80 * Math.max(0.3, power));
+    for (let k = 0; k < n; k++) {
+      const a = Math.random() * Math.PI * 2, r = rnd(0, 0.15);
+      spawn(smoke, p.x + Math.cos(a) * r, p.y + rnd(0, 0.05), p.z + Math.sin(a) * r,
+        Math.cos(a) * rnd(0.2, 0.9), rnd(0.6, 1.8), Math.sin(a) * rnd(0.2, 0.9),
+        rnd(1.8, 3.5), rnd(0.1, 0.24), STEAM);
+    }
+    // the last of the flame dies in the hiss
+    for (let k = 0; k < 10; k++) {
+      spawn(fire, p.x, p.y + 0.03, p.z, rnd(-0.5, 0.5), rnd(0.3, 1.0), rnd(-0.5, 0.5), rnd(0.15, 0.3), rnd(0.06, 0.12), FLAME);
+    }
+  }
+
   function forget(id) { last.delete(id); }
 
   let tSim = 0;
@@ -237,21 +258,21 @@ export function createFire(scene, { layer = 0, maxFire = 14000, maxSmoke = 3000 
           const drag = Math.exp(-0.9 * dt); vx *= drag; vy *= drag; vz *= drag;
         } else {
           // buoyancy + swirling turbulence (cheap curl-like field), then drag
-          const lift = k === SMOKE ? 0.6 : 3.2;
-          const turb = k === SMOKE ? 0.8 : 4.5;
+          const lift = k === STEAM ? 0.5 : k === SMOKE ? 0.6 : 3.2;
+          const turb = k === STEAM ? 1.0 : k === SMOKE ? 0.8 : 4.5;
           vy += lift * dt;
           vx += Math.sin(y * 3.1 + tSim * 4.3 + s) * turb * dt;
           vz += Math.cos(x * 2.7 + tSim * 3.7 + s * 1.3) * turb * dt;
           vy += Math.sin(z * 2.3 + tSim * 5.1 + s * 0.7) * turb * 0.4 * dt;
-          const drag = Math.exp(-(k === SMOKE ? 1.4 : 2.6) * dt); vx *= drag; vy *= drag; vz *= drag;
+          const drag = Math.exp(-(k === SMOKE || k === STEAM ? 1.4 : 2.6) * dt); vx *= drag; vy *= drag; vz *= drag;
         }
         B.vel[i * 3] = vx; B.vel[i * 3 + 1] = vy; B.vel[i * 3 + 2] = vz;
         const nx = x + vx * dt, ny = Math.max(0.01, y + vy * dt), nz = z + vz * dt;
         B.pos[i * 3] = nx; B.pos[i * 3 + 1] = ny; B.pos[i * 3 + 2] = nz;
         // size over life: flames swell then lick away; smoke keeps spreading
-        const g = k === SMOKE ? 1 + a * 2.2 : k === EMBER ? 1 - a * 0.5 : (1 + a * 1.4) * (1 - a * a * 0.6);
+        const g = k === STEAM ? 1 + a * 3.5 : k === SMOKE ? 1 + a * 2.2 : k === EMBER ? 1 - a * 0.5 : (1 + a * 1.4) * (1 - a * a * 0.6);
         ip[live * 3] = nx; ip[live * 3 + 1] = ny; ip[live * 3 + 2] = nz;
-        id[live * 4] = a; id[live * 4 + 1] = B.size0[i] * g; id[live * 4 + 2] = B.seed[i]; id[live * 4 + 3] = k === EMBER ? 1 : 0;
+        id[live * 4] = a; id[live * 4 + 1] = B.size0[i] * g; id[live * 4 + 2] = B.seed[i]; id[live * 4 + 3] = k === EMBER ? 1 : k === STEAM ? 2 : 0;
         live++;
       }
       B.geo.instanceCount = live;
@@ -260,5 +281,5 @@ export function createFire(scene, { layer = 0, maxFire = 14000, maxSmoke = 3000 
     }
   }
 
-  return { trail, smoulder, burst, forget, update, get count() { return fire.geo.instanceCount + smoke.geo.instanceCount; } };
+  return { trail, smoulder, burst, steam, forget, update, get count() { return fire.geo.instanceCount + smoke.geo.instanceCount; } };
 }

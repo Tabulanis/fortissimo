@@ -18,6 +18,7 @@ import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { createVrHits } from "../input/vrhits.js";
 import { createFire } from "./fire.js";
+import { createPool, poolContains, POOL, SURFACE_Y } from "./pool.js";
 
 const APPROACH_S = 3.2;   // seconds of visible flight: launched from the far wall, tracked all the way
 const STUCK_S = 0.6;      // seconds an unhit arrow stays stuck at the face
@@ -234,7 +235,10 @@ export function createStage3D(canvas, layout, colors) {
   scene.add(ground);
 
   // the environment mock-up (owner's reference: sandstone colonnade courtyard)
-  createCourtyard(scene);
+  const courtyard = createCourtyard(scene);
+  // the reflecting pool (drawn with the fx layer: after the scene, so the
+  // AO's extra scene render doesn't re-render its mirror a second time)
+  const waterPool = createPool(scene, { bottomMap: courtyard.userData.flagsMap, layer: FX_LAYER });
 
   // drums
   const drumMat = [];
@@ -1197,16 +1201,20 @@ export function createStage3D(canvas, layout, colors) {
   // carry NO lane halo, no charge light, no timing — only playable arrows do,
   // so the player can always tell which arrows are theirs.
   const DECOY_N = 36;
+  const FLOAT_S = 5;   // seconds a doused arrow floats before it sinks
+  // a doused arrow is charred wood, lit by the scene like everything else
+  const CHAR_MAT = new THREE.MeshStandardMaterial({ color: 0x2a1d16, roughness: 0.9 });
   const decoys = [];
   for (let i = 0; i < DECOY_N; i++) {
     const group = new THREE.Group();
     const flame = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false, map: fireTexture,
       blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
     flame.position.set(0, 0.3, 0);
-    group.add(new THREE.Mesh(shaftGeo, SHAFT_MAT), new THREE.Mesh(headGeo, HEAD_MAT), flame);
+    const shaft = new THREE.Mesh(shaftGeo, SHAFT_MAT), head = new THREE.Mesh(headGeo, HEAD_MAT);
+    group.add(shaft, head, flame);
     group.visible = false;
     scene.add(group);
-    decoys.push({ id: "d" + decoys.length, group, flame, active: false, t0: 0, dur: 3, arc: 6,
+    decoys.push({ id: "d" + decoys.length, group, flame, shaft, head, active: false, t0: 0, dur: 3, arc: 6,
       from: new THREE.Vector3(), to: new THREE.Vector3(), landed: -1 });
   }
   let nextVolley = -1;
@@ -1229,14 +1237,22 @@ export function createStage3D(canvas, layout, colors) {
       d.from.set(side * (ARCHER_ROOF_X + Math.random() * 1.5), ARCHER_ROOF_Y,
         ARCHER_ROOF_Z[0] + Math.random() * (ARCHER_ROOF_Z[1] - ARCHER_ROOF_Z[0]));
     }
-    // a ground spot around the player — never the drum area or the player
-    for (let tries = 0; tries < 20; tries++) {
-      d.to.set(-5 + Math.random() * 10, 0, -30 + Math.random() * 32.5);   // the courtyard paving
-      const nearDrums = Math.abs(d.to.x) < 1.6 && d.to.z > -2.4 && d.to.z < 2.6;
-      if (!nearDrums) break;
+    d.inWater = false;
+    if (Math.random() < 0.25) {
+      // into the pool: it'll hiss out and float
+      d.to.set(POOL.x0 + 0.4 + Math.random() * (POOL.x1 - POOL.x0 - 0.8), SURFACE_Y,
+        POOL.z0 + 0.4 + Math.random() * (POOL.z1 - POOL.z0 - 0.8));
+    } else {
+      // a ground spot around the player — never the drum area, the player, or the pool
+      for (let tries = 0; tries < 20; tries++) {
+        d.to.set(-5 + Math.random() * 10, 0, -30 + Math.random() * 32.5);   // the courtyard paving
+        const nearDrums = Math.abs(d.to.x) < 1.6 && d.to.z > -2.4 && d.to.z < 2.6;
+        if (!nearDrums && !poolContains(d.to.x, d.to.z, -0.5)) break;
+      }
     }
     d.group.visible = true;
     d.flame.material.opacity = 1;
+    d.shaft.material = SHAFT_MAT; d.head.material = HEAD_MAT;   // burning again (it may have been doused last time)
   }
   function updateDecoys(heardNow) {
     if (heardNow <= 0) return;
@@ -1264,6 +1280,32 @@ export function createStage3D(canvas, layout, colors) {
           d.landed = heardNow;
           fireSim.forget(d.id);
           d.group.position.copy(d.to);          // head buried at the landing spot
+          if (poolContains(d.to.x, d.to.z)) {
+            // FIRE MEETS WATER: hiss of steam, rings across the pool, flame out
+            d.inWater = true;
+            fireSim.steam(d.to, 1);
+            waterPool.addRipple(d.to.x, d.to.z, 1);
+            d.flame.material.opacity = 0;
+            d.shaft.material = CHAR_MAT; d.head.material = CHAR_MAT;
+            d.yaw = Math.random() * Math.PI * 2;
+            d.drift = { x: (Math.random() - 0.5) * 0.12, z: (Math.random() - 0.5) * 0.12 };
+            d.nextBobRing = heardNow + 1.2;
+          }
+        }
+        if (d.inWater) {
+          // the dead arrow floats: lies flat, bobs, drifts, then sinks
+          const t = heardNow - d.landed;
+          if (t >= FLOAT_S) { d.active = false; d.group.visible = false; continue; }
+          const sink = Math.max(0, (t - (FLOAT_S - 1.5)) / 1.5);          // last 1.5 s: going under
+          d.group.position.set(d.to.x + d.drift.x * t, SURFACE_Y + 0.012 + 0.008 * Math.sin(t * 2.4) - 0.12 * sink,
+            d.to.z + d.drift.z * t);
+          _dT.set(Math.cos(d.yaw + 0.05 * t), 0.06 * Math.sin(t * 1.9), Math.sin(d.yaw + 0.05 * t)).normalize();
+          d.group.quaternion.setFromUnitVectors(UP, _dT);
+          if (heardNow >= d.nextBobRing && sink === 0) {                  // a small ring as it rocks
+            waterPool.addRipple(d.group.position.x, d.group.position.z, 0.18);
+            d.nextBobRing = heardNow + 1.4 + Math.random() * 0.8;
+          }
+          continue;
         }
         const b = (heardNow - d.landed) / 1.2;
         if (b >= 1) { d.active = false; d.group.visible = false; continue; }
@@ -1765,6 +1807,7 @@ export function createStage3D(canvas, layout, colors) {
     }
 
     fireSim.update(fireDt);
+    waterPool.update(performance.now() / 1000);
     fxCamera.position.copy(camera.position);
     fxCamera.quaternion.copy(camera.quaternion);
     fxCamera.projectionMatrix.copy(camera.projectionMatrix);

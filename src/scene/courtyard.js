@@ -21,6 +21,18 @@ export const FAR_WALL = { z: -46.5, top: 11.6, halfWidth: 9 };
 
 const SAND = 0xc9a77c, SAND_DARK = 0x8f6f4f, TERRACOTTA = 0xb5643c, LEAF = 0x3f5a2e, WOOD = 0x6b4a32;
 
+/** soften a tiling canvas: blur a 3x3 tiled copy, keep the middle (seams stay seamless) */
+function blurTiled(c, px) {
+  const W = c.width, H = c.height;
+  const big = document.createElement("canvas"); big.width = W * 3; big.height = H * 3;
+  const bg = big.getContext("2d");
+  bg.filter = `blur(${px}px)`;
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) bg.drawImage(c, i * W, j * H);
+  const out = document.createElement("canvas"); out.width = W; out.height = H;
+  out.getContext("2d").drawImage(big, W, H, W, H, 0, 0, W, H);
+  return out;
+}
+
 /** height canvas (white = high) -> tangent-space normal map canvas (Sobel) */
 function heightToNormal(hc, strength) {
   const W = hc.width, H = hc.height;
@@ -68,7 +80,7 @@ function stoneGrainMaps() {
     blot(rg, x, y, r, `rgba(${v > 0.5 ? 255 : 120},${v > 0.5 ? 255 : 120},${v > 0.5 ? 255 : 120},0.06)`);
   }
   for (let k = 0; k < 2500; k++) blot(hg, Math.random() * N, Math.random() * N, 0.6 + Math.random() * 1.4, "rgba(0,0,0,0.35)");   // pits
-  return { normalMap: canvasTex(heightToNormal(hc, 2.2)), roughnessMap: canvasTex(rc) };
+  return { normalMap: canvasTex(heightToNormal(blurTiled(hc, 1.5), 2.6)), roughnessMap: canvasTex(blurTiled(rc, 2)) };
 }
 
 function flagstoneTexture() {
@@ -124,26 +136,7 @@ function flagstoneTexture() {
     }
     y += h;
   }
-  return { map: canvasTex(c, true), normalMap: canvasTex(heightToNormal(hc, 1.4)), roughnessMap: canvasTex(rc) };
-}
-
-function medallionTexture() {
-  const c = document.createElement("canvas");
-  c.width = c.height = 512;
-  const g = c.getContext("2d");
-  const ring = (r, col, w) => { g.strokeStyle = col; g.lineWidth = w; g.beginPath(); g.arc(256, 256, r, 0, Math.PI * 2); g.stroke(); };
-  g.fillStyle = "#b89a74"; g.beginPath(); g.arc(256, 256, 250, 0, Math.PI * 2); g.fill();
-  ring(240, "#6e5238", 10); ring(200, "#6e5238", 6); ring(120, "#6e5238", 6);
-  for (let k = 0; k < 16; k++) {                 // a simple rosette
-    const a = (k / 16) * Math.PI * 2;
-    g.fillStyle = k % 2 ? "#8c6a48" : "#a07c56";
-    g.beginPath();
-    g.ellipse(256 + Math.cos(a) * 160, 256 + Math.sin(a) * 160, 34, 14, a, 0, Math.PI * 2);
-    g.fill();
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  return { map: canvasTex(c, true), normalMap: canvasTex(heightToNormal(blurTiled(hc, 3), 2.2)), roughnessMap: canvasTex(blurTiled(rc, 2)) };
 }
 
 export function createCourtyard(scene) {
@@ -174,13 +167,8 @@ export function createCourtyard(scene) {
   floor.receiveShadow = true;
   root.add(floor);
 
-  // --- floor medallion
-  const med = new THREE.Mesh(new THREE.CircleGeometry(1.6, 48),
-    new THREE.MeshStandardMaterial({ map: medallionTexture(), roughness: 0.85 }));
-  med.rotation.x = -Math.PI / 2;
-  med.position.set(0, 0.01, -14);
-  med.receiveShadow = true;
-  root.add(med);
+  // (the floor medallion made way for the reflecting pool: see pool.js)
+  root.userData.flagsMap = flags.map;   // the pool's bottom is the same paving
 
   // --- colonnades: stylobate, entablature, roof, back wall with dark doorways
   for (const side of [-1, 1]) {
