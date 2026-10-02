@@ -1,0 +1,97 @@
+<!doctype html><body style="margin:0">
+<!-- Same as _shot.html, but passes its own ?query to the game (e.g. ?quality=high#ripple). Copy to public/_tier.html. -->
+<iframe id="f" src="/" style="width:1400px;height:900px;border:0"></iframe>
+<script>
+document.getElementById("f").src = "/" + location.search;
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, {method: "POST", body});
+const wait = ms => new Promise(r => setTimeout(r, ms));
+document.getElementById("f").onload = async () => {
+  const w = document.getElementById("f").contentWindow, d = w.document;
+  w.addEventListener("error", e => say("jserror", String(e.message)));
+  try {
+    await wait(4000);
+    [...d.querySelectorAll("button")].find(b => b.textContent.trim() === "Start")?.click();
+    await wait(6000);
+    say("vrbutton", [...d.querySelectorAll("button,a")].map(b => b.textContent.trim()).filter(t => /VR/i.test(t)).join("|") || "none");
+    const s = w.__gr.stage3d; for (let i = 0; i < 6; i++) s.setDrumVisible(i, true);
+    await wait(1500);
+    let n = 0; const t0 = performance.now(); await new Promise(r => { const tick = () => { n++; if (performance.now() - t0 < 2000) w.requestAnimationFrame(tick); else r(); }; w.requestAnimationFrame(tick); });
+    say("fps", (n / 2).toFixed(1));
+    const grab = () => new Promise(r => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png"))));
+    const P = s.debugPasses;
+    if (P && location.hash === "#ab") {
+      for (const off of ["none", "bloom", "lens", "smaa", "all3"]) {
+        for (const k of ["bloom", "lens", "smaa"]) P[k].enabled = !(off === k || off === "all3");
+        await wait(300);
+        say("shot_" + off, await grab());
+      }
+    } else if (P && location.hash === "#ab2") {
+      const env = P.scene.environment, tm = P.renderer.toneMapping;
+      P.renderer.toneMapping = 0; await wait(300); say("shot_notone", await grab());
+      P.renderer.toneMapping = tm; P.scene.environment = null; await wait(300); say("shot_noenv", await grab());
+      P.scene.environment = env; await wait(300); say("shot_both", await grab());
+    } else if (location.hash === "#ripple") {
+      s.debugRipple(1.2, -8, 1);
+      for (const [t, name] of [[500, "a"], [2000, "b"], [3500, "c"], [5000, "d"]]) {
+        const t0 = performance.now(); while (performance.now() - t0 < (t - (name === "a" ? 0 : [500, 2000, 3500, 5000][["a","b","c","d"].indexOf(name) - 1]))) await wait(20);
+        say("shot_rip_" + name, await grab());
+      }
+    } else if (location.hash === "#listen") {
+      const G = w.__gr.game;
+      w.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+      await wait(100);
+      const h = G.hint;
+      say("hint", h ? `${h.notes.length} notes scheduled, lanes ${JSON.stringify([...new Set(h.notes.map((n) => n.laneIdx))].sort())}, starts in ${(h.notes[0].time - G.ctx.currentTime).toFixed(2)} s; HUD: ${d.querySelector("#gr-hud .status").textContent}` : "NO HINT");
+      let best = 0, shot = null;
+      for (let k = 0; k < 40 && w.__gr.game.hint; k++) {
+        const v = s.debugGhosts().filter(Boolean).length;
+        if (v > best) { best = v; shot = await grab(); }
+        await wait(100);
+      }
+      const flashed = h ? h.notes.filter((n) => n.flashed).length : 0;
+      say("hint2", `most ghost hands at once: ${best}; notes flashed: ${flashed}/${h ? h.notes.length : 0}`);
+      if (shot) say("shot_listen", shot);
+    } else if (location.hash === "#bars") {
+      const G = w.__gr.game, scale = (k) => Array.from({ length: 8 }, (_, i) => ({ lane: `${k} ${i + 1}`, beat: i * 0.5 }));
+      for (const k of ["bass", "treble"]) {
+        G.testPart = scale(k);
+        w.__gr.stage3d.setStation(k);
+        await wait(2600);
+        say("arrows_" + k, JSON.stringify(s.debugArrows().flying));
+        say("shot_" + k, await grab());
+        if (k === "bass") {   // three consecutive frames: fire lights on / off (colour black) / on
+          const L = s.debugPasses.fireLights, cols = L.map((l) => l.color.clone());
+          say("shot_A_on", await grab());
+          L.forEach((l) => l.color.setRGB(0, 0, 0)); say("shot_B_off", await grab());
+          L.forEach((l, i) => l.color.copy(cols[i])); say("shot_C_on", await grab());
+          say("lights", JSON.stringify(L.map((l) => [+l.intensity.toFixed(1), +Math.hypot(l.position.x-0.9,l.position.y-0.86,l.position.z-0.6).toFixed(2)])));
+        }
+      }
+    } else if (location.hash === "#stations") {
+      for (const name of ["drums", "bass", "treble"]) {
+        if (name !== "drums") { w.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Tab", bubbles: true })); await wait(1800); }
+        say("shot_" + name, await grab());
+      }
+    } else if (location.hash === "#mouse") {
+      for (let i = 0; i < 10; i++) { d.body.dispatchEvent(new w.MouseEvent("mousemove", { movementX: -25, movementY: -8, bubbles: true })); await wait(30); }
+      await wait(100);
+      say("shot_moved", await grab());
+      await wait(500);
+      say("shot_rest05", await grab());
+      await wait(2500);
+      say("shot_rest3", await grab());
+    } else if (location.hash === "#look") {
+      const key = (type, k) => w.dispatchEvent(new w.KeyboardEvent(type, { key: k, bubbles: true }));
+      key("keydown", "ArrowLeft"); key("keydown", "ArrowUp"); await wait(1000);
+      say("shot_held", await grab());
+      key("keyup", "ArrowLeft"); key("keyup", "ArrowUp"); await wait(300);
+      say("shot_rel03", await grab());
+      await wait(1700);
+      say("shot_rel2", await grab());
+    } else if (location.hash === "#seq") {
+      const spam = setInterval(() => { for (const type of ["keydown", "keyup"]) w.dispatchEvent(new w.KeyboardEvent(type, { key: "z", code: "KeyZ", bubbles: true })); }, 45);
+      setTimeout(() => clearInterval(spam), 6000); for (let k = 0; k < 3; k++) { say("shot_" + k, await grab()); await wait(900); } } else say("shot", await grab());
+    say("done", "ok");
+  } catch (e) { say("harnesserror", String(e && e.stack || e)); }
+};
+</script>

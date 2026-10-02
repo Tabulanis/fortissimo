@@ -15,7 +15,7 @@ import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 export const POOL = { x0: -4.2, x1: 4.2, z0: -15.5, z1: -3.5 };   // the water (metres): big and close, just past the drum kit (owner, 2026-10-02)
 export const SURFACE_Y = 0.17;
 const CURB_W = 0.35, CURB_H = 0.28;
-const MAX_RIPPLES = 8;
+const MAX_RIPPLES = 6;
 
 export function poolContains(x, z, inset = 0) {
   return x > POOL.x0 + inset && x < POOL.x1 - inset && z > POOL.z0 + inset && z < POOL.z1 - inset;
@@ -29,6 +29,7 @@ const WaterShader = {
     uTime: { value: 0 },
     uRipples: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector4(0, 0, -100, 0)) },
     uBottom: { value: null },
+    uPool: { value: new THREE.Vector4(POOL.x0, POOL.x1, POOL.z0, POOL.z1) },   // the walls the ripples bounce off
     uBottomScale: { value: new THREE.Vector2(1 / 2.5, 1 / 2.5) },   // the paving tiles every 2.5 m (courtyard.js STONE_TILE)
   },
   vertexShader: /* glsl */ `
@@ -46,6 +47,7 @@ const WaterShader = {
     uniform vec2 uBottomScale;
     uniform float uTime;
     uniform vec4 uRipples[MAX_RIPPLES];      // x, z, start time, strength
+    uniform vec4 uPool;                      // x0, x1, z0, z1: the pool's walls
     varying vec4 vUvR;
     varying vec3 vWorld;
 
@@ -55,14 +57,32 @@ const WaterShader = {
       h += sin(dot(p, vec2(1.3, 0.7)) * 3.1 + uTime * 1.1) * 0.0040;
       h += sin(dot(p, vec2(-0.6, 1.4)) * 4.7 + uTime * 1.6) * 0.0025;
       h += sin(dot(p, vec2(0.9, -1.1)) * 9.3 + uTime * 2.3) * 0.0012;
+      // ripple RINGS, and their reflections off the four walls: each wall's
+      // mirror image of the splash sends the bounced ring back across the pool
       for (int i = 0; i < MAX_RIPPLES; i++) {
         vec4 r = uRipples[i];
         float age = uTime - r.z;
-        if (age < 0.0 || age > 4.0) continue;
-        float d = distance(p, r.xy);
-        float front = age * 0.9;                       // ring speed, m/s
-        float env = exp(-abs(d - front) * 5.0) * exp(-age * 1.1) * r.w;
-        h += sin((d - front) * 22.0) * 0.012 * env;
+        if (age < 0.0 || age > 7.0) continue;
+        float front = age * 1.6;                       // ring speed, m/s
+        float fade = exp(-age * 0.45) * r.w;
+        vec2 c = r.xy;
+        vec2 mx = vec2(2.0 * uPool.x - c.x, 2.0 * uPool.y - c.x);   // mirrored across x0 / x1
+        vec2 mz = vec2(2.0 * uPool.z - c.y, 2.0 * uPool.w - c.y);   // mirrored across z0 / z1
+        for (int k = 0; k < 9; k++) {
+          vec2 src; float amp;
+          if (k == 0) { src = c; amp = 1.0; }
+          else if (k == 1) { src = vec2(mx.x, c.y); amp = 0.7; }
+          else if (k == 2) { src = vec2(mx.y, c.y); amp = 0.7; }
+          else if (k == 3) { src = vec2(c.x, mz.x); amp = 0.7; }
+          else if (k == 4) { src = vec2(c.x, mz.y); amp = 0.7; }
+          else if (k == 5) { src = vec2(mx.x, mz.x); amp = 0.5; }
+          else if (k == 6) { src = vec2(mx.y, mz.x); amp = 0.5; }
+          else if (k == 7) { src = vec2(mx.x, mz.y); amp = 0.5; }
+          else { src = vec2(mx.y, mz.y); amp = 0.5; }
+          float d = distance(p, src);
+          float env = exp(-abs(d - front) * 4.0) * fade * amp;
+          h += sin((d - front) * 16.0) * 0.02 * env;
+        }
       }
       return h;
     }
@@ -77,7 +97,7 @@ const WaterShader = {
       vec3 V = normalize(cameraPosition - vWorld);
 
       // reflection: the mirror image, bent by the ripples
-      vec2 ruv = vUvR.xy / vUvR.w + N.xz * 0.06;
+      vec2 ruv = vUvR.xy / vUvR.w + N.xz * 0.12;
       vec3 refl = texture2D(tDiffuse, ruv).rgb;
 
       // the bottom, seen through ~15 cm of water: refracted, darkened, mossy
@@ -88,6 +108,14 @@ const WaterShader = {
 
       float F = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 5.0);   // Fresnel (water)
       vec3 col = mix(bottom, refl * 1.1, clamp(F * 1.3 + 0.2, 0.0, 1.0));
+      // ripples catch the low sun: a glint off the slopes toward the panorama's
+      // sun (dead ahead, ~9 deg up), and disturbed water brightens a little —
+      // so rings read even at this grazing angle
+      vec3 sunDir = normalize(vec3(0.0, 0.165, -0.986));
+      float slope = length(vec2(hx, hz)) / (2.0 * e);
+      float rough = clamp((slope - 0.05) * 4.0, 0.0, 1.0);          // ~0 on calm water, 1 on a ring's flank
+      float glint = pow(max(dot(reflect(-V, N), sunDir), 0.0), 160.0) * rough;
+      col += vec3(1.0, 0.62, 0.32) * (1.4 * glint + 0.16 * rough * rough);
       gl_FragColor = vec4(col, 1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>

@@ -2157,7 +2157,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     debugArrows: () => ({ flying: Array.from({ length: N_T }, (_, i) => i).map((i) => activeNotes.filter((e) => e.laneIdx === i).length), shown: [...drumVisible] }),
     /** debug: which ghost hands are showing right now (lane order) */
     debugGhosts: () => ghostHands.map((g) => g.group.visible),
-    debugPasses: { bloom, lens, smaa, gtao, fxPass, renderer, scene, fireLights },   // harness: toggle .enabled to compare
+    debugPasses: { bloom, lens, smaa, gtao, fxPass, renderer, scene, fireLights },
+    debugRipple: (x, z, s = 1) => waterPool.addRipple(x, z, s),   // harness: a splash in the pool   // harness: toggle .enabled to compare
     debugVr: () => hands.map((h, i) => { h.group.updateWorldMatrix(true, false); const p = h.group.localToWorld(new THREE.Vector3(0, STICK_LEN, 0));
       return { hand: i, held: !!h.grip, gripVisible: h.grip ? h.grip.visible : null, tip: [p.x, p.y, p.z].map((v) => +v.toFixed(3)) }; }), get vr() { return vrOn(); } };
 }
