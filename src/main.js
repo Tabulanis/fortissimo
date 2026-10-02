@@ -22,6 +22,7 @@ import { SONG, partArrows, isShown } from "./game/stages.js";
 import { createHud } from "./ui/hud.js";
 import { createMixer } from "./audio/mixer.js";
 import { loadSettings, createSettings } from "./ui/settings.js";
+import { createPads } from "./input/pads.js";
 
 const { VoicePool, VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
 
@@ -357,7 +358,30 @@ function onKey(e) {
   const entry = KEYMAP[e.key];
   if (!entry) return;   // keys outside the layout do nothing, HUD untouched
   e.preventDefault();
-  const { idx, ln: lane } = entry;
+  hitLane(entry.idx, entry.ln, press, 1);
+}
+
+// ONE drum hit, from any input: keyboard, MIDI pad, game controller, VR stick.
+// press = time on the heard audio clock; padVel = the input's own force (0..1,
+// 1 for keys) — it scales the loudness on top of the timing.
+// --- drum pads and game controllers -------------------------------------------
+const pads = createPads({
+  onHit: (laneName, force, ts) => {
+    if (!ctx || !drums || !pool || !clock) return;
+    const entry = KEYMAP_BY_LANE[laneName];
+    if (!entry) return;
+    // the device's own timestamp, on the heard audio clock (like a key press)
+    const o = ctx.getOutputTimestamp();
+    hitLane(entry.idx, entry.ln, o.contextTime + (ts - o.performanceTime) / 1000 - calibration, force);
+  },
+  onBell: () => ringBell(),
+  onStatus: (st) => {
+    const parts = [...st.midi.map((n) => "🥁 " + n), ...st.pads.map((n) => "🎮 " + n.split("(")[0].trim())];
+    if (parts.length) hudUI.say("Connected: " + parts.join(" · "), "good", 3000);
+  },
+});
+
+function hitLane(idx, lane, press, padVel = 1) {
 
   // timing against this lane's chart notes, loop-wrapped
   const partBeats = currentPart().filter((n) => n.lane === lane.name).map((n) => n.beat);
@@ -377,6 +401,7 @@ function onKey(e) {
     vel = off ? OFF_VEL : velocityFor(j.offset);   // off-chart: barely there (-30 dB)
     lab = off ? "OFF" : label(j.offset);
   }
+  vel *= padVel;   // a soft pad hit / a slow VR swing plays softer
 
   // record exactly as played (real timing, real velocity, mistakes and OFF
   // included) — it becomes this lane's ghost from the next pass on
@@ -559,6 +584,7 @@ function frame() {
       : [];
     stage3d.update(heardNow, buildUpcoming(heardNow), ghostHits);
     tickBell(heardNow);
+    pads.poll();
   } else {
     // before Start: keep the courtyard (and its drums) visible, no arrows
     stage3d.update(0, []);
