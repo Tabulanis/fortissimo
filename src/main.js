@@ -18,7 +18,9 @@ import { createStage3D } from "./scene/stage3d.js";
 import { Bell } from "./game/bell.js";
 import { Loops } from "./game/loops.js";
 import { DIFFICULTY } from "./game/difficulty.js";
-import { SONG, partArrows, isShown } from "./game/stages.js";
+import { ROUNDS, partArrows, isShown } from "./game/stages.js";
+import { gradeRound } from "./game/grade.js";
+import { createResults } from "./ui/results.js";
 import { createHud } from "./ui/hud.js";
 import { createMixer } from "./audio/mixer.js";
 import { loadSettings, createSettings } from "./ui/settings.js";
@@ -51,8 +53,14 @@ const LANE_INDEX = {};                    // lane name -> 0..5
 let stageIdx = 0;
 let bell = null;                          // created when the clock starts
 let loops = null;                         // locked measures, replayed exactly as played
-const songDone = () => stageIdx >= SONG.parts.length;
-const currentPart = () => (songDone() ? [] : SONG.parts[stageIdx].part);
+// 3 ROUNDS in the same arena; each ends with an accuracy grade
+let roundIdx = 0;
+const song = () => ROUNDS[roundIdx];
+const lastRound = () => roundIdx >= ROUNDS.length - 1;
+const songDone = () => stageIdx >= song().parts.length;
+const currentPart = () => (songDone() ? [] : song().parts[stageIdx].part);
+let roundOffsets = [];          // every guided hit this round: seconds off its note, null = off-chart
+const results = createResults();
 const hudUI = createHud({ onBell: ringBell });
 let autoCorrect = SET.autoCorrect;   // A toggles; also in settings
 function showDifficulty() { hudUI.setDifficulty(`${difficulty.name}${autoCorrect ? " · Auto ✓" : ""}`); }
@@ -80,15 +88,18 @@ function autoCorrectHit(press, vel, j, free) {
 hudUI.setLives(3);
 
 function applyStage() {
-  for (let i = 0; i < 6; i++) stage3d.setDrumVisible(i, isShown(stageIdx, i));
+  for (let i = 0; i < 6; i++) stage3d.setDrumVisible(i, isShown(song(), stageIdx, i));
   stageMessage();
 }
 
 // the standing instruction for where you are in the song
 function stageMessage() {
   if (bell && bell.state !== "idle") return;   // the bell's own messages win while it works
-  hudUI.setPart(songDone() ? "Free play" : `${SONG.parts[stageIdx].label} of ${SONG.parts.length}`);
-  if (songDone()) {
+  hudUI.setPart(songDone() ? (lastRound() ? "Free play" : `${song().name} done`)
+    : `${song().name} · ${song().parts[stageIdx].label} of ${song().parts.length}`);
+  if (songDone() && !lastRound()) {
+    hudUI.say(`${song().name} complete!`, "good");
+  } else if (songDone()) {
     hudUI.say("Song complete! Play anything — ring the bell 🔔 to add a measure", "good");
   } else {
     hudUI.say("Follow the arrows. Got it? Ring the bell 🔔 (Space)");
@@ -125,15 +136,35 @@ function tickBell(heardNow) {
           settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
       }
     }
-    if (!songDone()) stageIdx++;
+    const wasGuided = !songDone();
+    if (wasGuided) stageIdx++;
     applyStage();
     hudUI.say(`Locked in! ✨ (${r.judge.matched}/${r.judge.total})`, "good");
     setTimeout(stageMessage, 2500);   // then back to the standing instruction (it used to go blank)
+    if (wasGuided && songDone()) setTimeout(endRound, 1600);   // the band plays the full song a moment, then the grade
   } else {
     hudUI.say(`Not quite (${r.judge.matched}/${r.judge.total}) — keep playing, it's still listening`, "bad");
   }
 }
 applyStage();
+
+// end of a round: the grade, then the next round in the same arena (fresh song,
+// fresh loops); after the last round, free play
+function endRound() {
+  const stats = gradeRound(roundOffsets, difficulty.window);
+  results.show({
+    round: song().name, title: song().title, stats, last: lastRound(),
+    onNext: () => {
+      if (lastRound()) { stageMessage(); return; }
+      roundIdx++;
+      stageIdx = 0;
+      roundOffsets = [];
+      if (loops) loops.clear();
+      if (bell) bell.cancel();
+      applyStage();
+    },
+  });
+}
 
 let ctx = null;
 let masterGain = null;
@@ -413,6 +444,7 @@ function hitLane(idx, lane, press, padVel = 1) {
     off = !j || Math.abs(j.offset) > OFF_CHART;
     vel = off ? OFF_VEL : velocityFor(j.offset);   // off-chart: barely there (-30 dB)
     lab = off ? "OFF" : label(j.offset);
+    roundOffsets.push(off ? null : j.offset);
   }
   vel *= padVel;   // a soft pad hit / a slow VR swing plays softer
   if (window.__gr) (window.__gr.hits ||= []).push({ lane: lane.name, lab, force: +padVel.toFixed(2), vel: +vel.toFixed(3) });   // harness readout
@@ -644,5 +676,5 @@ stage3d.setLoop(frame);
 // test hook (the harness robot reads the song state through this)
 if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; }, get bell() { return bell; },
-  get stageIdx() { return stageIdx; }, get calibration() { return calibration; }, get loops() { return loops; },
+  get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; }, get calibration() { return calibration; }, get loops() { return loops; },
 };   // screen or headset: the renderer drives the frames

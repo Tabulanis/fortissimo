@@ -5,43 +5,56 @@
  * Lane names are LAYOUT's names: "hat","snare","crash","kick","tom low","tom high".
  */
 
-export const SONG = {
-  name: "First Song",
-  parts: [
-    // GROOVE (owner: "change up the beat instead of just steady"). Each part is
-    // one bar; beats are quarter notes (0 = beat 1, 0.5 = its "and").
-    {
-      label: "Part 1",
-      show: [3, 1],
-      // kick: "boom ... boom-boom" — 1, 3 and the "and" of 3
-      part: [0, 2, 2.5].map((b) => ({ lane: "kick", beat: b })),
-    },
-    {
-      label: "Part 2",
-      show: [3, 1, 0, 4],
-      // snare backbeat on 2 and 4
-      part: [1, 3].map((b) => ({ lane: "snare", beat: b })),
-    },
-    {
-      label: "Part 3",
-      show: [3, 1, 0, 4, 2, 5],
-      // hats: eighths with a breath before beat 3 (the "and" of 2 is skipped)
-      part: [0, 0.5, 1, 2, 2.5, 3, 3.5].map((b) => ({ lane: "hat", beat: b })),
-    },
-    {
-      label: "Part 4",
-      show: [3, 1, 0, 4, 2, 5],
-      // crash on 1, then a 16th-note tom roll into the next bar
-      part: [
-        { lane: "crash", beat: 0 },
-        { lane: "tom high", beat: 3 },
-        { lane: "tom high", beat: 3.25 },
-        { lane: "tom low", beat: 3.5 },
-        { lane: "tom low", beat: 3.75 },
-      ],
-    },
-  ],
-};
+// SWING: the "and" of each beat lands 2/3 of the way through it (a triplet shuffle)
+const SWING = 2 / 3;
+const swing = (b) => (Math.abs((b % 1) - 0.5) < 1e-9 ? Math.floor(b) + SWING : b);
+const notes = (lane, beats, swung = false) => beats.map((b) => ({ lane, beat: swung ? swing(b) : b }));
+
+// Drums shown while each part is taught (same build-up every round)
+const SHOW = [[3, 1], [3, 1, 0, 4], [3, 1, 0, 4, 2, 5], [3, 1, 0, 4, 2, 5]];
+const parts = (list) => list.map((part, i) => ({ label: `Part ${i + 1}`, show: SHOW[i], part }));
+
+/** The game is 3 ROUNDS in the same arena, each graded on accuracy at the end
+ *  (owner, 2026-10-02): 1 = singles; 2 = a more complex song, swung, singles;
+ *  3 = a busier kick/snare combination with doubles in the closing fill.
+ *  Each part is one bar; beats are quarter notes (0 = beat 1, 0.5 = its "and").
+ *  Rounds 2 and 3 are PLACEHOLDER grooves following that brief — the owner
+ *  writes the music. */
+export const ROUNDS = [
+  {
+    name: "Round 1",
+    title: "First Song",
+    parts: parts([
+      notes("kick", [0, 2, 2.5]),                       // "boom ... boom-boom": 1, 3 and the "and" of 3
+      notes("snare", [1, 3]),                           // backbeat on 2 and 4
+      notes("hat", [0, 0.5, 1, 2, 2.5, 3, 3.5]),        // eighths with a breath before beat 3
+      [{ lane: "crash", beat: 0 }, ...notes("tom high", [3]), ...notes("tom low", [3.5])],   // crash, then single toms
+    ]),
+  },
+  {
+    name: "Round 2",
+    title: "Shuffle (placeholder)",
+    swing: true,
+    parts: parts([
+      notes("kick", [0, 1.5, 2, 3.5], true),            // pushes on the swung "and"s
+      notes("snare", [1, 2.5, 3], true),                 // backbeat plus a swung pickup
+      notes("hat", [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5], true),   // shuffled eighths
+      [{ lane: "crash", beat: 0 }, ...notes("tom high", [3]), ...notes("tom low", [3.5], true)],
+    ]),
+  },
+  {
+    name: "Round 3",
+    title: "Breakdown (placeholder)",
+    parts: parts([
+      notes("kick", [0, 0.5, 1.5, 2, 2.5]),             // busier kick
+      notes("snare", [1, 1.75, 3]),                      // backbeat with a sixteenth lead-in
+      notes("hat", [0, 0.5, 1, 1.5, 2, 2.5]),            // hats drop out for the fill
+      [{ lane: "crash", beat: 0 }, ...notes("tom high", [3, 3.25]), ...notes("tom low", [3.5, 3.75])],   // DOUBLES
+    ]),
+  },
+];
+/** the first round (older callers) */
+export const SONG = ROUNDS[0];
 
 /**
  * Every note of `part`, repeated every bar, mapped to timeline times.
@@ -68,8 +81,8 @@ export function partArrows(part, laneIndexByName, first, barDur, beatDur, fromT,
 /**
  * Is laneIdx shown during stageIdx? Past the last part, everything is shown.
  */
-export function isShown(stageIdx, laneIdx) {
-  const part = SONG.parts[stageIdx];
+export function isShown(song, stageIdx, laneIdx) {
+  const part = song.parts[stageIdx];
   if (!part) return true;
   return part.show.includes(laneIdx);
 }

@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { SONG, partArrows, isShown } from "../src/game/stages.js";
+import { SONG, ROUNDS, partArrows, isShown } from "../src/game/stages.js";
 
 const laneIndexByName = (name) => ({
   hat: 0, snare: 1, crash: 2, kick: 3, "tom low": 4, "tom high": 5,
@@ -28,8 +28,29 @@ for (let i = 0; i < hatWant.length; i++) {
 }
 
 // visibility
-assert.strictEqual(isShown(0, 0), false, "part 1 hides the hat");
-assert.strictEqual(isShown(0, 3), true, "part 1 shows the kick");
-assert.strictEqual(isShown(99, 0), true, "past the last part, everything is shown");
+assert.strictEqual(isShown(SONG, 0, 0), false, "part 1 hides the hat");
+assert.strictEqual(isShown(SONG, 0, 3), true, "part 1 shows the kick");
+assert.strictEqual(isShown(SONG, 99, 0), true, "past the last part, everything is shown");
+
+// three rounds, four parts each
+assert.strictEqual(ROUNDS.length, 3, "three rounds");
+for (const r of ROUNDS) assert.strictEqual(r.parts.length, 4, `${r.name}: four parts`);
+const fill = (r) => r.parts[3].part.filter((n) => n.lane.startsWith("tom")).map((n) => n.beat);
+// round 1: singles (one high tom, one low tom); round 3: doubles (sixteenths)
+assert.deepStrictEqual(fill(ROUNDS[0]), [3, 3.5], "round 1 fill is singles");
+assert.deepStrictEqual(fill(ROUNDS[2]), [3, 3.25, 3.5, 3.75], "round 3 fill is doubles");
+// round 2 is swung: every "and" sits 2/3 through its beat, none on the straight half
+const r2 = ROUNDS[1].parts.flatMap((p) => p.part.map((n) => n.beat % 1));
+assert.ok(r2.some((f) => Math.abs(f - 2 / 3) < 1e-9), "round 2 has swung offbeats");
+assert.ok(!r2.some((f) => Math.abs(f - 0.5) < 1e-9), "round 2 has no straight offbeats");
+// round 2 stays singles: no two notes on one drum closer than an eighth
+for (const p of ROUNDS[1].parts) {
+  const byLane = {};
+  for (const n of p.part) (byLane[n.lane] ||= []).push(n.beat);
+  for (const bs of Object.values(byLane)) {
+    bs.sort((a, b) => a - b);
+    for (let i = 1; i < bs.length; i++) assert.ok(bs[i] - bs[i - 1] > 0.3, "round 2: no doubles");
+  }
+}
 
 console.log("stages: all passed");
