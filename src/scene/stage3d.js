@@ -8,6 +8,10 @@
 import * as THREE from "three";
 import { createSpirits } from "./spirits.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 
 const APPROACH_S = 3.2;   // seconds of visible flight: launched from the far wall, tracked all the way
 const STUCK_S = 0.6;      // seconds an unhit arrow stays stuck at the face
@@ -69,6 +73,8 @@ const _eWhite = new THREE.Color(0xffffff);
  */
 export function createStage3D(canvas, layout, colors) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.shadowMap.enabled = true;                 // the foreground lantern casts shadows
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.setPixelRatio(window.devicePixelRatio || 1);
 
   const scene = new THREE.Scene();
@@ -78,7 +84,7 @@ export function createStage3D(canvas, layout, colors) {
   // on the horizon, BEHIND the archers' wall (the -z direction). Kept dark
   // enough overhead that the flaming arrows still pop.
   const HORIZON_HAZE = 0x4a3a5c;
-  scene.background = new THREE.Color(0x141a38);
+  scene.background = null;   // the sky dome is the background; a colour here would be repainted by the fx pass over the whole frame
   scene.fog = new THREE.FogExp2(HORIZON_HAZE, 0.011);   // fire ignores fog (fog:false on sprites)
   {
     const skyMat = new THREE.ShaderMaterial({
@@ -115,9 +121,19 @@ export function createStage3D(canvas, layout, colors) {
   afterglow.position.set(-6, 3, -40);          // low, from the sunset side
   scene.add(afterglow);
   // the drum lantern: textured wood/leather needs a warm key light close in
-  const lantern = new THREE.PointLight(0xffb36a, 7, 7, 1.6);
-  lantern.position.set(0.0, 2.2, 0.15);   // over the drums, not over the hands
-  scene.add(lantern);
+  // the drum lantern: a warm SPOT just above and behind the player, aimed at the
+  // drums, casting soft shadows (drums onto the ground, hands/sticks onto drums)
+  const lantern = new THREE.SpotLight(0xffb36a, 26, 9, Math.PI / 4.2, 0.65, 1.4);
+  lantern.position.set(0.35, 3.0, 1.9);
+  lantern.target.position.set(0, 0.5, -0.8);
+  lantern.castShadow = true;
+  lantern.shadow.mapSize.set(2048, 2048);
+  lantern.shadow.camera.near = 0.3;
+  lantern.shadow.camera.far = 9;
+  lantern.shadow.bias = -0.0004;
+  lantern.shadow.normalBias = 0.02;
+  lantern.shadow.radius = 4;
+  scene.add(lantern, lantern.target);
 
   const camera = new THREE.PerspectiveCamera(
     60, canvas.clientWidth / canvas.clientHeight, 0.1, 200,
@@ -125,12 +141,32 @@ export function createStage3D(canvas, layout, colors) {
   camera.position.set(0, 1.3, 2.0);
   camera.lookAt(new THREE.Vector3(0, 1.75, -10));   // horizon up: the far wall and the arcs are in view
 
+  // AO for everything: GTAO (screen-space) between the scene render and output
+  const FX_LAYER = 1;
+  const composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const gtao = new GTAOPass(scene, camera, canvas.clientWidth || 1280, canvas.clientHeight || 720);
+  gtao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 16 });
+  gtao.blendIntensity = 1.0;
+  composer.addPass(gtao);
+  // glowing effects (sprites, additive cards) render AFTER the AO in their own
+  // pass: in the AO pass they showed as black squares (AO treated the cards as
+  // solid). They live on layer 1; the main camera sees layer 0 only.
+  const fxCamera = camera.clone();
+  fxCamera.layers.set(FX_LAYER);
+  const fxPass = new RenderPass(scene, fxCamera);
+  fxPass.clear = false;
+  fxPass.clearDepth = false;
+  composer.addPass(fxPass);
+  composer.addPass(new OutputPass());
+
   // ground: dark stone, flat at y = 0
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(400, 400),
     new THREE.MeshStandardMaterial({ color: 0x1a1714, roughness: 1 }),
   );
   ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
   scene.add(ground);
 
   // drums
@@ -211,6 +247,28 @@ export function createStage3D(canvas, layout, colors) {
     return new THREE.CanvasTexture(c);
   })();
 
+  // FIRE texture: white-yellow core -> orange -> deep red edge, soft all the way
+  const fireTexture = (() => {
+    const c = document.createElement("canvas");
+    c.width = 128; c.height = 128;
+    const g = c.getContext("2d");
+    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0.00, "rgba(255,250,232,1)");
+    grad.addColorStop(0.14, "rgba(255,222,130,0.95)");
+    grad.addColorStop(0.34, "rgba(255,140,40,0.72)");
+    grad.addColorStop(0.60, "rgba(210,48,12,0.30)");
+    grad.addColorStop(1.00, "rgba(120,10,0,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  })();
+  const _fireA = new THREE.Color(1.0, 0.95, 0.75), _fireB = new THREE.Color(1.0, 0.5, 0.12),
+        _fireC = new THREE.Color(0.55, 0.06, 0.02), _fc = new THREE.Color();
+  // fire colour along a 0..1 "cooling" value: white-yellow -> orange -> deep red
+  function fireColor(t, out) {
+    return t < 0.5 ? out.copy(_fireA).lerp(_fireB, t * 2) : out.copy(_fireB).lerp(_fireC, (t - 0.5) * 2);
+  }
+
   // GHOSTS PLAY VISIBLY: a spirit stick per drum strikes each loop hit
   const spirits = createSpirits(scene, LANES3D,
     [0, 1, 2, 3, 4, 5].map((i) => hexToColor(colors[drumOf(i)] || "#888888")),
@@ -230,13 +288,17 @@ export function createStage3D(canvas, layout, colors) {
   // depthTest: false on the GLOW only — the big halo is meant to spill over
   // the drum body as firelight; the small flame sprite and the arrow meshes
   // keep depth testing.
+  const _pT = new THREE.Vector3();
+  const TRAIL_N = 12;          // fire puffs behind each arrow, along its own path
+  const TRAIL_STEP = 0.0075;   // path fraction between puffs (~0.5 m)
   const pool = [];
   for (let i = 0; i < 40; i++) {
     const group = new THREE.Group();
     const shaft = new THREE.Mesh(shaftGeo, SHAFT_MAT);
     const head = new THREE.Mesh(headGeo, HEAD_MAT);
+    shaft.castShadow = true; head.castShadow = true;
     const flame = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
-      map: flameTexture,
+      map: fireTexture,
       color: 0xffffff,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
@@ -251,17 +313,26 @@ export function createStage3D(canvas, layout, colors) {
       depthWrite: false,
       depthTest: false,
       transparent: true,
-      opacity: 0.6,
+      opacity: 0.42,
     }));
     glow.position.set(0, 0.3, 0);
     glow.scale.setScalar(1.4);
     group.add(shaft, head, flame, glow);
     group.visible = false;
     scene.add(group);
+    const trail = [];
+    for (let k = 0; k < TRAIL_N; k++) {
+      const t = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false, map: fireTexture,
+        blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+      t.visible = false;
+      scene.add(t);
+      trail.push(t);
+    }
     pool.push({
       group,
       flame,
       glow,
+      trail,
       active: false,
       laneIdx: -1,
       time: 0,
@@ -322,9 +393,9 @@ export function createStage3D(canvas, layout, colors) {
   const stickGeo = new THREE.CylinderGeometry(0.022, 0.026, STICK_LEN, 10);
   stickGeo.translate(0, STICK_LEN / 2, 0);   // fist at origin, tip at +y
   // warm and partly self-lit, like the arrows: dark-brown hands vanished in the night scene
-  const handMat = new THREE.MeshStandardMaterial({ color: 0xa8775c, roughness: 0.8, metalness: 0.05,
+  const handMat = new THREE.MeshStandardMaterial({ color: 0x7e5a46, roughness: 0.8, metalness: 0.05,
     emissive: 0x8a5034, emissiveIntensity: 0.08 });   // the lantern lights them now
-  const stickMat = new THREE.MeshStandardMaterial({ color: 0xc69a64, roughness: 0.6, metalness: 0.05,
+  const stickMat = new THREE.MeshStandardMaterial({ color: 0x9a7650, roughness: 0.6, metalness: 0.05,
     emissive: 0x9a7040, emissiveIntensity: 0.1 });
 
   // rest poses: widened and lowered so the fists never sit on a drum on
@@ -343,6 +414,7 @@ export function createStage3D(canvas, layout, colors) {
     const group = new THREE.Group();
     const fist = new THREE.Mesh(handGeo, handMat);
     const stick = new THREE.Mesh(stickGeo, stickMat);
+    fist.castShadow = true; stick.castShadow = true;
     group.add(fist, stick);
     group.position.copy(HAND_REST[h]);
     group.quaternion.setFromUnitVectors(UP, REST_DIR);
@@ -439,7 +511,7 @@ export function createStage3D(canvas, layout, colors) {
   }
 
   const flashMat = new THREE.SpriteMaterial({ fog: false,
-    map: flameTexture,
+    map: fireTexture,
     color: 0xffffff,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
@@ -460,7 +532,7 @@ export function createStage3D(canvas, layout, colors) {
   const sparks = [];
   for (let i = 0; i < 400; i++) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
-      map: flameTexture,
+      map: fireTexture,
       color: 0xffffff,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
@@ -506,7 +578,7 @@ export function createStage3D(canvas, layout, colors) {
   const smould = [];
   for (let i = 0; i < 12; i++) {
     const flicker = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
-      map: flameTexture,
+      map: fireTexture,
       color: 0xff6a20,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
@@ -626,7 +698,7 @@ export function createStage3D(canvas, layout, colors) {
   const flashes = [];
   for (let i = 0; i < 6; i++) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
-      map: flameTexture,
+      map: fireTexture,
       color: 0xffffff,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
@@ -701,7 +773,7 @@ export function createStage3D(canvas, layout, colors) {
   const embers = [];
   for (let i = 0; i < 120; i++) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
-      map: flameTexture,
+      map: fireTexture,
       color: 0xff9a40,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
@@ -930,6 +1002,7 @@ export function createStage3D(canvas, layout, colors) {
     const w = canvas.clientWidth || 1;
     const h = canvas.clientHeight || 1;
     renderer.setSize(w, h, false);
+    if (composer) { composer.setSize(w, h); gtao.setSize(w, h); }
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }
@@ -944,6 +1017,7 @@ export function createStage3D(canvas, layout, colors) {
   function recycle(e) {
     e.active = false;
     e.group.visible = false;
+    for (const t of e.trail) t.visible = false;
     const i = activeNotes.indexOf(e);
     if (i >= 0) activeNotes.splice(i, 1);
   }
@@ -955,6 +1029,17 @@ export function createStage3D(canvas, layout, colors) {
    *   within the next APPROACH_S seconds (both rows)
    */
   let _frameNo = 0;
+  let fxSorted = false, fxCount = -1;
+  function sortFx() {
+    let n = 0;
+    scene.traverse((o) => {
+      const m = o.material;
+      const glowy = o.isSprite || (m && !Array.isArray(m) && m.blending === THREE.AdditiveBlending);
+      if (glowy) { o.layers.set(FX_LAYER); n++; }
+    });
+    if (n === fxCount) fxSorted = true;   // stable two frames in a row: done
+    fxCount = n;
+  }
   function update(heardNow, upcoming, ghosts = []) {
     spirits.update(heardNow, ghosts);
     _frameNo++;
@@ -980,7 +1065,9 @@ export function createStage3D(canvas, layout, colors) {
         e.hitAt = -1;
         e.stuckUntil = 0;
         e.group.visible = true;
-        e.flame.material.color.copy(hexToColor(colors[drumOf(u.laneIdx)] || "#888888"));
+        e.flame.material.color.setRGB(1, 1, 1);   // the fire texture carries the colour
+        e.flame.material.opacity = 1;              // a recycled glance left these faded
+        e.glow.material.opacity = 0.42;
         e.glow.material.color.copy(hexToColor(colors[drumOf(u.laneIdx)] || "#888888"));
         e.spawn.copy(SPAWNS[u.laneIdx]);
         e.face.copy(drumFace[u.laneIdx]);
@@ -1015,6 +1102,7 @@ export function createStage3D(canvas, layout, colors) {
             continue;
           }
           // NEAR: glance-off, flying away while fading over 0.4 s
+          for (const t of e.trail) t.visible = false;   // no frozen trail left hanging
           const g = (heardNow - e.hitAt) / e.life;
           if (g >= 1) {
             recycle(e);
@@ -1111,6 +1199,21 @@ export function createStage3D(canvas, layout, colors) {
       const s = 0.45 * Math.min(far, 5) * (0.9 + 0.2 * Math.random());
       e.flame.scale.setScalar(s);
       e.glow.scale.setScalar(1.4 * Math.min(far, 1.8) * (0.9 + 0.2 * Math.random()));
+      // FIRE TRAIL: puffs along the arrow's own path just behind it, shrinking,
+      // cooling orange -> deep red and fading — smooth because it IS the path
+      for (let k = 0; k < TRAIL_N; k++) {
+        const t = e.trail[k];
+        const fk = clamped - (k + 1) * TRAIL_STEP;
+        if (dt < 0 || fk <= 0) { t.visible = false; continue; }
+        pathPoint(e, fk, _pT);
+        t.position.copy(_pT);
+        const cool = (k + 1) / TRAIL_N;
+        t.scale.setScalar(s * 0.95 * (1 - 0.75 * cool));
+        fireColor(0.15 + 0.85 * cool, _fc);
+        t.material.color.copy(_fc);
+        t.material.opacity = 0.85 * Math.pow(1 - cool, 1.3);
+        t.visible = true;
+      }
     }
 
     // MAGIC CHARGE (owner's design, replaces the shrinking ring): the drumhead
@@ -1160,7 +1263,11 @@ export function createStage3D(canvas, layout, colors) {
       s.vel.y -= 6 * sdt;
       s.pos.addScaledVector(s.vel, sdt);
       s.sprite.position.copy(s.pos);
-      s.sprite.material.opacity = 1 - g;
+      // burn like fire: white-yellow -> orange -> deep red, shrinking as it cools
+      fireColor(g, _fc);
+      s.sprite.material.color.copy(_fc);
+      s.sprite.scale.setScalar(s.scale0 * (1 - 0.6 * g));
+      s.sprite.material.opacity = Math.pow(1 - g, 1.2);
     }
     for (const s of smokes) {
       if (!s.active) continue;
@@ -1228,6 +1335,8 @@ export function createStage3D(canvas, layout, colors) {
       _eSide.copy(st.pos).add(st.vel).project(camera);
       st.mesh.rotateZ(Math.atan2(_eSide.y - _eTang.y, _eSide.x - _eTang.x) - Math.PI / 2);
       st.mesh.scale.set(0.03, 0.15 + st.vel.length() * 0.03, 1);
+      fireColor(0.1 + 0.8 * g, _fc);
+      st.mesh.material.color.copy(_fc);
       st.mesh.material.opacity = 1 - g;
     }
     for (const em of embers) {
@@ -1256,7 +1365,12 @@ export function createStage3D(canvas, layout, colors) {
       }
     }
 
-    renderer.render(scene, camera);
+    fxCamera.position.copy(camera.position);
+    fxCamera.quaternion.copy(camera.quaternion);
+    fxCamera.projectionMatrix.copy(camera.projectionMatrix);
+    fxCamera.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
+    if (!fxSorted) sortFx();
+    composer.render();
   }
 
   /**
@@ -1353,6 +1467,7 @@ export function createStage3D(canvas, layout, colors) {
       let mat = null;
       model.traverse((o) => {
         if (!o.isMesh) return;
+        o.castShadow = true; o.receiveShadow = true;
         if (!mat) {
           mat = o.material.clone();
           mat.color.lerp(hexToColor(colors[drumOf(i)] || "#888888"), 0.22);
