@@ -7,6 +7,7 @@
 
 import * as THREE from "three";
 import { createSpirits } from "./spirits.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 const APPROACH_S = 3.2;   // seconds of visible flight: launched from the far wall, tracked all the way
 const STUCK_S = 0.6;      // seconds an unhit arrow stays stuck at the face
@@ -75,6 +76,13 @@ export function createStage3D(canvas, layout, colors) {
   scene.fog = new THREE.FogExp2(0x05070d, 0.02);   // fire ignores fog (fog:false on sprites)
 
   scene.add(new THREE.AmbientLight(0x404860, 0.6));
+  // the drum lantern: textured wood/leather drank the faint moonlight and read
+  // black — a warm key light just above and behind the player, plus a soft
+  // warm fill, so the drums read. (Effects stay fake-lit billboards.)
+  const lantern = new THREE.PointLight(0xffb36a, 9, 7, 1.6);
+  lantern.position.set(0.0, 2.4, 1.6);
+  scene.add(lantern);
+  scene.add(new THREE.HemisphereLight(0x8a7a6a, 0x1a1410, 0.9));
   const dir = new THREE.DirectionalLight(0x8090c0, 0.4);
   dir.position.set(2, 5, 6);
   scene.add(dir);
@@ -126,10 +134,10 @@ export function createStage3D(canvas, layout, colors) {
     });
     const label = new THREE.Mesh(labelGeo, labelMat);
     if (LANES3D[i].upright) {
-      label.position.set(LANES3D[i].x, LANES3D[i].y, LANES3D[i].z + LANES3D[i].depth / 2 + 0.012);
+      label.position.set(LANES3D[i].x, LANES3D[i].y, LANES3D[i].z + LANES3D[i].depth / 2 + 0.034);
     } else {
       label.rotation.x = -Math.PI / 2;   // flat on the head, readable from the seat
-      label.position.set(LANES3D[i].x, LANES3D[i].y + LANES3D[i].depth / 2 + 0.012, LANES3D[i].z);
+      label.position.set(LANES3D[i].x, LANES3D[i].y + LANES3D[i].depth / 2 + 0.034, LANES3D[i].z);
     }
     scene.add(label);
     drumLabels.push(label);
@@ -283,9 +291,9 @@ export function createStage3D(canvas, layout, colors) {
   stickGeo.translate(0, STICK_LEN / 2, 0);   // fist at origin, tip at +y
   // warm and partly self-lit, like the arrows: dark-brown hands vanished in the night scene
   const handMat = new THREE.MeshStandardMaterial({ color: 0xe0a47c, roughness: 0.8, metalness: 0.05,
-    emissive: 0x8a5034, emissiveIntensity: 0.55 });
+    emissive: 0x8a5034, emissiveIntensity: 0.08 });   // the lantern lights them now
   const stickMat = new THREE.MeshStandardMaterial({ color: 0xf0cc90, roughness: 0.6, metalness: 0.05,
-    emissive: 0x9a7040, emissiveIntensity: 0.55 });
+    emissive: 0x9a7040, emissiveIntensity: 0.1 });
 
   // rest poses: widened and lowered so the fists never sit on a drum on
   // screen (a fist at y 0.95 would occlude the upright drums' heads)
@@ -1285,6 +1293,48 @@ export function createStage3D(canvas, layout, colors) {
   function debugDrums() {
     return drumMeshes.map((m, i) => ({ i, visible: m.visible, opacity: +drumMat[i].opacity.toFixed(2), transparent: drumMat[i].transparent, fading: drumFade[i].active }));
   }
+
+  // ---- the owner's drum model (public/models/Bdrum.glb) --------------------
+  // Head is the model's +y. Each drum is a scaled clone whose HEAD lands exactly
+  // on drumFace[i], so arrows, charge light, spirits, hands and letters keep
+  // aiming at the same points. The coloured cylinders stand in until it loads;
+  // then they hide and drumMat/drumMeshes point at the model's clones, so the
+  // press flash, fades and spirit pulses work on the real drum.
+  new GLTFLoader().load("/models/Bdrum.glb", (gltf) => {
+    const src = gltf.scene;
+    src.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(src);
+    const size = box.getSize(new THREE.Vector3());
+    const headR = Math.max(size.x, size.z) / 2;
+    for (let i = 0; i < 6; i++) {
+      const L = LANES3D[i];
+      const k = L.radius / headR;
+      const holder = new THREE.Group();
+      const model = src.clone(true);
+      model.scale.multiplyScalar(k);
+      // put the model's top-centre (its head) at the holder origin
+      model.position.set(-(box.min.x + box.max.x) / 2 * k, -box.max.y * k, -(box.min.z + box.max.z) / 2 * k);
+      holder.add(model);
+      if (L.upright) holder.rotation.x = Math.PI / 2;     // head (+y) turns to face the player (+z)
+      holder.position.copy(drumFace[i]);
+      // one cloned material per drum, lightly tinted toward its lane colour
+      let mat = null;
+      model.traverse((o) => {
+        if (!o.isMesh) return;
+        if (!mat) {
+          mat = o.material.clone();
+          mat.color.lerp(hexToColor(colors[drumOf(i)] || "#888888"), 0.22);
+          mat.emissive = new THREE.Color(0x000000);
+        }
+        o.material = mat;
+      });
+      scene.add(holder);
+      drumMeshes[i].visible = false;                       // retire the stand-in cylinder
+      holder.visible = drumVisible[i];
+      drumMeshes[i] = holder;
+      drumMat[i] = mat;
+    }
+  }, undefined, (err) => console.warn("drum model failed to load; keeping stand-ins", err));
 
   return { resize, update, hit, press, strike, setDrumVisible, debugDrums };
 }
