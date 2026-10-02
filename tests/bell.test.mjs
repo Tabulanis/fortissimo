@@ -31,11 +31,13 @@ const part = [
 
 // --- judgeMeasure: window ----------------------------------------------------
 {
-  const hits = [{ lane: "kick", t: 0.06, velocity: 1.0 }];
+  // a hit just past Normal's box, but inside Easy's (boxes come from DIFFICULTY)
+  const late = (DIFFICULTY.normal.window + DIFFICULTY.easy.window) / 2;
+  const hits = [{ lane: "kick", t: late, velocity: 1.0 }];
   const easy = judgeMeasure(hits, part, 0, B, DIFFICULTY.easy);
-  assert.strictEqual(easy.matched, 1, "a 0.06 s late hit counts on easy (0.08)");
+  assert.strictEqual(easy.matched, 1, `a ${late} s late hit counts on easy (${DIFFICULTY.easy.window})`);
   const normal = judgeMeasure(hits, part, 0, B, DIFFICULTY.normal);
-  assert.strictEqual(normal.matched, 0, "a 0.06 s late hit does not count on normal (0.05)");
+  assert.strictEqual(normal.matched, 0, `a ${late} s late hit does not count on normal (${DIFFICULTY.normal.window})`);
   assert.strictEqual(normal.extras, 1, "the unmatched hit is an extra on normal");
 }
 

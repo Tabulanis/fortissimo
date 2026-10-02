@@ -54,8 +54,11 @@ literally what you played. The garden shows how the band is doing.
 - **Free mode (unlockable):** bring your kit, set the tempo, play anything, ring
   the bell — any measure is accepted. Pure looper.
 - Ghosts replay EXACTLY what the player did (raw timing and loudness).
-- **Difficulty** sets "correct enough" (e.g. Easy 3/4 hits within ±80 ms,
-  Normal all within ±50 ms, Hard all within ±30 ms) and the starting tempo.
+- **Difficulty** sets "correct enough" — the lock box — and the starting tempo:
+  Easy 3/4 hits within ±120 ms, Normal all within ±85 ms, Hard all within
+  ±50 ms, Expert all within ±25 ms (no help: you have to really hit it).
+  Widened 2026-10-02 after the sixteenth-note fill wouldn't lock; every box
+  stays under half a sixteenth at its tempo.
 - **HUD:** ghost bell, lives (what costs a life: decide after playtesting),
   current part, difficulty.
 - **Settings:** hit volume, backing volume, difficulty, tempo, key bindings,
