@@ -19,6 +19,11 @@ const CSS = `
 #gr-hud .bell.recording { box-shadow: 0 0 30px rgba(255, 70, 50, 0.95); }
 #gr-hud .bell.tick { transform: scale(1.12) rotate(-8deg); }
 #gr-hud .bellkey { margin-top: 6px; font-size: 12px; opacity: 0.7; }
+#gr-hud .listen { pointer-events: auto; cursor: pointer; width: 54px; height: 54px; margin: 0 auto 12px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 26px; user-select: none;
+  background: radial-gradient(circle at 40% 35%, #9fd4ff, #2f5f8a 72%); box-shadow: 0 0 14px rgba(120, 190, 255, 0.45);
+  transition: transform 0.08s; }
+#gr-hud .listen:active { transform: scale(0.94); }
 #gr-hud .status { position: absolute; top: 64px; left: 50%; transform: translateX(-50%);
   font-size: 22px; text-shadow: 0 2px 8px #000; text-align: center; white-space: nowrap; }
 #gr-hud .status.good { color: #9dff9a; } #gr-hud .status.bad { color: #ffb070; }
@@ -36,7 +41,7 @@ const CSS = `
 .touch #gr-hud .bellkey { display: none; }
 `;
 
-export function createHud({ onBell } = {}) {
+export function createHud({ onBell, onHint } = {}) {
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -50,6 +55,7 @@ export function createHud({ onBell } = {}) {
     </div>
     <div class="status"></div>
     <div class="bellbox">
+      <div class="listen" title="Listen — hear the whole section, lit up (Tab / View)">👂</div>
       <div class="bell" title="Ghost bell — record one measure and loop it">🔔</div>
       <div class="bellkey">Space</div>
     </div>`;
@@ -59,6 +65,7 @@ export function createHud({ onBell } = {}) {
   const bell = $(".bell");
   // pointerdown, not click: rings the moment a finger lands (no tap delay)
   bell.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); onBell && onBell(); });
+  $(".listen").addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); onHint && onHint(); });
 
   let statusTimer = 0;
   return {

@@ -11,7 +11,8 @@
    MELODY parts (bass / treble), the 8 bars:
      D-pad  left down right up = notes 1-4 (bottom row)
      X A B Y (left bottom right top) = notes 5-8 (top row)
-     Menu / View = ring the ghost bell
+     Menu = ring the ghost bell
+   View (every mode) = LISTEN: play the whole section, lit up
 
    Calls back with (laneName, force 0..1, timeStamp in performance.now() ms). */
 
@@ -27,10 +28,11 @@ export const GM_DRUMS = {
 export const MIDI_BELL_NOTE = 56;   // cowbell rings the ghost bell
 
 // standard-mapping gamepad button -> lane (or "bell")
-export const PAD_BUTTONS = { 4: "hat", 3: "snare", 5: "crash", 6: "kick", 0: "tom low", 7: "tom high", 1: "bell", 9: "bell" };
+export const PAD_BUTTONS = { 4: "hat", 3: "snare", 5: "crash", 6: "kick", 0: "tom low", 7: "tom high", 1: "bell", 9: "bell", 8: "hint" };
 // melody: standard-mapping button -> bar slot 0..7 (same left/bottom/right/top order both sides)
 export const MELODY_BUTTONS = { 14: 0, 13: 1, 15: 2, 12: 3, 2: 4, 0: 5, 1: 6, 3: 7 };
-export const MELODY_BELL = [9, 8];
+export const MELODY_BELL = [9];
+export const HINT_BUTTON = 8;   // View: LISTEN to the whole section, every mode
 
 /** Pure: one MIDI message -> {lane, force} | {bell: true} | null */
 export function midiToHit(data) {
@@ -41,7 +43,7 @@ export function midiToHit(data) {
   return lane ? { lane, force: vel / 127 } : null;
 }
 
-export function createPads({ onHit, onBell, onStatus, onMelody, melodyMode = () => false } = {}) {
+export function createPads({ onHit, onBell, onStatus, onMelody, onHint, melodyMode = () => false } = {}) {
   const status = { midi: [], pads: [] };
   const look = { x: 0, y: 0 };
   const report = () => onStatus && onStatus(status);
@@ -85,9 +87,11 @@ export function createPads({ onHit, onBell, onStatus, onMelody, melodyMode = () 
             if (now[i] && !prev[i]) onMelody && onMelody(slot, 1, performance.now());
           }
           for (const i of MELODY_BELL) if (now[i] && !prev[i]) onBell && onBell();
+          if (now[HINT_BUTTON] && !prev[HINT_BUTTON]) onHint && onHint();
         } else for (const [i, what] of Object.entries(PAD_BUTTONS)) {
           if (now[i] && !prev[i]) {
             if (what === "bell") onBell && onBell();
+            else if (what === "hint") onHint && onHint();
             // analogue triggers report how far they're pulled: use it as force
             else onHit && onHit(what, Math.max(0.6, gp.buttons[i].value || 1), performance.now());
           }

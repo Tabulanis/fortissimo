@@ -90,7 +90,7 @@ const isMelody = () => partMode() !== "drums";
 let padConnected = false;   // a game controller is plugged in (the bars then show its buttons)
 let roundOffsets = [];          // every guided hit this round: seconds off its note, null = off-chart
 const results = createResults();
-const hudUI = createHud({ onBell: ringBell });
+const hudUI = createHud({ onBell: ringBell, onHint: () => playHint() });
 let autoCorrect = SET.autoCorrect;   // A toggles; also in settings
 function showDifficulty() { hudUI.setDifficulty(`${difficulty.name}${autoCorrect ? " · Auto ✓" : ""}`); }
 showDifficulty();
@@ -355,6 +355,36 @@ function makeStartButton() {
   return btn;
 }
 
+// --- LISTEN (hint) ---------------------------------------------------------
+// Plays the WHOLE section once, in time, from the next bar line (a long phrase:
+// from its own grid): the full drum groove, or the full bass line, or the full
+// melody — the original, even when Easy teaches it in steps. Each note sounds
+// through its instrument, its drum/bar flashes and the ghost hands play it.
+let hint = null;   // { notes: [{laneIdx, time, velocity, flashed}], end }
+function sectionNotes(mode) {
+  const parts = ROUNDS[roundIdx].parts.filter((p) => p.mode === mode);
+  return { notes: parts.flatMap((p) => p.part), bars: Math.max(1, ...parts.map((p) => p.bars || 1)) };
+}
+function playHint() {
+  if (!ctx || !clock || !pool || !drums) { hudUI.say("Press Start first", "bad", 1500); return; }
+  const mode = songDone() ? "drums" : partMode();
+  const { notes, bars } = sectionNotes(mode);
+  const barDur = 4 * clock.beatDur, phrase = barDur * bars;
+  const now = ctx.getOutputTimestamp().contextTime;
+  const start = clock.first + Math.ceil((now + 0.15 - clock.first) / phrase) * phrase;
+  hint = { notes: [], end: start + phrase };
+  for (const n of notes) {
+    const entry = KEYMAP_BY_LANE[n.lane];
+    if (!entry) continue;
+    const time = start + n.beat * clock.beatDur;
+    pool.noteOn({ channel: entry.idx + 70, midi: 60, baseNote: 60, buffer: laneBuffer(entry.ln), velocity: 0.8,
+      when: time, destination: laneDest(entry.ln), settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
+    hint.notes.push({ laneIdx: entry.idx, time, velocity: 0.9, flashed: false });
+  }
+  const what = mode === "drums" ? "the full beat" : mode === "bass" ? "the bass line" : "the melody";
+  hudUI.say(`👂 Listen — ${what}${bars > 1 ? ` (${bars} bars)` : ""}`, "good", Math.max(2500, (start + phrase - now) * 1000));
+}
+
 // --- ghost loops -----------------------------------------------------------
 // What was played in a pass replays as a ghost from the NEXT pass on, quieter
 // than live play, on its own channels (laneIndex + 10) so live presses never
@@ -396,6 +426,8 @@ function onKey(e) {
   const ts = ctx.getOutputTimestamp();
   const press =
     ts.contextTime + (e.timeStamp - ts.performanceTime) / 1000 - calibration;
+
+  if (e.key === "Tab") { e.preventDefault(); playHint(); return; }   // LISTEN to the whole section
 
   // at the bars: A S D F / H J K L play notes 1-8 (the A/F/H shortcuts are drums-only)
   if (isMelody()) {
@@ -479,6 +511,7 @@ function onKey(e) {
 // --- drum pads and game controllers -------------------------------------------
 const pads = createPads({
   melodyMode: () => isMelody(),
+  onHint: () => playHint(),
   onMelody: (slot, force, ts) => {
     if (!ctx || !drums || !pool || !clock) return;
     const entry = MELODY_ENTRY[partMode()][slot];
@@ -722,6 +755,14 @@ function frame() {
       ? loops.events(heardNow - 0.3, heardNow + 0.6, clock.first)
           .map((e) => ({ laneIdx: LANE_INDEX[e.lane], time: e.time, velocity: e.velocity }))
       : [];
+    // LISTEN: the ghost hands demonstrate the hint, and each note's target flashes as it sounds
+    if (hint) {
+      for (const n of hint.notes) {
+        if (n.time > heardNow - 0.3 && n.time < heardNow + 0.6) ghostHits.push(n);
+        if (!n.flashed && heardNow >= n.time) { n.flashed = true; stage3d.press(n.laneIdx, "HIT"); }
+      }
+      if (heardNow > hint.end + 0.4) hint = null;
+    }
     stage3d.update(heardNow, buildUpcoming(heardNow), ghostHits);
     tickBell(heardNow);
   } else {
@@ -818,5 +859,6 @@ if (window.__gr) window.__gr.game = {
   get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; },
   upcoming: () => (ctx ? buildUpcoming(ctx.getOutputTimestamp().contextTime) : []),
   part: () => currentPart(),
-  song: () => song(), get calibration() { return calibration; }, get loops() { return loops; },
+  song: () => song(),
+  get hint() { return hint; }, get calibration() { return calibration; }, get loops() { return loops; },
 };   // screen or headset: the renderer drives the frames
