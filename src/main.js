@@ -54,7 +54,13 @@ bootlog("stage3d built");
 stage.addEventListener("webglcontextlost", () => bootlog("WEBGL CONTEXT LOST"));
 // once running: a heartbeat with the frame rate, so a later crash shows when
 { let frames = 0; const tick = () => { frames++; requestAnimationFrame(tick); }; requestAnimationFrame(tick);
-  setInterval(() => { bootlog("alive", { fps: Math.round(frames / 5), started: !!ctx }); frames = 0; }, 5000); }
+  setInterval(() => {
+    const a = stage3d.debugArrows ? stage3d.debugArrows() : {};
+    bootlog("alive", { fps: Math.round(frames / 5), started: !!ctx,
+      round: roundIdx + 1, part: stageIdx + 1, wants: [...new Set(currentPart().map((n) => n.lane))],
+      flying: a.flying, shown: a.shown && a.shown.map((v) => (v ? 1 : 0)).join(""), taps: recentTaps.splice(0) });
+    frames = 0;
+  }, 5000); }
 if (stage3d.mobile) document.documentElement.classList.add("touch");   // touch layout (no keyboard hints)
 window.__gr = { stage3d };   // debug handle for the browser harness
 
@@ -678,10 +684,13 @@ let lastTouch = -1e9;
 // TOUCH / PEN / CLICK on the 3D view: hit the drum under the finger (any number
 // of fingers at once). A finger that lands off the drums drags the view instead.
 const drags = new Map();   // pointerId -> last x, y (look-around drags)
+const recentTaps = [];     // dev log: where taps landed and which drum they picked
 stage.style.touchAction = "none";
 stage.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "touch") lastTouch = performance.now();
   const lane = stage3d.pickDrum(e.clientX, e.clientY);
+  recentTaps.push(`${Math.round(e.clientX)},${Math.round(e.clientY)}->${lane}`);
+  if (recentTaps.length > 12) recentTaps.shift();
   if (lane < 0 || !ctx || !drums || !pool || !clock) {
     if (e.pointerType !== "mouse") { drags.set(e.pointerId, { x: e.clientX, y: e.clientY }); try { stage.setPointerCapture(e.pointerId); } catch { /* not a live pointer: the drag still works without capture */ } }
     return;
@@ -730,5 +739,7 @@ stage3d.setLoop(frame);
 // test hook (the harness robot reads the song state through this)
 if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; }, get bell() { return bell; },
-  get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; }, get calibration() { return calibration; }, get loops() { return loops; },
+  get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; },
+  upcoming: () => (ctx ? buildUpcoming(ctx.getOutputTimestamp().contextTime) : []),
+  part: () => currentPart(), get calibration() { return calibration; }, get loops() { return loops; },
 };   // screen or headset: the renderer drives the frames

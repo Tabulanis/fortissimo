@@ -2036,6 +2036,8 @@ export function createStage3D(canvas, layout, colors) {
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; }, setVrBellHandler: (fn) => { onVrBell = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */
+    /** debug: arrows in flight per lane, and which drums are shown */
+    debugArrows: () => ({ flying: [0, 1, 2, 3, 4, 5].map((i) => activeNotes.filter((e) => e.laneIdx === i).length), shown: [...drumVisible] }),
     /** debug: which ghost hands are showing right now (lane order) */
     debugGhosts: () => ghostHands.map((g) => g.group.visible),
     debugPasses: { bloom, lens, smaa, gtao, fxPass, renderer, scene },   // harness: toggle .enabled to compare

@@ -1,8 +1,10 @@
+import { makeCourtyardIR } from "./courtyardIR.js";
+
 /* mixer.js — the mixing desk. Every sound in the game goes through here.
 
    lane strips (one per drum): EQ -> pan -> level -> drum bus, plus a reverb send
    drum bus:   glue compression, so the kit sounds like one kit
-   reverb:     a generated stereo hall (the courtyard's space), returned to master
+   reverb:     the courtyard's own acoustics (courtyardIR.js), returned to master
    metronome / backing: their own faders, straight to master
    master:     a limiter last, so loud passages never clip
 
@@ -26,24 +28,14 @@ const STRIPS = {
   "tom high":{ pan: 0.3,   level: 1.14, drive: 0,  send: 0.2,  eq: [["highpass", 70, 0, 0.7], ["peaking", 450, -3, 1.0]] },
 };
 
-/** A stereo hall impulse: decaying noise that darkens as it decays. */
-function makeHall(ctx, seconds = 2.2, predelay = 0.015) {
-  const rate = ctx.sampleRate;
-  const len = Math.floor(rate * (seconds + predelay));
-  const ir = ctx.createBuffer(2, len, rate);
-  for (let ch = 0; ch < 2; ch++) {
-    const d = ir.getChannelData(ch);
-    let lp = 0;
-    const start = Math.floor(predelay * rate);
-    for (let i = start; i < len; i++) {
-      const t = (i - start) / rate;
-      const env = Math.pow(1 - t / seconds, 2.2) * Math.exp(-t * 1.6);
-      // one-pole lowpass whose cutoff falls with time: highs die first, like a real room
-      const k = 0.55 - 0.45 * (t / seconds);
-      lp += k * ((Math.random() * 2 - 1) - lp);
-      d[i] = lp * env;
-    }
-  }
+/** The courtyard's own acoustics (courtyardIR.js): side-wall flutter, the
+ *  far-wall slapback, a light open-sky tail. The convolver normalises it, so
+ *  the reverb sends keep their levels. */
+function makeCourtyard(ctx) {
+  const [l, r] = makeCourtyardIR(ctx.sampleRate, 2.0);
+  const ir = ctx.createBuffer(2, l.length, ctx.sampleRate);
+  ir.copyToChannel(l, 0);
+  ir.copyToChannel(r, 1);
   return ir;
 }
 
@@ -103,9 +95,9 @@ export function createMixer(ctx) {
 
   // --- reverb: the courtyard
   const reverb = ctx.createConvolver();
-  reverb.buffer = makeHall(ctx);
+  reverb.buffer = makeCourtyard(ctx);
   const reverbReturn = ctx.createGain();
-  reverbReturn.gain.value = 0.32;
+  reverbReturn.gain.value = 0.55;   // the courtyard (2026-10-02): side walls ~-33 dB, far-wall slap ~-35 dB under a snare hit
   reverb.connect(reverbReturn).connect(master);
 
   // --- lane strips
