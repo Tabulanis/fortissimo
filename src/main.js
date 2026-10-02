@@ -598,13 +598,22 @@ function frame() {
       : [];
     stage3d.update(heardNow, buildUpcoming(heardNow), ghostHits);
     tickBell(heardNow);
-    pads.poll();
   } else {
     // before Start: keep the courtyard (and its drums) visible, no arrows
     stage3d.update(0, []);
   }
+  pads.poll();
+  // look around: arrow keys + thumbsticks (VR ignores it: the head looks)
+  const k = (key) => (lookKeys.has(key) ? 1 : 0);
+  stage3d.setLookInput(k("ArrowRight") - k("ArrowLeft") + pads.look.x, k("ArrowUp") - k("ArrowDown") + pads.look.y);
   drawChart();
 }
+
+// arrow keys held = look around a little
+const lookKeys = new Set();
+window.addEventListener("keydown", (e) => { if (e.key.startsWith("Arrow")) { lookKeys.add(e.key); e.preventDefault(); } });
+window.addEventListener("keyup", (e) => lookKeys.delete(e.key));
+window.addEventListener("blur", () => lookKeys.clear());
 
 makeStartButton();
 makeCalibrateButton();

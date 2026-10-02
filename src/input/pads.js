@@ -7,6 +7,7 @@
      upper row  LB = hat    Y = snare      RB = crash
      lower row  LT = kick   A = tom low    RT = tom high
      B = ring the ghost bell
+     either thumbstick = look around a little (screen mode)
 
    Calls back with (laneName, force 0..1, timeStamp in performance.now() ms). */
 
@@ -35,6 +36,7 @@ export function midiToHit(data) {
 
 export function createPads({ onHit, onBell, onStatus } = {}) {
   const status = { midi: [], pads: [] };
+  const look = { x: 0, y: 0 };
   const report = () => onStatus && onStatus(status);
 
   // --- MIDI
@@ -64,6 +66,7 @@ export function createPads({ onHit, onBell, onStatus } = {}) {
     poll() {
       const pads = navigator.getGamepads ? navigator.getGamepads() : [];
       const names = [];
+      look.x = 0; look.y = 0;
       for (const gp of pads) {
         if (!gp) continue;
         names.push(gp.id);
@@ -77,9 +80,19 @@ export function createPads({ onHit, onBell, onStatus } = {}) {
           }
         }
         was.set(gp.index, now);
+        // thumbsticks: whichever is pushed further, past a small dead zone
+        for (const [ax, ay] of [[0, 1], [2, 3]]) {
+          const x = gp.axes[ax] || 0, y = gp.axes[ay] || 0;
+          const m = Math.hypot(x, y);
+          if (m < 0.18 || m <= Math.hypot(look.x, look.y)) continue;
+          const k = Math.min(1, (m - 0.18) / 0.82) / m;     // rescale past the dead zone
+          look.x = x * k; look.y = -y * k;                   // stick up = look up
+        }
       }
       if (names.join("|") !== status.pads.join("|")) { status.pads = names; report(); }
     },
     get status() { return status; },
+    /** strongest thumbstick this poll, x right / y up, -1..1 */
+    get look() { return look; },
   };
 }

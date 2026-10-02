@@ -168,6 +168,12 @@ export function createStage3D(canvas, layout, colors) {
   );
   camera.position.set(0, 1.7, 0.75);           // standing, just behind the kit (VR uses the headset)
   camera.lookAt(new THREE.Vector3(0, 1.0, -2.2));  // tilted down: both rows in view, the arcs above
+  // LOOK AROUND (screen mode): arrow keys / thumbsticks turn the view a little
+  // off this forward pose; let go and it drifts back to facing the kit
+  const baseQuat = camera.quaternion.clone();
+  const LOOK_YAW = 25 * Math.PI / 180, LOOK_PITCH = 12 * Math.PI / 180;
+  const look = { x: 0, y: 0, inX: 0, inY: 0 };
+  const _qYaw = new THREE.Quaternion(), _qPitch = new THREE.Quaternion(), _xAxis = new THREE.Vector3(1, 0, 0);
 
   // AO for everything: GTAO (screen-space) between the scene render and output
   const FX_LAYER = 1;
@@ -1427,6 +1433,16 @@ export function createStage3D(canvas, layout, colors) {
 
   function update(heardNow, upcoming, ghosts = []) {
     { const t = performance.now(); fireDt = Math.min(0.05, (t - fireT) / 1000); fireT = t; }
+    if (!vrOn()) {
+      // follow the input quickly; with no input, ease back to forward (~0.6 s)
+      const active = Math.abs(look.inX) + Math.abs(look.inY) > 0.01;
+      const k = 1 - Math.exp(-fireDt * (active ? 8 : 1.6));
+      look.x += (look.inX - look.x) * k;
+      look.y += (look.inY - look.y) * k;
+      _qYaw.setFromAxisAngle(UP, -look.x * LOOK_YAW);
+      _qPitch.setFromAxisAngle(_xAxis, look.y * LOOK_PITCH);
+      camera.quaternion.copy(_qYaw).multiply(baseQuat).multiply(_qPitch);
+    }
     updateGhostHands(heardNow, ghosts);
     updateDecoys(heardNow);
     _frameNo++;
@@ -1870,7 +1886,9 @@ export function createStage3D(canvas, layout, colors) {
   }, undefined, (err) => console.warn("drum model failed to load; keeping stand-ins", err));
 
   return { resize, update, hit, press, strike, setDrumVisible, debugDrums,
-    setLoop, addVrButton, setVrHitHandler: (fn) => { onVrHit = fn; }, setVrBellHandler: (fn) => { onVrBell = fn; },
+    setLoop, addVrButton,
+    /** look input, each -1..1: x = right, y = up (screen mode only) */
+    setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; }, setVrBellHandler: (fn) => { onVrBell = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */
     debugPasses: { bloom, lens, smaa, gtao, fxPass, renderer, scene },   // harness: toggle .enabled to compare
     debugVr: () => hands.map((h, i) => { h.group.updateWorldMatrix(true, false); const p = h.group.localToWorld(new THREE.Vector3(0, STICK_LEN, 0));
