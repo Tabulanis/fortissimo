@@ -144,6 +144,30 @@ function flagstoneTexture() {
   return { map: canvasTex(c, true), normalMap: canvasTex(heightToNormal(blurTiled(hc, 3), 2.2)), roughnessMap: canvasTex(blurTiled(rc, 2)) };
 }
 
+/* THE CROSSROADS (2026-10-02): three stations around the player — drums ahead,
+ * bass to the right, treble to the left — so the arena is a plaza where three
+ * colonnaded courts meet, with a closing wall and gate behind.
+ *   plaza    x -8..8, z -8..8 (the player near the middle)
+ *   ARMS     each court in its own frame: lateral x' -8..8, running away from
+ *            the plaza along -z'; turned by `yaw` and placed at `origin` */
+export const ARMS = {
+  drums:  { origin: [0, 0, -8], yaw: 0, length: 38 },            // ahead: pool, far wall, sunset
+  bass:   { origin: [8, 0, 0], yaw: -Math.PI / 2, length: 26 },  // to the right: the night sky
+  treble: { origin: [-8, 0, 0], yaw: Math.PI / 2, length: 26 },  // to the left
+};
+/** a point in an arm's own frame -> world */
+export function armToWorld(arm, x, y, z, out = new THREE.Vector3()) {
+  const a = ARMS[arm], c = Math.cos(a.yaw), s = Math.sin(a.yaw);
+  return out.set(a.origin[0] + x * c + z * s, y, a.origin[2] - x * s + z * c);
+}
+/** a random archer's spot on an arm's rooftops (inner roof edges, or the end wall's top) */
+export function archerSpot(arm, rand = Math.random, out = new THREE.Vector3()) {
+  const L = ARMS[arm].length;
+  if (rand() < 0.3) return armToWorld(arm, (rand() * 2 - 1) * FAR_WALL.halfWidth, FAR_WALL.top, -L - 0.5, out);
+  const side = rand() < 0.5 ? -1 : 1;
+  return armToWorld(arm, side * (ARCHER_ROOF_X + rand() * 1.5), ARCHER_ROOF_Y, -2 - rand() * (L - 6), out);
+}
+
 export function createCourtyard(scene) {
   const root = new THREE.Group();
   root.name = "courtyard";
@@ -154,106 +178,123 @@ export function createCourtyard(scene) {
   const stone = new THREE.MeshStandardMaterial({ color: SAND, roughness: 0.95, normalMap: grain.normalMap, roughnessMap: grain.roughnessMap });
   const stoneDark = new THREE.MeshStandardMaterial({ color: SAND_DARK, roughness: 1, normalMap: grain.normalMap, roughnessMap: grain.roughnessMap });
   const shadowy = new THREE.MeshStandardMaterial({ color: 0x1c1410, roughness: 1 });
-  const box = (w, h, d, mat, x, y, z) => {
+  const boxIn = (parent) => (w, h, d, mat, x, y, z) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     m.position.set(x, y, z);
     m.castShadow = true; m.receiveShadow = true;
-    root.add(m);
+    parent.add(m);
     return m;
   };
+  const box = boxIn(root);
 
-  // --- paved floor
+  // --- paving: one texture set, tiled 4 m per repeat on every floor piece
   bootlog("courtyard: floor textures");
   const flags = flagstoneTexture();
   bootlog("courtyard: floor textures done");
-  for (const t of [flags.map, flags.normalMap, flags.roughnessMap]) t.repeat.set(4, 13);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 52),
-    new THREE.MeshStandardMaterial({ map: flags.map, normalMap: flags.normalMap, roughnessMap: flags.roughnessMap,
-      roughness: 1, normalScale: new THREE.Vector2(0.8, 0.8), envMapIntensity: 0.45 }));   // stone reflects little sky
-  floor.rotation.x = -Math.PI / 2;
-  floor.position.set(0, 0.005, -20);
-  floor.receiveShadow = true;
-  root.add(floor);
+  // ONE material + texture set for every piece; each piece scales its own UVs
+  // to tile every 4 m (copies of the textures per piece cost a weak GPU dearly)
+  const floorMat = new THREE.MeshStandardMaterial({ map: flags.map, normalMap: flags.normalMap, roughnessMap: flags.roughnessMap,
+    roughness: 1, normalScale: new THREE.Vector2(0.8, 0.8), envMapIntensity: 0.45 });   // stone reflects little sky
+  const floorPiece = (w, d, x, z, parent = root) => {
+    const geo = new THREE.PlaneGeometry(w, d);
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 4, uv.getY(i) * d / 4);
+    const m = new THREE.Mesh(geo, floorMat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, 0.005, z);
+    m.receiveShadow = true;
+    parent.add(m);
+  };
+  floorPiece(16, 16, 0, 0);                       // the plaza
+  root.userData.flagsMap = flags.map;             // the pool's bottom is the same paving
 
-  // (the floor medallion made way for the reflecting pool: see pool.js)
-  root.userData.flagsMap = flags.map;   // the pool's bottom is the same paving
-
-  // --- colonnades: stylobate, entablature, roof, back wall with dark doorways
-  for (const side of [-1, 1]) {
-    box(3.2, 0.4, 50, stoneDark, side * 7.4, 0.2, -20);              // raised walkway
-    box(2.6, 1.0, 50, stone, side * 7.2, 6.9, -20);                   // beam over the columns
-    box(4.2, 0.35, 50.4, stoneDark, side * 7.9, 7.55, -20);           // roof slab (archers' ledge)
-    box(0.8, 7.6, 50, stone, side * 9.6, 3.8, -20);                   // portico back wall
-    for (let z = 0; z > -44; z -= 6.4) {                               // arched doorways (dark insets)
-      box(0.1, 3.2, 1.8, shadowy, side * 9.15, 2.0, z - 3.2);
-      const arch = new THREE.Mesh(new THREE.CircleGeometry(0.9, 24, 0, Math.PI), shadowy);
-      arch.rotation.y = -side * Math.PI / 2;
-      arch.position.set(side * 9.15, 3.6, z - 3.2);
-      root.add(arch);
-    }
-  }
-
-  // --- far building: wall with an OPEN archway, cornice, rooftop finials
-  const F = FAR_WALL;
-  box(7.0, FAR_H, 1.2, stone, -5.5, FAR_H / 2, F.z);
-  box(7.0, FAR_H, 1.2, stone, 5.5, FAR_H / 2, F.z);
-  box(4.0, FAR_H - 6.4, 1.2, stone, 0, (FAR_H + 6.4) / 2, F.z);     // over the arch
-  const archTop = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 1.2, 32, 1, false, 0, Math.PI), stone);
-  archTop.rotation.z = Math.PI / 2; archTop.rotation.y = Math.PI / 2;
-  archTop.position.set(0, 6.4, F.z);
-  root.add(archTop);
-  box(19.6, 0.6, 1.8, stoneDark, 0, FAR_H + 0.3, F.z);                // cornice
-  for (const x of [-8.5, -3.5, 3.5, 8.5]) box(0.7, 1.0, 0.7, stoneDark, x, FAR_H + 1.1, F.z);
-  box(20, FAR_H, 0.6, stoneDark, 0, FAR_H / 2, F.z - 9);              // the next wall beyond the arch
-
-  // --- terracotta pots with plants along the walkway edges, benches between
   const potMat = new THREE.MeshStandardMaterial({ color: TERRACOTTA, roughness: 0.8 });
   const leafMat = new THREE.MeshStandardMaterial({ color: LEAF, roughness: 0.9 });
   const woodMat = new THREE.MeshStandardMaterial({ color: WOOD, roughness: 0.85 });
   const potGeo = new THREE.CylinderGeometry(0.45, 0.3, 0.7, 20);
   const leafGeo = new THREE.IcosahedronGeometry(0.55, 1);
-  for (const side of [-1, 1]) {
-    for (let z = -4; z > -42; z -= 6.4) {
-      const pot = new THREE.Mesh(potGeo, potMat);
-      pot.position.set(side * 5.6, 0.75, z);
-      pot.castShadow = true; pot.receiveShadow = true;
-      root.add(pot);
-      for (let k = 0; k < 3; k++) {
-        const leaf = new THREE.Mesh(leafGeo, leafMat);
-        leaf.position.set(side * 5.6 + (Math.random() - 0.5) * 0.4, 1.4 + k * 0.35, z + (Math.random() - 0.5) * 0.4);
-        leaf.scale.setScalar(0.9 - k * 0.2);
-        leaf.castShadow = true;
-        root.add(leaf);
+  const pillarSpots = [];   // [group, x', z'] for the Pillar.glb columns, filled per arm
+
+  // --- one COURT: colonnades both sides, pots and benches, an arched end wall
+  for (const [name, A] of Object.entries(ARMS)) {
+    const g = new THREE.Group();
+    g.name = "arm-" + name;
+    g.position.set(...A.origin);
+    g.rotation.y = A.yaw;
+    root.add(g);
+    const b = boxIn(g), L = A.length;
+    floorPiece(16, L, 0, -L / 2, g);
+    for (const side of [-1, 1]) {
+      b(3.2, 0.4, L, stoneDark, side * 7.4, 0.2, -L / 2);            // raised walkway
+      b(2.6, 1.0, L, stone, side * 7.2, 6.9, -L / 2);                 // beam over the columns
+      b(4.2, 0.35, L + 0.4, stoneDark, side * 7.9, 7.55, -L / 2);     // roof slab (archers' ledge)
+      b(0.8, 7.6, L, stone, side * 9.6, 3.8, -L / 2);                 // portico back wall
+      for (let z = -3.2; z > -L + 2; z -= 6.4) {                       // arched doorways (dark insets)
+        b(0.1, 3.2, 1.8, shadowy, side * 9.15, 2.0, z);
+        const arch = new THREE.Mesh(new THREE.CircleGeometry(0.9, 24, 0, Math.PI), shadowy);
+        arch.rotation.y = -side * Math.PI / 2;
+        arch.position.set(side * 9.15, 3.6, z);
+        g.add(arch);
       }
-      box(0.5, 0.45, 1.8, woodMat, side * 6.4, 0.62, z - 3.2);       // bench
+      for (let z = -4; z > -L + 4; z -= 6.4) {                         // pots with plants, benches between
+        const pot = new THREE.Mesh(potGeo, potMat);
+        pot.position.set(side * 5.6, 0.75, z);
+        pot.castShadow = true; pot.receiveShadow = true;
+        g.add(pot);
+        for (let k = 0; k < 3; k++) {
+          const leaf = new THREE.Mesh(leafGeo, leafMat);
+          leaf.position.set(side * 5.6 + (Math.random() - 0.5) * 0.4, 1.4 + k * 0.35, z + (Math.random() - 0.5) * 0.4);
+          leaf.scale.setScalar(0.9 - k * 0.2);
+          leaf.castShadow = true;
+          g.add(leaf);
+        }
+        b(0.5, 0.45, 1.8, woodMat, side * 6.4, 0.62, z - 3.2);
+      }
+      for (let z = -1.6; z > -L + 1; z -= 3.2) pillarSpots.push([g, side * 6.8, z]);
     }
+    // the end building: wall with an OPEN archway, cornice, rooftop finials, a wall beyond
+    const ez = -L - 0.5;
+    b(7.0, FAR_H, 1.2, stone, -5.5, FAR_H / 2, ez);
+    b(7.0, FAR_H, 1.2, stone, 5.5, FAR_H / 2, ez);
+    b(4.0, FAR_H - 6.4, 1.2, stone, 0, (FAR_H + 6.4) / 2, ez);       // over the arch
+    const archTop = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 1.2, 32, 1, false, 0, Math.PI), stone);
+    archTop.rotation.z = Math.PI / 2; archTop.rotation.y = Math.PI / 2;
+    archTop.position.set(0, 6.4, ez);
+    g.add(archTop);
+    b(19.6, 0.6, 1.8, stoneDark, 0, FAR_H + 0.3, ez);                // cornice
+    for (const x of [-8.5, -3.5, 3.5, 8.5]) b(0.7, 1.0, 0.7, stoneDark, x, FAR_H + 1.1, ez);
+    b(20, FAR_H, 0.6, stoneDark, 0, FAR_H / 2, ez - 9);              // the next wall beyond the arch
   }
 
+  // --- behind the player: a closing wall with a (shut) gate, cornice
+  box(19.2, 7.6, 1.0, stone, 0, 3.8, 8.6);
+  box(3.2, 4.4, 0.1, shadowy, 0, 2.2, 8.05);                           // the gate
+  const gateArch = new THREE.Mesh(new THREE.CircleGeometry(1.6, 24, 0, Math.PI), shadowy);
+  gateArch.rotation.y = Math.PI;
+  gateArch.position.set(0, 4.4, 8.05);
+  root.add(gateArch);
+  box(19.6, 0.5, 1.6, stoneDark, 0, 7.85, 8.6);
+  // --- corner piers where the courts meet (close the gaps between their walls)
+  for (const x of [-8.8, 8.8]) for (const z of [-8.8, 8.8]) box(2.4, 8.2, 2.4, stone, x, 4.1, z);
+
   bootlog("courtyard: geometry done");
-  // --- columns: the owner's Pillar.glb, scaled to 6.3 m, both sides
+  // --- columns: the owner's Pillar.glb, scaled to 6.3 m, every court
   new GLTFLoader().load("/models/Pillar.glb", (gltf) => {
     const src = gltf.scene;
     src.updateMatrixWorld(true);
-    const b = new THREE.Box3().setFromObject(src);
-    const size = b.getSize(new THREE.Vector3());
+    const bb = new THREE.Box3().setFromObject(src);
+    const size = bb.getSize(new THREE.Vector3());
     const k = 6.3 / size.y;
     // the pillar texture is a cool grey marble; tint it toward the reference's
     // warm sandstone (one shared material — delete these lines for the raw asset)
     let warm = null;
     src.traverse((o) => { if (o.isMesh && !warm) { warm = o.material.clone(); warm.color.set(0xf2c18a); } });
-    for (const side of [-1, 1]) {
-      for (let z = 1; z >= -42; z -= 3.2) {
-        const col = src.clone(true);
-        col.scale.multiplyScalar(k);
-        // base on the walkway (y 0.4), centred on its spot
-        col.position.set(
-          side * 6.8 - (b.min.x + b.max.x) / 2 * k,
-          0.4 - b.min.y * k,
-          z - (b.min.z + b.max.z) / 2 * k,
-        );
-        col.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.material = warm; } });
-        root.add(col);
-      }
+    for (const [g, x, z] of pillarSpots) {
+      const col = src.clone(true);
+      col.scale.multiplyScalar(k);
+      col.position.set(x - (bb.min.x + bb.max.x) / 2 * k, 0.4 - bb.min.y * k, z - (bb.min.z + bb.max.z) / 2 * k);
+      col.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.material = warm; } });
+      g.add(col);
     }
   }, undefined, (err) => console.warn("Pillar.glb failed to load", err));
 

@@ -672,6 +672,9 @@ function frame() {
 // arrow keys held = look around a little
 const lookKeys = new Set();
 window.addEventListener("keydown", (e) => { if (e.key.startsWith("Arrow")) { lookKeys.add(e.key); e.preventDefault(); } });
+// DEV (temporary): Tab cycles the three stations until parts choose them
+window.addEventListener("keydown", (e) => { if (e.key !== "Tab") return; e.preventDefault();
+  const order = ["drums", "bass", "treble"]; stage3d.setStation(order[(order.indexOf(stage3d.station) + 1) % 3]); });
 window.addEventListener("keyup", (e) => lookKeys.delete(e.key));
 window.addEventListener("blur", () => lookKeys.clear());
 

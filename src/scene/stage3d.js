@@ -18,6 +18,7 @@ import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { createVrHits } from "../input/vrhits.js";
 import { createFire } from "./fire.js";
+import { createStation } from "./stations.js";
 import { createPool, poolContains, POOL, SURFACE_Y } from "./pool.js";
 import { bootlog } from "../bootlog.js";
 
@@ -229,6 +230,17 @@ export function createStage3D(canvas, layout, colors) {
   // LOOK AROUND (screen mode): arrow keys / thumbsticks turn the view a little
   // off this forward pose; let go and it drifts back to facing the kit
   const baseQuat = camera.quaternion.clone();
+  // STATIONS: drums ahead, bass to the right, treble to the left. The screen
+  // camera turns between them (in VR you turn yourself); look-around rides on top.
+  const PITCH0 = new THREE.Euler().setFromQuaternion(baseQuat, "YXZ").x;   // the drums' downward look
+  const STATIONS = {
+    drums:  { yaw: 0,            pos: new THREE.Vector3(0, 1.7, 0.75) },
+    bass:   { yaw: -Math.PI / 2, pos: new THREE.Vector3(-0.35, 1.7, 0.6) },
+    treble: { yaw: Math.PI / 2,  pos: new THREE.Vector3(0.35, 1.7, 0.6) },
+  };
+  let station = "drums";
+  const st = { yaw: 0, pos: STATIONS.drums.pos.clone() };
+  const _eul = new THREE.Euler(0, 0, 0, "YXZ");
   const LOOK_YAW = 25 * Math.PI / 180, LOOK_PITCH = 12 * Math.PI / 180;
   const look = { x: 0, y: 0, inX: 0, inY: 0 };
   const _qYaw = new THREE.Quaternion(), _qPitch = new THREE.Quaternion(), _xAxis = new THREE.Vector3(1, 0, 0);
@@ -297,6 +309,7 @@ export function createStage3D(canvas, layout, colors) {
   // the environment mock-up (owner's reference: sandstone colonnade courtyard)
   bootlog("courtyard: start");
   const courtyard = createCourtyard(scene);
+  const melodyStations = { bass: createStation(scene, "bass", { lamp: !MOBILE }), treble: createStation(scene, "treble", { lamp: !MOBILE }) };
   bootlog("courtyard: done");
   // the reflecting pool (drawn with the fx layer: after the scene, so the
   // AO's extra scene render doesn't re-render its mirror a second time)
@@ -1583,9 +1596,12 @@ export function createStage3D(canvas, layout, colors) {
       const k = 1 - Math.exp(-fireDt * (active ? 8 : 1.6));
       look.x += (look.inX - look.x) * k;
       look.y += (look.inY - look.y) * k;
-      _qYaw.setFromAxisAngle(UP, -look.x * LOOK_YAW);
-      _qPitch.setFromAxisAngle(_xAxis, look.y * LOOK_PITCH);
-      camera.quaternion.copy(_qYaw).multiply(baseQuat).multiply(_qPitch);
+      // swing toward the current station (~0.7 s), then look-around on top
+      const S = STATIONS[station], ks = 1 - Math.exp(-fireDt * 4.5);
+      st.yaw += (S.yaw - st.yaw) * ks;
+      st.pos.lerp(S.pos, ks);
+      camera.position.copy(st.pos);
+      camera.quaternion.setFromEuler(_eul.set(PITCH0 + look.y * LOOK_PITCH, st.yaw - look.x * LOOK_YAW, 0, "YXZ"));
     }
     updateGhostHands(heardNow, ghosts);
     updateDecoys(heardNow);
@@ -2032,7 +2048,9 @@ export function createStage3D(canvas, layout, colors) {
 
   bootlog("stage3d: end of build");
   return { resize, update, hit, press, strike, setDrumVisible, debugDrums,
-    setLoop, addVrButton, pickDrum, drumScreen, get mobile() { return MOBILE; },
+    setLoop, addVrButton,
+    /** turn to a station: "drums" | "bass" | "treble" */
+    setStation(name) { if (STATIONS[name]) station = name; }, get station() { return station; }, melodyStations, pickDrum, drumScreen, get mobile() { return MOBILE; },
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; }, setVrBellHandler: (fn) => { onVrBell = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */
