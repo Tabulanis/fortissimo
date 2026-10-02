@@ -38,8 +38,11 @@ const lane3Pivot = new THREE.Vector3(lanes[3].x, lanes[3].y + 0.75, lanes[3].z -
 let tipWorld = null;
 for (const child of scene.children) {
   if (child.isGroup && child.position.distanceTo(lane3Pivot) < 1e-6) {
+    // the stick is the stretching sub-group (the fist beside it keeps its shape)
+    const stickPart = child.children.find((c) => c.isGroup) || child;
+    stickPart.updateMatrixWorld(true);
     tipWorld = tipLocal.clone();
-    child.localToWorld(tipWorld);
+    stickPart.localToWorld(tipWorld);
     break;
   }
 }

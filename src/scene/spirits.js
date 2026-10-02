@@ -6,21 +6,41 @@ const IDLE_OPACITY = 0.35;
 const ACTIVE_OPACITY = 0.55;
 const FLASH_DECAY_MS = 150;
 
-function makeStick(color) {
-  const group = new THREE.Group();
-  const geo = new THREE.CylinderGeometry(STICK_RADIUS, STICK_RADIUS, STICK_LENGTH, 8);
-  // CylinderGeometry is centered; shift so the butt is at the pivot (origin).
-  geo.translate(0, -STICK_LENGTH / 2, 0);
-  const mat = new THREE.MeshBasicMaterial({
-    color,
+// FRESNEL ghost material: bright at the silhouette, nearly clear face-on —
+// the classic ghost. `opacity` on the material is mirrored into uOpacity.
+function makeFresnel(color) {
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: color.clone() }, uOpacity: { value: ACTIVE_OPACITY } },
+    vertexShader: `varying vec3 vN; varying vec3 vV;
+      void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz);
+        gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform vec3 uColor; uniform float uOpacity; varying vec3 vN; varying vec3 vV;
+      void main(){ float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2);
+        gl_FragColor = vec4(uColor * (0.35 + 1.8 * f), uOpacity * (0.18 + 0.82 * f)); }`,
     transparent: true,
-    opacity: ACTIVE_OPACITY,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
-  const mesh = new THREE.Mesh(geo, mat);
-  group.add(mesh);
-  return { group, mat };
+  mat.opacity = ACTIVE_OPACITY;
+  return mat;
+}
+
+// A GHOST HAND: a translucent fist gripping a stick — the player's own shape.
+// The fist sits at the pivot (unscaled); only the stick part stretches to reach.
+function makeStick(color) {
+  const group = new THREE.Group();
+  const mat = makeFresnel(color);
+  const stretch = new THREE.Group();
+  const geo = new THREE.CylinderGeometry(STICK_RADIUS * 1.3, STICK_RADIUS * 1.45, STICK_LENGTH, 12);
+  // CylinderGeometry is centered; shift so the butt is at the pivot (origin).
+  geo.translate(0, -STICK_LENGTH / 2, 0);
+  stretch.add(new THREE.Mesh(geo, mat));
+  group.add(stretch);
+  const fistGeo = new THREE.SphereGeometry(0.1, 20, 14);
+  fistGeo.scale(1, 0.8, 1.3);
+  group.add(new THREE.Mesh(fistGeo, mat));
+  return { group, mat, stretch };
 }
 
 function makeGlowSprite(glowTexture, color) {
@@ -39,7 +59,7 @@ function makeGlowSprite(glowTexture, color) {
 export function createSpirits(scene, lanes, colors, glowTexture, drumMats) {
   const sticks = lanes.map((lane, i) => {
     const color = colors[i].clone();
-    const { group, mat } = makeStick(color);
+    const { group, mat, stretch } = makeStick(color);
 
     // Pivot placement: far side of the drum, never blocking the head.
     let pivot;
@@ -81,11 +101,11 @@ export function createSpirits(scene, lanes, colors, glowTexture, drumMats) {
     const glow1 = makeGlowSprite(glowTexture, color);
     glow1.position.set(0, -STICK_LENGTH * 0.25, 0);
     glow1.scale.setScalar(0.12);
-    group.add(glow1);
+    stretch.add(glow1);
     const glow2 = makeGlowSprite(glowTexture, color);
     glow2.position.set(0, -STICK_LENGTH * 0.75, 0);
     glow2.scale.setScalar(0.18);
-    group.add(glow2);
+    stretch.add(glow2);
 
     group.visible = false;
     scene.add(group);
@@ -93,6 +113,7 @@ export function createSpirits(scene, lanes, colors, glowTexture, drumMats) {
     return {
       group,
       mat,
+      stretch,
       glow1,
       glow2,
       pivot,
@@ -156,7 +177,7 @@ export function createSpirits(scene, lanes, colors, glowTexture, drumMats) {
       const hits = byLane.get(i);
       // stretch the stick along its length so the tip lands exactly on the head
       // (min(1, L/reach) shrank it — the tip fell 0.38 m short)
-      if (s.reach > 0) s.group.scale.set(1, s.reach / STICK_LENGTH, 1);
+      if (s.reach > 0) s.stretch.scale.set(1, s.reach / STICK_LENGTH, 1);   // stick only — the fist keeps its shape
 
       if (hits && hits.length) {
         const next = hits[0];
@@ -240,6 +261,8 @@ export function createSpirits(scene, lanes, colors, glowTexture, drumMats) {
           s.mat.opacity += (IDLE_OPACITY - s.mat.opacity) * 0.05;
         }
       }
+
+      s.mat.uniforms.uOpacity.value = s.mat.opacity;   // Fresnel shader reads the uniform
 
       // Decay the flash.
       const fl = flashes[i];
