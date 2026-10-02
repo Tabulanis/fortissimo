@@ -13,7 +13,7 @@ import * as THREE from "three";
 
 export const BAR_Y = 0.86;        // top of the BOTTOM row (waist height); the top row sits ROW_RISE higher
 export const BAR_NEAR = 0.55;     // distance from the player's centre to the bottom row's near edge
-const ROW_RISE = 0.16, ROW_GAP = 0.03;
+const ROW_RISE = 0.34, ROW_GAP = 0.03;   // top row well above the bottom: the rows read apart (tablets especially)
 export const BAR_MID_Z = 0.6;     // the row's centre along z (behind the drum line: drums stay out of the stations' view)
 const PITCH = 0.24;               // bar spacing along a row
 const BAR_W = 0.2, BAR_T = 0.04;

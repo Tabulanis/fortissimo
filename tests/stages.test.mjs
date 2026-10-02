@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { SONG, ROUNDS, partArrows, isShown } from "../src/game/stages.js";
+import { SONG, ROUNDS, partArrows, isShown, buildUp } from "../src/game/stages.js";
 
 const laneIndexByName = (name) => ({
   hat: 0, snare: 1, crash: 2, kick: 3, "tom low": 4, "tom high": 5,
@@ -62,4 +62,19 @@ for (const p of ROUNDS[1].parts) {
   }
 }
 
+// EASY build-up: hats split into the on-beat core + the in-between add-on; tiny parts stay whole
+{
+  const easy = buildUp(ROUNDS[0]);
+  const hatParts = easy.parts.filter((p) => p.part.some((n) => n.lane === "hat"));
+  assert.deepStrictEqual(hatParts.map((p) => p.part.map((n) => n.beat)), [[0, 1, 2, 3], [0.5, 2.5, 3.5]], "hats: core then add-on");
+  assert.ok(hatParts[1].addOn && hatParts[1].label.endsWith("add"));
+  const kick = easy.parts.find((p) => p.part.some((n) => n.lane === "kick"));
+  assert.deepStrictEqual(kick.part.map((n) => n.beat), [0, 2, 2.5], "kick stays whole (its add-on would be one note)");
+  // nothing lost, nothing added: the same notes, just taught in more steps
+  const all = (r) => r.parts.flatMap((p) => p.part.map((n) => `${n.lane}@${n.beat}`)).sort();
+  for (const r of ROUNDS) assert.deepStrictEqual(all(buildUp(r)), all(r), `${r.name}: same notes`);
+  // modes keep their order: every drums step before bass before treble
+  const order = easy.parts.map((p) => p.mode);
+  assert.ok(order.lastIndexOf("drums") < order.indexOf("bass") && order.lastIndexOf("bass") < order.indexOf("treble"));
+}
 console.log("stages: all passed");

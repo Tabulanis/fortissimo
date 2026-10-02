@@ -744,11 +744,11 @@ export function createStage3D(canvas, layout, colors) {
           const dm = drumMat[i];
           if (dm && dm.emissive) {
             dm.emissive.copy(hexToColor(laneHex(i)));
-            dm.emissiveIntensity = Math.max(dm.emissiveIntensity || 0, 0.3 * vel);
+            dm.emissiveIntensity = Math.max(dm.emissiveIntensity || 0, 0.12 * vel);   // ghosts glow gently: live hits stand out
             const t0 = performance.now();
             const tick = () => { const q = (performance.now() - t0) / 150;
               if (q >= 1) { dm.emissiveIntensity = 0; return; }
-              dm.emissiveIntensity = Math.min(dm.emissiveIntensity, 0.3 * vel * (1 - q)); requestAnimationFrame(tick); };
+              dm.emissiveIntensity = Math.min(dm.emissiveIntensity, 0.12 * vel * (1 - q)); requestAnimationFrame(tick); };
             requestAnimationFrame(tick);
           }
         }
@@ -1271,6 +1271,26 @@ export function createStage3D(canvas, layout, colors) {
     scene.add(glow);
     firelights.push({ glow, radius: TARGET(i).radius, base: hexToColor(laneHex(i)).clone() });
   }
+
+  // BAR FRAMES: a glowing outline traced round each bar's top, the bars'
+  // version of the drums' charge light (a drum-sized glow is lost on a bar)
+  const barFrames = [];
+  for (const kind of ["bass", "treble"]) {
+    for (const b of melodyStations[kind].bars) {
+      const hx = b.len / 2, hz = b.radius, pad = 0.028, gap = 0.006;
+      const shape = new THREE.Shape([[-hx - pad, -hz - pad], [hx + pad, -hz - pad], [hx + pad, hz + pad], [-hx - pad, hz + pad]].map(([x, y]) => new THREE.Vector2(x, y)));
+      shape.holes.push(new THREE.Path([[-hx - gap, -hz - gap], [-hx - gap, hz + gap], [hx + gap, hz + gap], [hx + gap, -hz - gap]].map(([x, y]) => new THREE.Vector2(x, y))));
+      const frame = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({
+        color: hexToColor(BAR_HEX[kind]), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      frame.rotation.x = -Math.PI / 2;
+      frame.position.copy(b.top).add(new THREE.Vector3(0, 0.004, 0));
+      frame.layers.set(FX_LAYER);
+      frame.visible = false;
+      scene.add(frame);
+      barFrames.push(frame);
+    }
+  }
+  const _red = new THREE.Color(0xff1408);
 
   // path point p(f): lerp(spawn, face, f) + the parabolic arc lift.
   // Written into `out`; reuses module temps, allocates nothing.
@@ -1832,6 +1852,11 @@ export function createStage3D(canvas, layout, colors) {
       const r = rings[lane];
       const fl = firelights[lane];
       r.mesh.visible = false;
+      const frame = lane >= 6 ? barFrames[lane - 6] : null;
+      // the RED cue: the target itself warms to red as its arrow arrives, reddest on the beat
+      const mat = drumMat[lane];
+      if (mat && mat.color && !mat.userData.base) mat.userData.base = mat.color.clone();
+      let tint = 0;
       if (next && drumVisible[lane]) {
         const dt = next.dt;
         // charge 0..1: cubic so the brightening is fastest right before the beat
@@ -1842,10 +1867,18 @@ export function createStage3D(canvas, layout, colors) {
         fl.glow.scale.setScalar(fl.radius * 2.6 * (0.75 + 0.45 * c + 0.3 * peak));
         _mc.copy(fl.base).lerp(_white, 0.55 * c * c + 0.3 * peak);   // white-hot at the peak
         fl.glow.material.color.copy(_mc);
+        tint = Math.min(0.68, 0.58 * c + 0.15 * peak);
+        if (frame) {
+          frame.visible = true;
+          frame.material.opacity = Math.min(1, 0.15 + 0.85 * c + 0.3 * peak);
+          frame.material.color.copy(hexToColor(BAR_HEX[stationOf(lane)])).lerp(_white, 0.5 * c * c + 0.4 * peak);
+        }
       } else {
         fl.glow.visible = false;
         fl.glow.material.opacity = 0;
+        if (frame) frame.visible = false;
       }
+      if (mat && mat.userData.base) mat.color.copy(mat.userData.base).lerp(_red, tint);
     }
 
     // effect pools: sparks (gravity + fade), smoke (rise + grow + fade)

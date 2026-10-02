@@ -1,5 +1,5 @@
 <!doctype html><body style="margin:0">
-<!-- Plays every round note-perfect (drums, bass, treble; #r1 = round 1 only), reports locks, station faced, results, ghost hands; screenshots mid-take at the bars. Copy to public/_robot.html, run sink.py on :8899. Keys timed on the GAME frame clock. -->
+<!-- Plays every round note-perfect (asks the game which song it is playing: Easy builds parts up); #r1 = round 1 only. Copy to public/_robot.html, run sink.py on :8899. Keys timed on the GAME frame clock. -->
 <iframe id="f" style="width:1400px;height:900px;border:0"></iframe>
 <script type="module">
 import { ROUNDS } from "/src/game/stages.js";
@@ -28,7 +28,7 @@ f.onload = async () => {
     const variant = location.hash.slice(1) || "perfect";
     const nRounds = location.hash === "#r1" || location.hash.startsWith("#p4") ? 1 : ROUNDS.length;
     for (let round = 0; round < nRounds; round++) {
-    const SONG = ROUNDS[G.roundIdx];
+    const SONG = G.song();   // what the game is actually playing (Easy builds parts up)
     log.push(`== ${SONG.name}: ${SONG.title}`);
     for (let p = 0; p < SONG.parts.length; p++) {
       const idx = G.stageIdx;

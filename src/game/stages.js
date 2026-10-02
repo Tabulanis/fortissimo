@@ -73,6 +73,25 @@ export const ROUNDS = [
     ]),
   },
 ];
+/**
+ * EASY builds every part up (owner, 2026-10-02): first its CORE — the notes on
+ * the beat — then, once that's a ghost, an ADD-ON part with the in-between
+ * notes over it. Only split when the add-on would have 2+ notes (a one-note
+ * step is just a chore). Drums and melody alike.
+ */
+export function buildUp(round) {
+  const parts = [];
+  for (const p of round.parts) {
+    const onBeat = (n) => Math.abs(n.beat - Math.round(n.beat)) < 1e-6;
+    const core = p.part.filter(onBeat), rest = p.part.filter((n) => !onBeat(n));
+    if (core.length && rest.length >= 2) {
+      parts.push({ ...p, label: `${p.label} · core`, part: core });
+      parts.push({ ...p, label: `${p.label} · add`, part: rest, addOn: true });
+    } else parts.push(p);
+  }
+  return { ...round, parts };
+}
+
 /** the first round (older callers) */
 export const SONG = ROUNDS[0];
 

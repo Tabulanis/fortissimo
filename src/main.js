@@ -18,7 +18,7 @@ import { createStage3D } from "./scene/stage3d.js";
 import { Bell } from "./game/bell.js";
 import { Loops } from "./game/loops.js";
 import { DIFFICULTY } from "./game/difficulty.js";
-import { ROUNDS, partArrows, isShown } from "./game/stages.js";
+import { ROUNDS, partArrows, isShown, buildUp } from "./game/stages.js";
 import { gradeRound } from "./game/grade.js";
 import { createResults } from "./ui/results.js";
 import { createHud } from "./ui/hud.js";
@@ -76,7 +76,9 @@ let bell = null;                          // created when the clock starts
 let loops = null;                         // locked measures, replayed exactly as played
 // 3 ROUNDS in the same arena; each ends with an accuracy grade
 let roundIdx = 0;
-const song = () => ROUNDS[roundIdx];
+// Easy teaches every part in steps (on-beat core first, then the add-on over its ghost)
+const EASY_ROUNDS = ROUNDS.map(buildUp);
+const song = () => (difficulty === DIFFICULTY.easy ? EASY_ROUNDS : ROUNDS)[roundIdx];
 const lastRound = () => roundIdx >= ROUNDS.length - 1;
 const songDone = () => stageIdx >= song().parts.length;
 const currentPart = () => (songDone() ? [] : song().parts[stageIdx].part);
@@ -813,5 +815,6 @@ if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; }, get bell() { return bell; },
   get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; },
   upcoming: () => (ctx ? buildUpcoming(ctx.getOutputTimestamp().contextTime) : []),
-  part: () => currentPart(), get calibration() { return calibration; }, get loops() { return loops; },
+  part: () => currentPart(),
+  song: () => song(), get calibration() { return calibration; }, get loops() { return loops; },
 };   // screen or headset: the renderer drives the frames
