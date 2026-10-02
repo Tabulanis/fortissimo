@@ -64,6 +64,22 @@ literally what you played. The garden shows how the band is doing.
 - **Settings:** hit volume, backing volume, difficulty, tempo, key bindings,
   controller. VR mode after the core works.
 
+## Rounds and the three stations (decided 2026-10-02)
+- **3 rounds, same arena**, each graded on accuracy (S–D) at its end.
+- **Each round: drums -> bass -> treble.** Drum parts build the beat (4 parts);
+  then turn RIGHT to the bass, then LEFT to the treble. Melody parts can be
+  long takes (any number of bars); the bell records the whole phrase.
+- **The arena is a crossroads:** drums court ahead (pool, sunset), bass court
+  to the right, treble court to the left, closing wall + gate behind. Archers
+  on each court fire at the instrument you face.
+- **Bass / treble: 8 bars each, two rows of four.** Bottom row = notes 1–4 =
+  D-pad (left, down, right, up); top row = notes 5–8 = X A B Y (left, bottom,
+  right, top). Keys A S D F / H J K L. Menu rings the bell during melody.
+  Expert (later): the sticks add 2 more notes.
+- **Each round has a key + scale**; the 8 bars are that scale's octave.
+- Rounds are authored as Hackbeat projects (channels named like the drums,
+  plus "bass" / "treble"); see src/game/hackbeat.js.
+
 ## VR mode (later) — the drum IS the hit box
 - A hit = the moment the controller's stick tip ENTERS a drum's hit volume
   (the drumhead). That moment is the press time; auto-correct applies to it

@@ -1074,10 +1074,13 @@ export function createStage3D(canvas, layout, colors) {
   // perfect block: the strike detonates at the drum face.
   function explode(laneIdx, heardNow, power = 1) {
     const P = 0.35 + 0.65 * Math.max(0, Math.min(1, power));   // dead-on = full blast
+    // the blast is sized to what was hit: a bar is a third of a drum, and sits
+    // close to the eye (a drum-sized flash on a bar blew out the screen)
+    const S = P * Math.min(1, TARGET(laneIdx).radius / 0.19);
     const face = drumFace[laneIdx];
-    fireBurst(face, P);
+    fireBurst(face, S);
     // the fireball: blown out of the head toward the player
-    fireSim.burst(face, P, TARGET(laneIdx).upright ? { x: 0, y: 0.2, z: 1 } : { x: 0, y: 1, z: 0.3 });
+    fireSim.burst(face, S, TARGET(laneIdx).upright ? { x: 0, y: 0.2, z: 1 } : { x: 0, y: 1, z: 0.3 });
     const drumColor = hexToColor(laneHex(laneIdx));
 
     // 1. FLASH — white-hot core tinted by the drum colour,
@@ -1091,7 +1094,7 @@ export function createStage3D(canvas, layout, colors) {
       fl.sprite.material.color.copy(fl.color);
       fl.sprite.position.copy(face);
       fl.sprite.visible = true;
-      fl.power = P;
+      fl.power = S;
     }
 
     // 2. SHOCKWAVE — thin additive ring on the drumhead plane,

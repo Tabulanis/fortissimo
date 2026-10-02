@@ -6,8 +6,12 @@
    Game controllers (standard mapping), polled once per frame:
      upper row  LB = hat    Y = snare      RB = crash
      lower row  LT = kick   A = tom low    RT = tom high
-     B = ring the ghost bell
+     B = ring the ghost bell        (Menu also rings it, in every mode)
      either thumbstick = look around a little (screen mode)
+   MELODY parts (bass / treble), the 8 bars:
+     D-pad  left down right up = notes 1-4 (bottom row)
+     X A B Y (left bottom right top) = notes 5-8 (top row)
+     Menu / View = ring the ghost bell
 
    Calls back with (laneName, force 0..1, timeStamp in performance.now() ms). */
 
@@ -23,7 +27,10 @@ export const GM_DRUMS = {
 export const MIDI_BELL_NOTE = 56;   // cowbell rings the ghost bell
 
 // standard-mapping gamepad button -> lane (or "bell")
-export const PAD_BUTTONS = { 4: "hat", 3: "snare", 5: "crash", 6: "kick", 0: "tom low", 7: "tom high", 1: "bell" };
+export const PAD_BUTTONS = { 4: "hat", 3: "snare", 5: "crash", 6: "kick", 0: "tom low", 7: "tom high", 1: "bell", 9: "bell" };
+// melody: standard-mapping button -> bar slot 0..7 (same left/bottom/right/top order both sides)
+export const MELODY_BUTTONS = { 14: 0, 13: 1, 15: 2, 12: 3, 2: 4, 0: 5, 1: 6, 3: 7 };
+export const MELODY_BELL = [9, 8];
 
 /** Pure: one MIDI message -> {lane, force} | {bell: true} | null */
 export function midiToHit(data) {
@@ -34,7 +41,7 @@ export function midiToHit(data) {
   return lane ? { lane, force: vel / 127 } : null;
 }
 
-export function createPads({ onHit, onBell, onStatus } = {}) {
+export function createPads({ onHit, onBell, onStatus, onMelody, melodyMode = () => false } = {}) {
   const status = { midi: [], pads: [] };
   const look = { x: 0, y: 0 };
   const report = () => onStatus && onStatus(status);
@@ -72,7 +79,13 @@ export function createPads({ onHit, onBell, onStatus } = {}) {
         names.push(gp.id);
         const prev = was.get(gp.index) || [];
         const now = gp.buttons.map((b) => b.pressed || b.value > 0.5);
-        for (const [i, what] of Object.entries(PAD_BUTTONS)) {
+        if (melodyMode()) {
+          // the 8 bars: D-pad + face buttons; Menu / View ring the bell
+          for (const [i, slot] of Object.entries(MELODY_BUTTONS)) {
+            if (now[i] && !prev[i]) onMelody && onMelody(slot, 1, performance.now());
+          }
+          for (const i of MELODY_BELL) if (now[i] && !prev[i]) onBell && onBell();
+        } else for (const [i, what] of Object.entries(PAD_BUTTONS)) {
           if (now[i] && !prev[i]) {
             if (what === "bell") onBell && onBell();
             // analogue triggers report how far they're pulled: use it as force

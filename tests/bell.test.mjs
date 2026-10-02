@@ -186,4 +186,20 @@ const part = [
   assert.strictEqual(loops.events(0, 100, F).length, 0);
 }
 
+// --- long takes: a 2-bar phrase records on the 2-bar grid and loops every 2 bars
+{
+  const bell = new Bell({ first: 0, beatDur: 1 });           // bar = 4 s, phrase = 8 s
+  bell.ring(1.0, 2);
+  assert.strictEqual(bell.recordStart, 8, "next 2-bar boundary");
+  assert.strictEqual(bell.recordEnd, 16, "records two bars");
+  const part = [{ lane: "bass 1", beat: 0 }, { lane: "bass 5", beat: 6 }];
+  bell.add({ lane: "bass 1", t: 8, velocity: 1 });
+  bell.add({ lane: "bass 5", t: 14, velocity: 1 });
+  const r = bell.tick(16, { part, diff: DIFFICULTY.easy, free: false });
+  assert.ok(r && r.locked, "a correct 2-bar take locks");
+  assert.strictEqual(r.layer.bars, 2);
+  const loops = new Loops(4); loops.add(r.layer);
+  const ev = loops.events(16, 40, 0).map((e) => `${e.lane}@${e.time}`);
+  assert.deepStrictEqual(ev, ["bass 1@16", "bass 5@22", "bass 1@24", "bass 5@30", "bass 1@32", "bass 5@38"], "replays every 8 s from the next pass");
+}
 console.log("bell: all passed");

@@ -5,8 +5,9 @@ const laneIndexByName = (name) => ({
   hat: 0, snare: 1, crash: 2, kick: 3, "tom low": 4, "tom high": 5,
 }[name]);
 
-// four parts, each with a label and a show list
-assert.strictEqual(SONG.parts.length, 4, "four parts");
+// six parts: four drum parts, then bass, then treble
+assert.strictEqual(SONG.parts.length, 6, "six parts");
+assert.deepStrictEqual(SONG.parts.map((p) => p.mode), ["drums", "drums", "drums", "drums", "bass", "treble"]);
 assert.deepStrictEqual(SONG.parts[0].show, [3, 1], "part 1 shows exactly lanes 3 and 1");
 
 // part 1 (groove: kick on 1, 3, and-of-3) over two bars from 0.5 with bar 4, beat 1
@@ -34,7 +35,15 @@ assert.strictEqual(isShown(SONG, 99, 0), true, "past the last part, everything i
 
 // three rounds, four parts each
 assert.strictEqual(ROUNDS.length, 3, "three rounds");
-for (const r of ROUNDS) assert.strictEqual(r.parts.length, 4, `${r.name}: four parts`);
+for (const r of ROUNDS) {
+  assert.deepStrictEqual(r.parts.map((p) => p.mode), ["drums", "drums", "drums", "drums", "bass", "treble"], `${r.name}: drums, bass, treble`);
+  assert.ok(r.key && r.scale, `${r.name}: has a key and scale`);
+  for (const p of r.parts.slice(4)) {
+    assert.ok(p.part.every((n) => new RegExp(`^${p.mode} [1-8]$`).test(n.lane)), `${r.name} ${p.mode}: lanes are its 8 bars`);
+    assert.ok(p.part.every((n) => n.beat >= 0 && n.beat < 4 * p.bars), `${r.name} ${p.mode}: notes inside its ${p.bars} bars`);
+  }
+}
+assert.strictEqual(ROUNDS[2].parts[5].bars, 4, "round 3 treble is a 4-bar take");
 const fill = (r) => r.parts[3].part.filter((n) => n.lane.startsWith("tom")).map((n) => n.beat);
 // round 1: singles (one high tom, one low tom); round 3: doubles (sixteenths)
 assert.deepStrictEqual(fill(ROUNDS[0]), [3, 3.5], "round 1 fill is singles");

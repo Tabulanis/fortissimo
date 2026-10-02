@@ -13,7 +13,14 @@
  * round manifest — straight "and"s are then played at that fraction (2/3 =
  * triplet shuffle).
  * Volume column 0..64 (empty = full) becomes the note's velocity.
+ * MELODY: channels named "bass" / "treble" are the two bar instruments — a
+ * note's pitch picks its bar through the round's key + scale (the manifest);
+ * a pattern holding only one of them is a bass / treble part, as many bars
+ * long as the pattern. Notes outside the 8 bars stay as plain music.
  */
+import { instrumentNotes, slotOf, BASS_OCTAVE, TREBLE_OCTAVE } from "./scales.js";
+const MELODY_KINDS = ["bass", "treble"];
+const OCTAVE = { bass: BASS_OCTAVE, treble: TREBLE_OCTAVE };
 
 export const DRUM_LANES = ["hat", "snare", "crash", "kick", "tom low", "tom high"];   // = lane index 0..5
 export const BASE_NOTE = 60;   // Hackbeat plays a sample at its own pitch on C-5
@@ -40,23 +47,27 @@ const round6 = (x) => Math.round(x * 1e6) / 1e6;
 export function roundFromProject(project, meta = {}) {
   const rpb = project.rowsPerBeat;
   const barRows = rpb * 4;
-  const laneOfChannel = project.channels.map((ch) => {
-    const n = String(ch.name || "").trim().toLowerCase();
-    return DRUM_LANES.includes(n) ? n : null;
-  });
+  const nameOf = (ch) => String(ch.name || "").trim().toLowerCase();
+  const laneOfChannel = project.channels.map((ch) => (DRUM_LANES.includes(nameOf(ch)) ? nameOf(ch) : null));
+  const melodyOfChannel = project.channels.map((ch) => (MELODY_KINDS.includes(nameOf(ch)) ? nameOf(ch) : null));
+  const scaleNotes = Object.fromEntries(MELODY_KINDS.map((k) => [k, instrumentNotes({ key: meta.key || "C", scale: meta.scale || "major", octave: OCTAVE[k] })]));
   const used = new Set();
   const drumInst = {};   // lane -> {inst: count}
   const parts = project.order.map((pi, k) => {
     const pat = project.patterns[pi];
     const part = [], music = [];
-    for (let r = 0; r < Math.min(pat.rows, barRows); r++) {
+    const bars = Math.max(1, Math.round(pat.rows / barRows));
+    for (let r = 0; r < Math.min(pat.rows, barRows * bars); r++) {
       const row = pat.data[r] || [];
       row.forEach((cell, c) => {
         for (const ev of cellEvents(cell)) {
           const beat = round6(swingBeat((r + ev.frac) / rpb, meta.swing));
           const vel = ev.vol == null ? 1 : ev.vol / 64;
-          const lane = laneOfChannel[c];
-          if (lane) {
+          const lane = laneOfChannel[c], mk = melodyOfChannel[c];
+          const slot = mk ? slotOf(scaleNotes[mk], ev.note) : -1;
+          if (mk && slot >= 0) {
+            part.push({ lane: `${mk} ${slot + 1}`, beat, vel });
+          } else if (lane) {
             part.push({ lane, beat, vel });
             used.add(DRUM_LANES.indexOf(lane));
             (drumInst[lane] ||= {})[ev.inst] = ((drumInst[lane] || {})[ev.inst] || 0) + 1;
@@ -66,9 +77,11 @@ export function roundFromProject(project, meta = {}) {
         }
       });
     }
-    part.sort((a, b) => a.beat - b.beat || DRUM_LANES.indexOf(a.lane) - DRUM_LANES.indexOf(b.lane));
+    part.sort((a, b) => a.beat - b.beat || a.lane.localeCompare(b.lane));
+    const kinds = new Set(part.map((n) => (n.lane.startsWith("bass ") ? "bass" : n.lane.startsWith("treble ") ? "treble" : "drums")));
+    const mode = kinds.size === 1 && !kinds.has("drums") ? [...kinds][0] : "drums";
     // drums shown: every drum the round has used so far (the kit builds up part by part)
-    return { label: `Part ${k + 1}`, show: [...used], part, music };
+    return { label: mode === "drums" ? `Drums ${k + 1}` : mode === "bass" ? "Bass" : "Treble", mode, bars, show: [...used], part, music };
   });
   // each drum's sound: the sample used most on its channel
   const drumSamples = {};
@@ -82,6 +95,8 @@ export function roundFromProject(project, meta = {}) {
     title: meta.title || "Untitled",
     bpm: project.bpm,
     swing: meta.swing || 0,
+    key: meta.key || "C",
+    scale: meta.scale || "major",
     parts,
     drumSamples,
     instruments: project.instruments,
@@ -109,19 +124,25 @@ function defaultFx() {
  * @param {{bpm?:number, samples:Object<string,string>, rowsPerBeat?:number, music?:string[]}} opts
  *        samples: lane -> sample path (relative to Hackbeat's samples folder)
  */
-export function projectFromRound(round, { bpm = 80, samples, rowsPerBeat = 8, music = ["melody", "bass", "pad", "extra"] } = {}) {
+export function projectFromRound(round, { bpm = 80, samples, rowsPerBeat = 8, music = ["bass", "treble", "pad", "extra"] } = {}) {
   const instruments = DRUM_LANES.map((lane) => ({ path: samples[lane], name: lane }));
+  for (const k of MELODY_KINDS) instruments.push({ path: samples[k] || `garden/${k}.wav`, name: k });
   const channels = [...DRUM_LANES, ...music].map((name) => ({ name, mute: false, solo: false, fx: defaultFx() }));
-  const rows = rowsPerBeat * 4;
+  const scaleNotes = Object.fromEntries(MELODY_KINDS.map((k) => [k, instrumentNotes({ key: round.key || "C", scale: round.scale || "major", octave: OCTAVE[k] })]));
   const unswing = (b) => (round.swing && Math.abs((b % 1) - round.swing) < 1e-6 ? Math.floor(b) + 0.5 : b);
-  const patterns = round.parts.map(({ part }) => {
+  const patterns = round.parts.map(({ part, bars = 1 }) => {
+    const rows = rowsPerBeat * 4 * bars;
     const data = Array.from({ length: rows }, () => Array(channels.length).fill(null));
     for (const n of part) {
       const b = unswing(n.beat);
       const pos = b * rowsPerBeat;
       const r = Math.floor(pos + 1e-9), frac = pos - r;
-      const c = DRUM_LANES.indexOf(n.lane);
-      const note = { note: BASE_NOTE, inst: c, vol: n.vel == null || n.vel >= 1 ? null : Math.round(n.vel * 64) };
+      const [mk, slotTxt] = n.lane.split(" ");
+      const melodic = MELODY_KINDS.includes(mk) && /^\d$/.test(slotTxt || "");
+      const c = melodic ? channels.findIndex((ch) => ch.name === mk) : DRUM_LANES.indexOf(n.lane);
+      const pitch = melodic ? scaleNotes[mk][+slotTxt - 1] : BASE_NOTE;
+      const inst = melodic ? DRUM_LANES.length + MELODY_KINDS.indexOf(mk) : c;
+      const note = { note: pitch, inst, vol: n.vel == null || n.vel >= 1 ? null : Math.round(n.vel * 64) };
       if (frac < 1e-6) data[r][c] = note;
       else {
         // off the grid: split the row into thirds (triplet feel) and place the note in its slot

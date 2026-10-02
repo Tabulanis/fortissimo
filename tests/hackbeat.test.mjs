@@ -11,16 +11,18 @@ for (const r of ROUNDS) {
   const proj = projectFromRound({ ...r, swing }, { samples });
   // looks like a Hackbeat project
   assert.strictEqual(proj.kind, "tracker");
-  assert.strictEqual(proj.patterns.length, 4);
+  assert.strictEqual(proj.patterns.length, r.parts.length);
   assert.strictEqual(proj.channels.slice(0, 6).map((c) => c.name).join(","), DRUM_LANES.join(","));
   assert.ok(proj.patterns.every((p) => p.data.length === p.rows && p.data.every((row) => row.length === proj.channels.length)));
-  const back = roundFromProject(JSON.parse(JSON.stringify(proj)), { swing });
+  const back = roundFromProject(JSON.parse(JSON.stringify(proj)), { swing, key: r.key, scale: r.scale });
   assert.strictEqual(back.parts.length, r.parts.length, `${r.name}: part count`);
   r.parts.forEach((p, i) => {
     assert.deepStrictEqual(back.parts[i].part.map(key).sort(), p.part.map(key).sort(), `${r.name} part ${i + 1} notes`);
+    assert.strictEqual(back.parts[i].mode, p.mode, `${r.name} part ${i + 1} mode`);
+    assert.strictEqual(back.parts[i].bars, p.bars, `${r.name} part ${i + 1} length`);
   });
   // the drum sounds come back from the channels' samples
-  for (const lane of new Set(r.parts.flatMap((p) => p.part.map((n) => n.lane)))) assert.strictEqual(back.drumSamples[lane], samples[lane]);
+  for (const lane of new Set(r.parts.flatMap((p) => p.part.map((n) => n.lane)).filter((l) => DRUM_LANES.includes(l)))) assert.strictEqual(back.drumSamples[lane], samples[lane]);
 }
 
 // swing written IN Hackbeat (a row split in 3) reads exactly, no manifest swing needed

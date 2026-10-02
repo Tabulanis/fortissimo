@@ -38,14 +38,18 @@ export class Bell {
 
   get state() { return this._mode; }
   get recordStart() { return this._recordStart; }
-  get recordEnd() { return this._recordStart + this.barDur; }
+  get recordEnd() { return this._recordStart + this._phraseDur(); }
+  _phraseDur() { return this.barDur * (this._bars || 1); }
 
-  ring(now) {
+  /** ring: record the next phrase of `bars` bars (melody parts can be long),
+   *  starting on the phrase grid counted from the first beat */
+  ring(now, bars = 1) {
     if (this._mode !== "idle") return;
     this._mode = "armed";
+    this._bars = bars;
     const threshold = now + 0.05;
-    const k = Math.floor((threshold - this.first) / this.barDur);
-    this._recordStart = this.first + (k + 1) * this.barDur;
+    const k = Math.floor((threshold - this.first) / this._phraseDur());
+    this._recordStart = this.first + (k + 1) * this._phraseDur();
     this._hits = [];
   }
 
@@ -73,12 +77,14 @@ export class Bell {
       : judgeMeasure(measure, part, this._recordStart, this.beatDur, diff);
     if (!judge.pass) {
       this._hits = this._hits.filter((h) => h.t >= hi);   // keep the next bar's early hits
-      this._recordStart += this.barDur;
+      this._recordStart += this._phraseDur();
       return { locked: false, judge };
     }
     this._hits = measure;
+    const bars = this._bars || 1;
     const layer = {
-      startBar: Math.round((this._recordStart - this.first) / this.barDur) + 1,
+      bars,                                                                       // replays every `bars` bars
+      startBar: Math.round((this._recordStart - this.first) / this.barDur) + bars,   // from the NEXT pass
       hits: this._hits.map((h) => ({ lane: h.lane, pos: h.t - this._recordStart, velocity: h.velocity })),
     };
     this._hits = [];

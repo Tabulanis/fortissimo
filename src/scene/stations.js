@@ -27,10 +27,17 @@ function labelTexture(text) {
   const c = document.createElement("canvas");
   c.width = c.height = 128;
   const g = c.getContext("2d");
-  g.font = "bold 84px system-ui, sans-serif";
-  g.textAlign = "center"; g.textBaseline = "middle";
-  g.lineWidth = 10; g.strokeStyle = "rgba(0,0,0,0.55)"; g.strokeText(text, 64, 70);
-  g.fillStyle = "#fff8ec"; g.fillText(text, 64, 70);
+  g.lineWidth = 10; g.strokeStyle = "rgba(0,0,0,0.55)"; g.fillStyle = "#fff8ec";
+  const DPAD = { dL: Math.PI, dD: Math.PI / 2, dR: 0, dU: -Math.PI / 2 };   // D-pad arrows, drawn (no font needed)
+  if (text in DPAD) {
+    const a = DPAD[text], tri = [[44, 0], [-30, -36], [-30, 36]].map(([x, y]) => [64 + x * Math.cos(a) - y * Math.sin(a), 64 + x * Math.sin(a) + y * Math.cos(a)]);
+    g.beginPath(); tri.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath();
+    g.stroke(); g.fill();
+  } else {
+    g.font = "bold 84px system-ui, sans-serif";
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.strokeText(text, 64, 70); g.fillText(text, 64, 70);
+  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;

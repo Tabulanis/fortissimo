@@ -26,6 +26,8 @@ import { createMixer } from "./audio/mixer.js";
 import { loadSettings, createSettings } from "./ui/settings.js";
 import { createPads } from "./input/pads.js";
 import { bootlog } from "./bootlog.js";
+import { makeMelodyVoices } from "./audio/melody.js";
+import { instrumentNotes, BASS_OCTAVE, TREBLE_OCTAVE } from "./game/scales.js";
 bootlog("page", { ua: navigator.userAgent, screen: `${screen.width}x${screen.height}`, dpr: window.devicePixelRatio,
   view: `${innerWidth}x${innerHeight}`, memGB: navigator.deviceMemory, cores: navigator.hardwareConcurrency });
 window.addEventListener("error", (e) => bootlog("error", { msg: String(e.message), at: `${e.filename}:${e.lineno}` }));
@@ -78,6 +80,11 @@ const song = () => ROUNDS[roundIdx];
 const lastRound = () => roundIdx >= ROUNDS.length - 1;
 const songDone = () => stageIdx >= song().parts.length;
 const currentPart = () => (songDone() ? [] : song().parts[stageIdx].part);
+const partObj = () => (songDone() ? null : song().parts[stageIdx]);
+const partBars = () => (partObj() && partObj().bars) || 1;            // melody takes can be long
+const partMode = () => (partObj() && partObj().mode) || "drums";       // "drums" | "bass" | "treble"
+const isMelody = () => partMode() !== "drums";
+let padConnected = false;   // a game controller is plugged in (the bars then show its buttons)
 let roundOffsets = [];          // every guided hit this round: seconds off its note, null = off-chart
 const results = createResults();
 const hudUI = createHud({ onBell: ringBell });
@@ -108,6 +115,7 @@ hudUI.setLives(3);
 
 function applyStage() {
   for (let i = 0; i < 6; i++) stage3d.setDrumVisible(i, isShown(song(), stageIdx, i));
+  stage3d.setStation(isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left
   stageMessage();
 }
 
@@ -121,15 +129,23 @@ function stageMessage() {
   } else if (songDone()) {
     hudUI.say("Song complete! Play anything — ring the bell 🔔 to add a measure", "good");
   } else {
-    hudUI.say(stage3d.mobile ? "Follow the arrows — tap the drums. Got it? Tap the bell 🔔"
-      : "Follow the arrows. Got it? Ring the bell 🔔 (Space)");
+    const m = partMode(), bars = partBars();
+    const take = bars > 1 ? ` (${bars}-bar take)` : "";
+    if (m !== "drums") {
+      const where = m === "bass" ? "Bass — turned right" : "Treble — turned left";
+      const how = stage3d.mobile ? "tap the bars" : padConnected ? "D-pad + X A B Y" : "keys A S D F · H J K L";
+      hudUI.say(`${where}: ${how}${take}. Got it? Ring the bell 🔔 ${padConnected ? "(Menu)" : stage3d.mobile ? "" : "(Space)"}`);
+    } else {
+      hudUI.say(stage3d.mobile ? "Follow the arrows — tap the drums. Got it? Tap the bell 🔔"
+        : "Follow the arrows. Got it? Ring the bell 🔔 (Space)");
+    }
   }
 }
 
 function ringBell() {
   if (!bell || !ctx) { hudUI.say("Press Start first", "bad", 1500); return; }
   if (bell.state !== "idle") return;
-  bell.ring(ctx.getOutputTimestamp().contextTime);
+  bell.ring(ctx.getOutputTimestamp().contextTime, partBars());
   hudUI.setBellState("armed");
   hudUI.say("Get ready — recording starts on the next bar…");
 }
@@ -151,8 +167,8 @@ function tickBell(heardNow) {
       for (const e of one.events(ctx.currentTime, scheduledUntil, clock.first)) {
         const entry = KEYMAP_BY_LANE[e.lane];
         if (!entry) continue;
-        pool.noteOn({ channel: entry.idx + 10, midi: 60, baseNote: 60, buffer: drums[entry.ln.drum],
-          velocity: e.velocity * 0.85, when: e.time, destination: mixer.lane(entry.ln.name),
+        pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, buffer: laneBuffer(entry.ln),
+          velocity: e.velocity * 0.85, when: e.time, destination: laneDest(entry.ln),
           settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
       }
     }
@@ -174,9 +190,10 @@ function endRound() {
   const stats = gradeRound(roundOffsets, difficulty.window);
   results.show({
     round: song().name, title: song().title, stats, last: lastRound(),
-    onNext: () => {
+    onNext: async () => {
       if (lastRound()) { stageMessage(); return; }
       roundIdx++;
+      await buildMelodyVoices();   // the new round's key + scale
       stageIdx = 0;
       roundOffsets = [];
       if (loops) loops.clear();
@@ -209,6 +226,33 @@ const KEYMAP = {};
 // lane NAME -> entry (ghost events carry lane names)
 const KEYMAP_BY_LANE = {};
 for (const e of Object.values(KEYMAP)) KEYMAP_BY_LANE[e.ln.name] = e;
+// the 16 melody bars as lanes: "bass 1".."bass 8", "treble 1".."treble 8"
+const MELODY_KEYS = { a: 0, s: 1, d: 2, f: 3, h: 4, j: 5, k: 6, l: 7 };
+const MELODY_LETTERS = ["A", "S", "D", "F", "H", "J", "K", "L"];
+const PAD_LABELS = ["dL", "dD", "dR", "dU", "X", "A", "B", "Y"];   // drawn as D-pad arrows / face letters
+const MELODY_ENTRY = { bass: [], treble: [] };
+for (const kind of ["bass", "treble"]) {
+  for (let slot = 0; slot < 8; slot++) {
+    const name = `${kind} ${slot + 1}`;
+    const e = { idx: 6 + (kind === "treble" ? 8 : 0) + slot, ln: { name, key: MELODY_LETTERS[slot].toLowerCase(), kind, slot } };
+    KEYMAP_BY_LANE[name] = e;
+    MELODY_ENTRY[kind][slot] = e;
+  }
+}
+// the melody voices, built for the current round's key + scale
+let melodyVoices = { bass: [], treble: [] };
+async function buildMelodyVoices() {
+  if (!ctx) return;
+  const { key = "C", scale = "major" } = song();
+  const [b, t] = await Promise.all([
+    makeMelodyVoices(ctx.sampleRate, instrumentNotes({ key, scale, octave: BASS_OCTAVE }), "bass"),
+    makeMelodyVoices(ctx.sampleRate, instrumentNotes({ key, scale, octave: TREBLE_OCTAVE }), "treble"),
+  ]);
+  melodyVoices = { bass: b, treble: t };
+}
+// one place that knows where a lane's sound comes from and where it goes
+const laneBuffer = (ln) => (ln.kind ? melodyVoices[ln.kind][ln.slot] : drums[ln.drum]);
+const laneDest = (ln) => mixer.lane(ln.kind || ln.name);
 
 // --- calibration ----------------------------------------------------------
 let calibration = loadCalib();   // seconds, subtracted from every press time
@@ -268,6 +312,7 @@ function makeStartButton() {
     masterGain = mixer.master;
 
     drums = await makeDrums(ctx.sampleRate);
+    await buildMelodyVoices();   // bass + treble in this round's key
     pool = new VoicePool(ctx);
 
     clock = startClock(ctx, {
@@ -322,13 +367,13 @@ function scheduleGhosts() {
     const entry = KEYMAP_BY_LANE[e.lane];
     if (!entry) continue;
     pool.noteOn({
-      channel: entry.idx + 10,
+      channel: entry.idx + 40,   // ghosts on their own channels: live play never cuts them
       midi: 60,
       baseNote: 60,
-      buffer: drums[entry.ln.drum],
+      buffer: laneBuffer(entry.ln),
       velocity: e.velocity * 0.85,   // exactly as played, a touch under live play
       when: e.time,
-      destination: mixer.lane(entry.ln.name),
+      destination: laneDest(entry.ln),
       settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
     });
   }
@@ -347,6 +392,17 @@ function onKey(e) {
   const ts = ctx.getOutputTimestamp();
   const press =
     ts.contextTime + (e.timeStamp - ts.performanceTime) / 1000 - calibration;
+
+  // at the bars: A S D F / H J K L play notes 1-8 (the A/F/H shortcuts are drums-only)
+  if (isMelody()) {
+    const slot = MELODY_KEYS[e.key.toLowerCase()];
+    if (slot != null) {
+      e.preventDefault();
+      const entry = MELODY_ENTRY[partMode()][slot];
+      hitLane(entry.idx, entry.ln, press, 1);
+      return;
+    }
+  }
 
   if (e.key === "g" || e.key === "G") {
     e.preventDefault();
@@ -418,6 +474,13 @@ function onKey(e) {
 // 1 for keys) — it scales the loudness on top of the timing.
 // --- drum pads and game controllers -------------------------------------------
 const pads = createPads({
+  melodyMode: () => isMelody(),
+  onMelody: (slot, force, ts) => {
+    if (!ctx || !drums || !pool || !clock) return;
+    const entry = MELODY_ENTRY[partMode()][slot];
+    const o = ctx.getOutputTimestamp();
+    hitLane(entry.idx, entry.ln, o.contextTime + (ts - o.performanceTime) / 1000 - calibration, force);
+  },
   onHit: (laneName, force, ts) => {
     if (!ctx || !drums || !pool || !clock) return;
     const entry = KEYMAP_BY_LANE[laneName];
@@ -428,6 +491,10 @@ const pads = createPads({
   },
   onBell: () => ringBell(),
   onStatus: (st) => {
+    // a controller in hand: the bars show its buttons instead of keyboard letters
+    padConnected = st.pads.length > 0;
+    for (const k of ["bass", "treble"]) stage3d.melodyStations[k].setLabels(padConnected ? PAD_LABELS : MELODY_LETTERS);
+    stageMessage();
     const parts = [...st.midi.map((n) => "🥁 " + n), ...st.pads.map((n) => "🎮 " + n.split("(")[0].trim())];
     if (parts.length) hudUI.say("Connected: " + parts.join(" · "), "good", 3000);
   },
@@ -436,6 +503,7 @@ const pads = createPads({
 // --- VR: a stick tip entering a drumhead (force = stick speed) --------------
 const KEYMAP_BY_IDX = [];
 for (const e of Object.values(KEYMAP)) KEYMAP_BY_IDX[e.idx] = e;
+for (const kind of ["bass", "treble"]) for (const e of MELODY_ENTRY[kind]) KEYMAP_BY_IDX[e.idx] = e;
 stage3d.setVrHitHandler((idx, force, ms) => {
   if (!ctx || !drums || !pool || !clock) return;
   const entry = KEYMAP_BY_IDX[idx];
@@ -451,7 +519,7 @@ function hitLane(idx, lane, press, padVel = 1) {
   // timing against this lane's chart notes, loop-wrapped
   const partBeats = currentPart().filter((n) => n.lane === lane.name).map((n) => n.beat);
   const j = partBeats.length
-    ? nearestInLoop(partBeats, 4, clock.first, clock.beatDur, press)
+    ? nearestInLoop(partBeats, 4 * partBars(), clock.first, clock.beatDur, press)
     : null;
   // off-chart: no note nearby at all — play quietly, label OFF, stay out of the chart
   const free = mode === "free" || songDone() || !partBeats.length;   // not in this part: just play
@@ -482,10 +550,10 @@ function hitLane(idx, lane, press, padVel = 1) {
     channel: idx,
     midi: 60,
     baseNote: 60,
-    buffer: drums[lane.drum],
+    buffer: laneBuffer(lane),
     velocity: vel,
     when: ctx.currentTime,
-    destination: mixer.lane(lane.name),
+    destination: laneDest(lane),
     settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
   });
 
@@ -579,7 +647,7 @@ function buildUpcoming(heardNow) {
   // arrows only for the part you're learning; none in free play
   if (mode === "free" || songDone()) return [];
   const part = (window.__gr && window.__gr.game && window.__gr.game.testPart) || currentPart();   // testPart: harness only
-  return partArrows(part, (n) => LANE_INDEX[n], clock.first, 4 * clock.beatDur,
+  return partArrows(part, (n) => LANE_INDEX[n], clock.first, 4 * partBars() * clock.beatDur,
                     clock.beatDur, heardNow - 0.6, heardNow + APPROACH_S);
 }
 
@@ -675,9 +743,7 @@ function frame() {
 // arrow keys held = look around a little
 const lookKeys = new Set();
 window.addEventListener("keydown", (e) => { if (e.key.startsWith("Arrow")) { lookKeys.add(e.key); e.preventDefault(); } });
-// DEV (temporary): Tab cycles the three stations until parts choose them
-window.addEventListener("keydown", (e) => { if (e.key !== "Tab") return; e.preventDefault();
-  const order = ["drums", "bass", "treble"]; stage3d.setStation(order[(order.indexOf(stage3d.station) + 1) % 3]); });
+
 window.addEventListener("keyup", (e) => lookKeys.delete(e.key));
 window.addEventListener("blur", () => lookKeys.clear());
 
