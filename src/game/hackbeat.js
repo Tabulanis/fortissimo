@@ -7,7 +7,9 @@
  *   "treble bottom" "treble top"                        the treble station's two rows
  *   anything else                                       backing music
  * Each ROW is its own instrument with FOUR bars: the four different notes you
- * write on that channel across the song, low -> high (owner, 2026-10-02: e.g.
+ * write on that channel across the song, low -> high. OCTAVES FOLD (owner):
+ * the same note name in another octave is the same bar, and the bar sounds in
+ * the octave used most on that row (freestyle mode will get an octave switch) (owner, 2026-10-02: e.g.
  * bass top = horns, bass bottom = bells; treble top = xylophone, bottom =
  * strings). Bottom row = bars 1-4 (D-pad), top row = bars 5-8 (X A B Y).
  * SOUNDS come from the project: the sample on a channel is that drum's / row's
@@ -59,17 +61,24 @@ export function roundFromProject(project, meta = {}) {
   const rowOf = project.channels.map((ch) => ROW_CHANNELS[nameOf(ch)] || null);
   const patterns = project.order.map((pi) => project.patterns[pi]).filter(Boolean);
 
-  // pass 1: each row's four bars = the distinct notes written on it, low -> high
-  const rowNotes = {};                                   // "bass 0" -> sorted notes
+  // pass 1: each row's four bars = the distinct NOTE NAMES written on it
+  // (octaves fold), each sounding in its most-used octave, low -> high
+  const rowUse = {};                                     // "bass 0" -> {pitch class: {note: count}}
   patterns.forEach((pat) => pat.data.forEach((row) => row.forEach((cell, c) => {
     if (!rowOf[c]) return;
     const key = `${rowOf[c].kind} ${rowOf[c].row}`;
-    for (const ev of cellEvents(cell)) (rowNotes[key] ||= new Set()).add(ev.note);
+    for (const ev of cellEvents(cell)) {
+      const pc = ((ev.note % 12) + 12) % 12;
+      ((rowUse[key] ||= {})[pc] ||= {})[ev.note] = ((rowUse[key][pc] || {})[ev.note] || 0) + 1;
+    }
   })));
-  for (const [key, set] of Object.entries(rowNotes)) {
-    const sorted = [...set].sort((a, b) => a - b);
-    if (sorted.length > 4) warnings.push(`${project.channels[rowOf.findIndex((r) => r && `${r.kind} ${r.row}` === key)].name}: ${sorted.length} different notes — a row has 4 bars, so the highest ${sorted.length - 4} are left out`);
-    rowNotes[key] = sorted.slice(0, 4);
+  const rowNotes = {};                                   // "bass 0" -> the bars' sounding notes, low -> high
+  const rowPc = {};                                      // "bass 0" -> the bars' pitch classes, same order
+  for (const [key, byPc] of Object.entries(rowUse)) {
+    const bars = Object.entries(byPc).map(([pc, notes]) => ({ pc: +pc, note: +mostUsed(notes) })).sort((a, b) => a.note - b.note);
+    if (bars.length > 4) warnings.push(`${project.channels[rowOf.findIndex((r) => r && `${r.kind} ${r.row}` === key)].name}: ${bars.length} different notes — a row has 4 bars, so the highest ${bars.length - 4} are left out`);
+    rowNotes[key] = bars.slice(0, 4).map((b) => b.note);
+    rowPc[key] = bars.slice(0, 4).map((b) => b.pc);
   }
 
   // pass 2: the parts
@@ -92,7 +101,7 @@ export function roundFromProject(project, meta = {}) {
             (instCount[drum] ||= {})[ev.inst] = (instCount[drum][ev.inst] || 0) + 1;
             (noteCount[drum] ||= {})[ev.note] = (noteCount[drum][ev.note] || 0) + 1;
           } else if (row) {
-            const slot = rowNotes[`${row.kind} ${row.row}`].indexOf(ev.note);
+            const slot = rowPc[`${row.kind} ${row.row}`].indexOf(((ev.note % 12) + 12) % 12);   // octaves fold
             if (slot < 0) continue;                       // one of the left-out notes
             const lane = `${row.kind} ${row.row * 4 + slot + 1}`;
             part.push({ lane, beat, vel });

@@ -49,11 +49,11 @@ for (const r of ROUNDS) {
 {
   const proj = projectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] }, { samples, melody: melodyFor(ROUNDS[0]) });
   const ch = proj.channels.findIndex((c) => c.name === "bass top");
-  [67, 60, 64, 72, 71].forEach((note, i) => (proj.patterns[0].data[i * 4][ch] = { note, inst: 7, vol: null }));   // slot 07 = the bass sample
+  [67, 60, 64, 69, 71].forEach((note, i) => (proj.patterns[0].data[i * 4][ch] = { note, inst: 7, vol: null }));   // G C E A B: five note names (slot 07 = the bass sample)
   const r = roundFromProject(proj);
-  // bass top = bars 5-8: 60 64 67 71 (72 is the fifth note: left out, warned)
+  // bass top = bars 5-8: C E G A (B, the fifth note name, is left out and warned about)
   assert.deepStrictEqual(r.parts[0].part.filter((n) => n.lane.startsWith("bass")).map((n) => n.lane), ["bass 7", "bass 5", "bass 6", "bass 8"]);
-  assert.deepStrictEqual([5, 6, 7, 8].map((b) => r.sounds[`bass ${b}`].note), [60, 64, 67, 71]);
+  assert.deepStrictEqual([5, 6, 7, 8].map((b) => r.sounds[`bass ${b}`].note), [60, 64, 67, 69]);
   assert.strictEqual(r.warnings.length, 2, "one for the fifth note, one for drums+bass in one pattern");
   assert.ok(r.warnings.some((w) => /5 different notes/.test(w)));
 }
@@ -83,5 +83,15 @@ for (const r of ROUNDS) {
   assert.strictEqual(roundFromProject(proj).parts[0].part[0].lane, "kick");
 }
 
+// OCTAVES FOLD: the same note name in another octave is the same bar, sounding in the row's most-used octave
+{
+  const proj = projectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] }, { samples, melody: melodyFor(ROUNDS[0]) });
+  const ch = proj.channels.findIndex((c) => c.name === "treble top");
+  [60, 72, 60, 64].forEach((note, i) => (proj.patterns[0].data[i * 8][ch] = { note, inst: 8, vol: null }));   // C, C an octave up, C, E
+  const r = roundFromProject(proj);
+  assert.deepStrictEqual(r.parts[0].part.filter((n) => n.lane.startsWith("treble")).map((n) => n.lane), ["treble 5", "treble 5", "treble 5", "treble 6"], "both Cs are bar 5");
+  assert.strictEqual(r.sounds["treble 5"].note, 60, "it sounds in the octave used most");
+  assert.strictEqual(r.sounds["treble 6"].note, 64);
+}
 assert.deepStrictEqual(cellEvents(null), []);
 console.log("hackbeat ok");
