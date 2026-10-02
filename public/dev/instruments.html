@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instruments — Garden Rhythm dev</title>
+<style>
+  :root { --bg:#16110f; --card:#241a17; --ink:#f4e9dc; --dim:#b7a493; --bass:#c9773a; --treble:#7fb6e6; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.4 system-ui, sans-serif; user-select:none; }
+  header { padding:14px 18px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; border-bottom:1px solid #3a2c25; }
+  h1 { font-size:18px; margin:0 12px 0 0; }
+  select, button { font:inherit; color:var(--ink); background:var(--card); border:1px solid #4a382f; border-radius:8px; padding:6px 10px; }
+  .mode button.on { background:#5a3a22; border-color:var(--bass); }
+  .mode button.on.treble { background:#23405a; border-color:var(--treble); }
+  main { padding:18px; display:grid; gap:22px; }
+  .row h2 { font-size:14px; margin:0 0 8px; color:var(--dim); font-weight:600; letter-spacing:1px; }
+  .bars { display:grid; grid-template-columns:repeat(8, 1fr); gap:8px; }
+  .bar { border-radius:10px; padding:14px 6px 10px; text-align:center; cursor:pointer; background:var(--card);
+         border:2px solid transparent; transition: transform .05s, box-shadow .15s; }
+  .bar .n { font-size:20px; font-weight:700; } .bar .k { margin-top:6px; font-size:13px; color:var(--dim); }
+  .bass .bar { box-shadow: inset 0 -6px 0 rgba(201,119,58,.35); } .treble .bar { box-shadow: inset 0 -6px 0 rgba(127,182,230,.35); }
+  .row.active .bar { border-color:#4a382f; }
+  .bar.hit { transform:scale(.96); }
+  .bass .bar.hit { box-shadow:0 0 22px var(--bass); } .treble .bar.hit { box-shadow:0 0 22px var(--treble); }
+  #start { position:fixed; inset:0; display:grid; place-items:center; background:rgba(0,0,0,.75); font-size:22px; cursor:pointer; }
+  .note { color:var(--dim); font-size:13px; }
+  @media (max-width:640px) { .bar .n { font-size:15px; } .bar .k { font-size:11px; } }
+</style></head>
+<body>
+<header>
+  <h1>🎵 Instruments</h1>
+  <div class="mode"><button id="m-bass" class="on">Bass</button> <button id="m-treble" class="treble">Treble</button></div>
+  <label>Key <select id="key"></select></label>
+  <label>Scale <select id="scale"></select></label>
+  <span class="note" id="pad">no controller — press any button on it</span>
+</header>
+<main>
+  <div class="row treble" id="row-treble"><h2>TREBLE — chime</h2><div class="bars"></div></div>
+  <div class="row bass active" id="row-bass"><h2>BASS — bronze marimba</h2><div class="bars"></div></div>
+  <p class="note">Controller: D-pad ◀ ▼ ▶ ▲ = notes 1–4, X A B Y = notes 5–8 (left, bottom, right, top on both sides).
+    LB / RB switch Bass / Treble. Keyboard: A S D F + H J K L. Tab switches. Click or tap the bars too.</p>
+</main>
+<div id="start">Click to start sound</div>
+<script type="module">
+import { makeMelodyVoices } from "/src/audio/melody.js";
+import { instrumentNotes, noteName, SCALES, BASS_OCTAVE, TREBLE_OCTAVE } from "/src/game/scales.js";
+import { createMixer } from "/src/audio/mixer.js";
+
+const KEYS = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+const $ = (s) => document.querySelector(s);
+for (const k of KEYS) $("#key").add(new Option(k, k));
+for (const s of Object.keys(SCALES)) $("#scale").add(new Option(s, s));
+$("#key").value = "C"; $("#scale").value = "major";
+
+// controller: same order on both clusters — left, bottom, right, top
+const PAD_SLOT = { 14: 0, 13: 1, 15: 2, 12: 3, 2: 4, 0: 5, 1: 6, 3: 7 };
+const PAD_GLYPH = ["◀", "▼", "▶", "▲", "X", "A", "B", "Y"];
+const KEY_SLOT = { a: 0, s: 1, d: 2, f: 3, h: 4, j: 5, k: 6, l: 7 };
+const KEY_GLYPH = ["A", "S", "D", "F", "H", "J", "K", "L"];
+
+let ctx, mixer, voices = {}, notes = {}, mode = "bass";
+
+async function build() {
+  const key = $("#key").value, scale = $("#scale").value;
+  for (const [kind, oct] of [["bass", BASS_OCTAVE], ["treble", TREBLE_OCTAVE]]) {
+    notes[kind] = instrumentNotes({ key, scale, octave: oct });
+    voices[kind] = await makeMelodyVoices(ctx.sampleRate, notes[kind], kind);
+    const bars = $(`#row-${kind} .bars`);
+    bars.innerHTML = "";
+    notes[kind].forEach((m, i) => {
+      const b = document.createElement("div");
+      b.className = "bar";
+      b.innerHTML = `<div class="n">${noteName(m)}</div><div class="k">${PAD_GLYPH[i]} · ${KEY_GLYPH[i]}</div>`;
+      b.addEventListener("pointerdown", (e) => { e.preventDefault(); play(kind, i); });
+      bars.appendChild(b);
+    });
+  }
+}
+
+function play(kind, slot, vel = 1) {
+  if (!ctx) return;
+  const src = ctx.createBufferSource();
+  src.buffer = voices[kind][slot];
+  const g = ctx.createGain(); g.gain.value = vel;
+  src.connect(g).connect(mixer.lane(kind));
+  src.start();
+  const el = $(`#row-${kind} .bars`).children[slot];
+  el.classList.add("hit"); setTimeout(() => el.classList.remove("hit"), 120);
+}
+
+function setMode(m) {
+  mode = m;
+  $("#m-bass").classList.toggle("on", m === "bass"); $("#m-treble").classList.toggle("on", m === "treble");
+  $("#row-bass").classList.toggle("active", m === "bass"); $("#row-treble").classList.toggle("active", m === "treble");
+}
+$("#m-bass").onclick = () => setMode("bass");
+$("#m-treble").onclick = () => setMode("treble");
+$("#key").onchange = $("#scale").onchange = () => ctx && build();
+
+window.addEventListener("keydown", (e) => {
+  if (e.repeat) return;
+  if (e.key === "Tab") { e.preventDefault(); setMode(mode === "bass" ? "treble" : "bass"); return; }
+  const s = KEY_SLOT[e.key.toLowerCase()];
+  if (s != null) play(mode, s);
+});
+
+// gamepad: polled each frame (the API has no button events)
+let was = [];
+function poll() {
+  for (const gp of navigator.getGamepads ? navigator.getGamepads() : []) {
+    if (!gp) continue;
+    $("#pad").textContent = "🎮 " + gp.id.split("(")[0].trim();
+    const now = gp.buttons.map((b) => b.pressed);
+    now.forEach((p, i) => {
+      if (!p || was[i]) return;
+      if (i === 4) setMode("bass"); else if (i === 5) setMode("treble");
+      else if (PAD_SLOT[i] != null) play(mode, PAD_SLOT[i]);
+    });
+    was = now;
+  }
+  requestAnimationFrame(poll);
+}
+
+$("#start").onclick = async () => {
+  ctx = new AudioContext({ latencyHint: "interactive" });
+  mixer = createMixer(ctx);
+  $("#start").textContent = "building the instruments…";
+  await build();
+  $("#start").remove();
+  requestAnimationFrame(poll);
+};
+</script>
+</body></html>

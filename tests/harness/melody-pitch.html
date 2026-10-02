@@ -1,0 +1,32 @@
+<!doctype html><body><script type="module">
+<!-- Renders all 16 melody notes and measures each pitch (autocorrelation). Copy to public/_melody.html. -->
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body: String(body) });
+say("hello", "page ran");
+let makeMelodyVoices, instrumentNotes, noteName, BASS_OCTAVE, TREBLE_OCTAVE;
+try {
+  ({ makeMelodyVoices } = await import("/src/audio/melody.js"));
+  ({ instrumentNotes, noteName, BASS_OCTAVE, TREBLE_OCTAVE } = await import("/src/game/scales.js"));
+  say("imported", "ok");
+} catch (e) { say("importerror", e.stack || e); }
+// measured pitch: autocorrelation peak near the expected period (after the strike)
+function pitch(buf, fExp) {
+  const x = buf.getChannelData(0), sr = buf.sampleRate, s0 = Math.round(0.05 * sr), N = 8192;
+  let best = 0, bestLag = 0;
+  const lo = Math.floor(sr / (fExp * 1.3)), hi = Math.ceil(sr / (fExp / 1.3));
+  for (let lag = lo; lag <= hi; lag++) { let c = 0; for (let i = 0; i < N; i++) c += x[s0 + i] * x[s0 + i + lag]; if (c > best) { best = c; bestLag = lag; } }
+  return sr / bestLag;
+}
+try {
+  const rows = [];
+  for (const [kind, key, scale, oct] of [["bass", "A", "minor", BASS_OCTAVE], ["treble", "C", "major", TREBLE_OCTAVE]]) {
+    const notes = instrumentNotes({ key, scale, octave: oct });
+    const bufs = await makeMelodyVoices(48000, notes, kind);
+    bufs.forEach((b, i) => {
+      const fx = 440 * 2 ** ((notes[i] - 69) / 12), f = pitch(b, fx);
+      rows.push(`${kind.padEnd(6)} slot ${i + 1} ${noteName(notes[i]).padEnd(3)} want ${fx.toFixed(1).padStart(7)} Hz  got ${f.toFixed(1).padStart(7)} Hz  (${(1200 * Math.log2(f / fx)).toFixed(0)} cents)  ${b.duration.toFixed(1)} s`);
+    });
+  }
+  say("pitch", rows.join("\n"));
+} catch (e) { say("harnesserror", e.stack || e); }
+say("done", "ok");
+</script></body>

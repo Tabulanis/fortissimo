@@ -26,6 +26,9 @@ const STRIPS = {
   crash:     { pan: 0.42,  level: 0.42, drive: 8,  send: 0.3,  eq: [["highpass", 300, 0, 0.7], ["peaking", 3500, -2, 1.0]] },
   "tom low": { pan: -0.15, level: 1.03, drive: 0,  send: 0.2,  eq: [["highpass", 50, 0, 0.7], ["peaking", 320, -3, 1.0]] },
   "tom high":{ pan: 0.3,   level: 1.14, drive: 0,  send: 0.2,  eq: [["highpass", 70, 0, 0.7], ["peaking", 450, -3, 1.0]] },
+  // melody instruments (2026-10-02): bass centred and warm, treble a touch right and wetter
+  bass:      { pan: 0.0,   level: 0.95, drive: 0,  send: 0.14, eq: [["highpass", 35, 0, 0.7], ["peaking", 250, -2, 1.0]] },
+  treble:    { pan: 0.12,  level: 0.62, drive: 0,  send: 0.32, eq: [["highpass", 200, 0, 0.7], ["highshelf", 6000, -2, 0]] },
 };
 
 /** The courtyard's own acoustics (courtyardIR.js): side-wall flutter, the
