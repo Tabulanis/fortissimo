@@ -88,62 +88,6 @@ function stoneGrainMaps() {
   return { normalMap: canvasTex(heightToNormal(blurTiled(hc, 1.5), 2.6)), roughnessMap: canvasTex(blurTiled(rc, 2)) };
 }
 
-function flagstoneTexture() {
-  const c = document.createElement("canvas");
-  c.width = c.height = 1024;
-  const g = c.getContext("2d");
-  // matching height + roughness canvases: grout sits low and rough, stone faces
-  // are slightly domed and worn smoother in places (catches the fire's glints)
-  const hc = document.createElement("canvas"); hc.width = hc.height = 1024;
-  const hg = hc.getContext("2d");
-  hg.fillStyle = "#000"; hg.fillRect(0, 0, 1024, 1024);
-  const rc = document.createElement("canvas"); rc.width = rc.height = 1024;
-  const rg = rc.getContext("2d");
-  rg.fillStyle = "#fff"; rg.fillRect(0, 0, 1024, 1024);
-  g.fillStyle = "#5c4a38";                       // grout
-  g.fillRect(0, 0, 1024, 1024);
-  // rows of irregular flagstones in warm sandstone tones
-  let y = 0;
-  while (y < 1024) {
-    const h = 70 + Math.random() * 90;
-    let x = -Math.random() * 120;
-    while (x < 1024) {
-      const w = 90 + Math.random() * 170;
-      const tone = 150 + Math.random() * 60;
-      g.fillStyle = `rgb(${tone + 40},${tone + 12},${tone - 30})`;
-      g.fillRect(x + 4, y + 4, w - 8, h - 8);
-      // height: bevelled edge rising to a slightly uneven face
-      const lift = 150 + Math.random() * 70;
-      for (let b = 0; b < 6; b++) {
-        const v = Math.round(lift * (b + 1) / 6);
-        hg.fillStyle = `rgb(${v},${v},${v})`;
-        hg.fillRect(x + 4 + b, y + 4 + b, w - 8 - 2 * b, h - 8 - 2 * b);
-      }
-      // roughness: each stone its own wear, polished patches where feet go
-      const rough = 200 + Math.random() * 55;   // 0.78..1: worn sandstone, never glossy
-      rg.fillStyle = `rgb(${rough},${rough},${rough})`;
-      rg.fillRect(x + 4, y + 4, w - 8, h - 8);
-      for (let k = 0; k < 3; k++) {
-        const px = x + Math.random() * w, py = y + Math.random() * h, pr = 15 + Math.random() * 40;
-        rg.fillStyle = "rgba(120,120,120,0.18)";
-        rg.beginPath(); rg.arc(px, py, pr, 0, Math.PI * 2); rg.fill();
-        hg.fillStyle = Math.random() > 0.5 ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";   // gentle dips and rises
-        hg.beginPath(); hg.arc(px, py, pr, 0, Math.PI * 2); hg.fill();
-      }
-      // a little mottling so it isn't flat
-      for (let k = 0; k < 6; k++) {
-        g.fillStyle = `rgba(${60 + Math.random() * 60},${40 + Math.random() * 40},20,0.08)`;
-        g.beginPath();
-        g.arc(x + Math.random() * w, y + Math.random() * h, 10 + Math.random() * 30, 0, Math.PI * 2);
-        g.fill();
-      }
-      x += w;
-    }
-    y += h;
-  }
-  return { map: canvasTex(c, true), normalMap: canvasTex(heightToNormal(blurTiled(hc, 3), 2.2)), roughnessMap: canvasTex(blurTiled(rc, 2)) };
-}
-
 /* THE CROSSROADS (2026-10-02): three stations around the player — drums ahead,
  * bass to the right, treble to the left — so the arena is a plaza where three
  * colonnaded courts meet, with a closing wall and gate behind.
@@ -187,18 +131,28 @@ export function createCourtyard(scene) {
   };
   const box = boxIn(root);
 
-  // --- paving: one texture set, tiled 4 m per repeat on every floor piece
+  // --- paving: the owner's cobblestone set (diffuse / roughness / normal),
+  // public/textures/stone_*; one texture set shared by every floor piece
   bootlog("courtyard: floor textures");
-  const flags = flagstoneTexture();
+  const STONE_TILE = 2.5;   // metres per repeat: cobbles come out a real size
+  const loader = new THREE.TextureLoader();
+  const stoneTex = (file, srgb) => {
+    const t = loader.load("/textures/" + file);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 8;
+    if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  const flags = { map: stoneTex("stone_diff.jpg", true), normalMap: stoneTex("stone_norm.webp"), roughnessMap: stoneTex("stone_rough.jpg") };
   bootlog("courtyard: floor textures done");
   // ONE material + texture set for every piece; each piece scales its own UVs
   // to tile every 4 m (copies of the textures per piece cost a weak GPU dearly)
   const floorMat = new THREE.MeshStandardMaterial({ map: flags.map, normalMap: flags.normalMap, roughnessMap: flags.roughnessMap,
-    roughness: 1, normalScale: new THREE.Vector2(0.8, 0.8), envMapIntensity: 0.45 });   // stone reflects little sky
+    roughness: 1, normalScale: new THREE.Vector2(1, 1), envMapIntensity: 0.45 });   // stone reflects little sky
   const floorPiece = (w, d, x, z, parent = root) => {
     const geo = new THREE.PlaneGeometry(w, d);
     const uv = geo.attributes.uv;
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 4, uv.getY(i) * d / 4);
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / STONE_TILE, uv.getY(i) * d / STONE_TILE);
     const m = new THREE.Mesh(geo, floorMat);
     m.rotation.x = -Math.PI / 2;
     m.position.set(x, 0.005, z);

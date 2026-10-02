@@ -29,7 +29,7 @@ const WaterShader = {
     uTime: { value: 0 },
     uRipples: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector4(0, 0, -100, 0)) },
     uBottom: { value: null },
-    uBottomScale: { value: new THREE.Vector2(4 / 16, 13 / 52) },   // the paving's own tiling (16 x 52 m floor, repeat 4 x 13)
+    uBottomScale: { value: new THREE.Vector2(1 / 2.5, 1 / 2.5) },   // the paving tiles every 2.5 m (courtyard.js STONE_TILE)
   },
   vertexShader: /* glsl */ `
     uniform mat4 textureMatrix;
