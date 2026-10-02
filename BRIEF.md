@@ -61,6 +61,19 @@ literally what you played. The garden shows how the band is doing.
 - **Settings:** hit volume, backing volume, difficulty, tempo, key bindings,
   controller. VR mode after the core works.
 
+## VR mode (later) — the drum IS the hit box
+- A hit = the moment the controller's stick tip ENTERS a drum's hit volume
+  (the drumhead). That moment is the press time; auto-correct applies to it
+  exactly as on keyboard.
+- Loudness = stick speed at contact (real dynamics: ghost notes to slams).
+- Per-drum re-trigger lockout of a few tens of ms so one swing hits once.
+- Drums must sit within arm's reach for VR (they are 2-3 m away today).
+
+## Auto-correct (built 2026-10-01)
+- A toggles; on by default. A hit inside the difficulty's box is RECORDED on
+  its exact beat at full strength (free play: nearest eighth); the live sound
+  still fires instantly; outside the box it is recorded as played.
+
 ## Export — real music, all your own
 - `.it` (editable, OpenMPT/Schism) and WAV/MP3 (rendered offline).
 - Exports INCLUDE the backing track — free advertising. Stamp every export:
