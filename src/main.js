@@ -19,6 +19,7 @@ import { Bell } from "./game/bell.js";
 import { Loops } from "./game/loops.js";
 import { DIFFICULTY } from "./game/difficulty.js";
 import { ROUNDS, partArrows, isShown, buildUp } from "./game/stages.js";
+import { loadRoundFiles } from "./game/roundfiles.js";
 import { gradeRound } from "./game/grade.js";
 import { createResults } from "./ui/results.js";
 import { showLocked } from "./ui/locked.js";
@@ -78,9 +79,19 @@ let loops = null;                         // locked measures, replayed exactly a
 // 3 ROUNDS in the same arena; each ends with an accuracy grade
 let roundIdx = 0;
 // Easy teaches every part in steps (on-beat core first, then the add-on over its ghost)
-const EASY_ROUNDS = ROUNDS.map(buildUp);
-const song = () => (difficulty === DIFFICULTY.easy ? EASY_ROUNDS : ROUNDS)[roundIdx];
-const lastRound = () => roundIdx >= ROUNDS.length - 1;
+// the songs: Hackbeat projects (public/rounds, or Hackbeat's own copies while
+// developing); the built-in ROUNDS only if those can't be read
+let BASE_ROUNDS = ROUNDS;
+let EASY_ROUNDS = ROUNDS.map(buildUp);
+const song = () => (difficulty === DIFFICULTY.easy ? EASY_ROUNDS : BASE_ROUNDS)[roundIdx];
+const lastRound = () => roundIdx >= BASE_ROUNDS.length - 1;
+const roundsReady = loadRoundFiles().then((rounds) => {
+  if (!rounds.length) return;
+  BASE_ROUNDS = rounds;
+  EASY_ROUNDS = rounds.map(buildUp);
+  if (typeof applyStage === "function") applyStage();
+  bootlog("rounds from files", { n: rounds.length, warnings: rounds.flatMap((r) => r.warnings) });
+}).catch((e) => { console.warn("round files unavailable — playing the built-in songs", e); bootlog("rounds: built-in", { why: String(e) }); });
 const songDone = () => stageIdx >= song().parts.length;
 const currentPart = () => (songDone() ? [] : song().parts[stageIdx].part);
 const partObj = () => (songDone() ? null : song().parts[stageIdx]);
@@ -170,7 +181,7 @@ function tickBell(heardNow) {
       for (const e of one.events(ctx.currentTime, scheduledUntil, clock.first)) {
         const entry = KEYMAP_BY_LANE[e.lane];
         if (!entry) continue;
-        pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, buffer: laneBuffer(entry.ln),
+        pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...laneSound(entry.ln),
           velocity: e.velocity * 0.85, when: e.time, destination: laneDest(entry.ln),
           settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
       }
@@ -197,7 +208,8 @@ function endRound() {
     onNext: async () => {
       if (lastRound()) { stageMessage(); return; }
       roundIdx++;
-      await buildMelodyVoices();   // the new round's key + scale
+      await buildMelodyVoices();   // the new round's key + scale (fallback voices)
+      await loadRoundSamples();    // and its own sounds
       stageIdx = 0;
       roundOffsets = [];
       if (loops) loops.clear();
@@ -254,8 +266,27 @@ async function buildMelodyVoices() {
   ]);
   melodyVoices = { bass: b, treble: t };
 }
-// one place that knows where a lane's sound comes from and where it goes
-const laneBuffer = (ln) => (ln.kind ? melodyVoices[ln.kind][ln.slot] : drums[ln.drum]);
+// one place that knows where a lane's sound comes from and where it goes:
+// the round's own sample (from Hackbeat) at the note it was written on —
+// pitched exactly like Hackbeat (note 60 = as recorded) — else the built-in sound
+const sampleCache = new Map();   // sample path -> AudioBuffer (null = failed to load)
+async function loadRoundSamples() {
+  if (!ctx) return;
+  const paths = [...new Set(Object.values(song().sounds || {}).map((x) => x.path))].filter((p) => !sampleCache.has(p));
+  await Promise.all(paths.map(async (p) => {
+    try {
+      const r = await fetch("/rounds/samples/" + p);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      sampleCache.set(p, await ctx.decodeAudioData(await r.arrayBuffer()));
+    } catch (e) { sampleCache.set(p, null); console.warn(`sample ${p} failed: ${e}`); }
+  }));
+}
+function laneSound(ln) {
+  const s = song().sounds && song().sounds[ln.name];
+  const buf = s && sampleCache.get(s.path);
+  if (buf) return { buffer: buf, midi: s.note, baseNote: 60 };
+  return { buffer: ln.kind ? melodyVoices[ln.kind][ln.slot] : drums[ln.drum], midi: 60, baseNote: 60 };
+}
 const laneDest = (ln) => mixer.lane(ln.kind || ln.name);
 
 // --- calibration ----------------------------------------------------------
@@ -316,7 +347,9 @@ function makeStartButton() {
     masterGain = mixer.master;
 
     drums = await makeDrums(ctx.sampleRate);
-    await buildMelodyVoices();   // bass + treble in this round's key
+    await roundsReady;
+    await buildMelodyVoices();   // fallback bar voices
+    await loadRoundSamples();    // the round's own sounds (from Hackbeat)
     pool = new VoicePool(ctx);
 
     clock = startClock(ctx, {
@@ -362,7 +395,7 @@ function makeStartButton() {
 // through its instrument, its drum/bar flashes and the ghost hands play it.
 let hint = null;   // { notes: [{laneIdx, time, velocity, flashed}], end }
 function sectionNotes(mode) {
-  const parts = ROUNDS[roundIdx].parts.filter((p) => p.mode === mode);
+  const parts = BASE_ROUNDS[roundIdx].parts.filter((p) => p.mode === mode);
   return { notes: parts.flatMap((p) => p.part), bars: Math.max(1, ...parts.map((p) => p.bars || 1)) };
 }
 function playHint() {
@@ -377,7 +410,7 @@ function playHint() {
     const entry = KEYMAP_BY_LANE[n.lane];
     if (!entry) continue;
     const time = start + n.beat * clock.beatDur;
-    pool.noteOn({ channel: entry.idx + 70, midi: 60, baseNote: 60, buffer: laneBuffer(entry.ln), velocity: 0.8,
+    pool.noteOn({ channel: entry.idx + 70, midi: 60, baseNote: 60, ...laneSound(entry.ln), velocity: 0.8,
       when: time, destination: laneDest(entry.ln), settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
     hint.notes.push({ laneIdx: entry.idx, time, velocity: 0.9, flashed: false });
   }
@@ -404,7 +437,7 @@ function scheduleGhosts() {
       channel: entry.idx + 40,   // ghosts on their own channels: live play never cuts them
       midi: 60,
       baseNote: 60,
-      buffer: laneBuffer(entry.ln),
+      ...laneSound(entry.ln),
       velocity: e.velocity * 0.85,   // exactly as played, a touch under live play
       when: e.time,
       destination: laneDest(entry.ln),
@@ -587,7 +620,7 @@ function hitLane(idx, lane, press, padVel = 1) {
     channel: idx,
     midi: 60,
     baseNote: 60,
-    buffer: laneBuffer(lane),
+    ...laneSound(lane),
     velocity: vel,
     when: ctx.currentTime,
     destination: laneDest(lane),
@@ -860,5 +893,7 @@ if (window.__gr) window.__gr.game = {
   upcoming: () => (ctx ? buildUpcoming(ctx.getOutputTimestamp().contextTime) : []),
   part: () => currentPart(),
   song: () => song(),
-  get hint() { return hint; }, get calibration() { return calibration; }, get loops() { return loops; },
+  get hint() { return hint; },
+  source: () => (BASE_ROUNDS === ROUNDS ? "built-in" : "files"),
+  samples: () => [...sampleCache].map(([p, b]) => `${p}: ${b ? b.duration.toFixed(2) + " s" : "FAILED"}`), get calibration() { return calibration; }, get loops() { return loops; },
 };   // screen or headset: the renderer drives the frames

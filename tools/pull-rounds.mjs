@@ -1,0 +1,30 @@
+// Snapshot the rounds you wrote in Hackbeat into the game (public/rounds), with
+// every sample they use, so the repo holds them and a build ships them.
+//   node tools/pull-rounds.mjs            (Hackbeat at ../Hackbeat, or HACKBEAT_DIR)
+// While developing you don't need this: the dev server reads Hackbeat's copies.
+import fs from "node:fs";
+import path from "node:path";
+import { roundFromProject } from "../src/game/hackbeat.js";
+
+const HACKBEAT = path.resolve(process.env.HACKBEAT_DIR || "../Hackbeat");
+const OUT = path.resolve("public/rounds");
+const manifest = JSON.parse(fs.readFileSync(path.join(OUT, "rounds.json"), "utf8"));
+let copied = 0;
+for (const m of manifest) {
+  const n = m.file.match(/^round(\d+)\.json$/)?.[1];
+  const src = n && path.join(HACKBEAT, "projects", `garden-round${n}.json`);
+  if (!src || !fs.existsSync(src)) { console.log(`${m.name}: no Hackbeat copy (keeping ${m.file})`); continue; }
+  const project = JSON.parse(fs.readFileSync(src, "utf8"));
+  fs.writeFileSync(path.join(OUT, m.file), JSON.stringify(project, null, 2));
+  const round = roundFromProject(project, m);
+  for (const w of round.warnings) console.log(`  ! ${m.name}: ${w}`);
+  // every sample the round's drums and bars use
+  for (const p of new Set(Object.values(round.sounds).map((s) => s.path))) {
+    const from = path.resolve(HACKBEAT, "samples", p), to = path.resolve(OUT, "samples", p);
+    if (!from.startsWith(path.resolve(HACKBEAT, "samples") + path.sep) || !fs.existsSync(from)) { console.log(`  ! missing sample ${p}`); continue; }
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(from, to); copied++;
+  }
+  console.log(`${m.name}: pulled ${m.file} (${round.parts.length} parts)`);
+}
+console.log(`${copied} sample file(s) copied`);

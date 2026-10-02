@@ -1,5 +1,5 @@
 <!doctype html><body style="margin:0">
-<!-- Plays every round note-perfect (asks the game which song it is playing); #r1 = round 1 only; reports locks + the LOCKED! slam. Copy to public/_robot.html, run sink.py on :8899. Keys timed on the GAME frame clock. -->
+<!-- Plays every round note-perfect (asks the game which song it plays; reports where songs + samples came from); #r1 = round 1 only. Copy to public/_robot.html, run sink.py on :8899. Keys timed on the GAME frame clock. -->
 <iframe id="f" style="width:1400px;height:900px;border:0"></iframe>
 <script type="module">
 import { ROUNDS } from "/src/game/stages.js";
@@ -24,7 +24,7 @@ f.onload = async () => {
       const P = o.performanceTime + (T + G.calibration - o.contextTime) * 1000;
       setTimeout(() => press(k), Math.max(0, P - w.performance.now()));   // the GAME frame's clock (its time origin differs from this page's)
     };
-    const log = [];
+    const log = [`songs from: ${G.source()}`, `samples: ${G.samples().join(" | ")}`];
     const variant = location.hash.slice(1) || "perfect";
     const nRounds = location.hash === "#r1" || location.hash.startsWith("#p4") ? 1 : ROUNDS.length;
     for (let round = 0; round < nRounds; round++) {
