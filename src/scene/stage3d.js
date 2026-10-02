@@ -27,12 +27,15 @@ const _pB = new THREE.Vector3();
 // lanes 0-2: upright hand drums (cylinder axis along z, face toward +z).
 // lanes 3-5: floor drums (cylinder axis vertical, head up).
 const LANES3D = [
-  { x: -0.8, y: 1.2, z: -1.4, radius: 0.3, depth: 0.16, upright: true },
-  { x: 0.0, y: 1.2, z: -1.4, radius: 0.3, depth: 0.16, upright: true },
-  { x: 0.8, y: 1.2, z: -1.4, radius: 0.3, depth: 0.16, upright: true },
-  { x: -0.75, y: 0.36, z: -0.25, radius: 0.32, depth: 0.36, upright: false },
-  { x: 0.0, y: 0.36, z: -0.25, radius: 0.32, depth: 0.36, upright: false },
-  { x: 0.75, y: 0.36, z: -0.25, radius: 0.32, depth: 0.36, upright: false },
+  // A STANDING kit within arm's reach (VR-ready; owner: "easy to play in VR").
+  // Player stands at the origin, eyes ~1.6 m. Upright drums at chest height,
+  // heads-up drums at waist height — like a real kit around you.
+  { x: -0.48, y: 1.25, z: -0.66, radius: 0.19, depth: 0.28, upright: true },
+  { x: 0.0, y: 1.27, z: -0.72, radius: 0.19, depth: 0.28, upright: true },
+  { x: 0.48, y: 1.25, z: -0.66, radius: 0.19, depth: 0.28, upright: true },
+  { x: -0.42, y: 0.76, z: -0.36, radius: 0.2, depth: 0.3, upright: false },   // head at y 0.91
+  { x: 0.0, y: 0.76, z: -0.44, radius: 0.2, depth: 0.3, upright: false },
+  { x: 0.42, y: 0.76, z: -0.36, radius: 0.2, depth: 0.3, upright: false },
 ];
 
 // arrow spawn points per lane: archers spread across the FAR courtyard wall
@@ -126,8 +129,8 @@ export function createStage3D(canvas, layout, colors) {
   // the drum lantern: a warm SPOT just above and behind the player, aimed at the
   // drums, casting soft shadows (drums onto the ground, hands/sticks onto drums)
   const lantern = new THREE.SpotLight(0xffb36a, 26, 9, Math.PI / 4.2, 0.65, 1.4);
-  lantern.position.set(0.35, 3.0, 1.9);
-  lantern.target.position.set(0, 0.5, -0.8);
+  lantern.position.set(0.35, 2.7, 1.1);
+  lantern.target.position.set(0, 0.9, -0.5);
   lantern.castShadow = true;
   lantern.shadow.mapSize.set(2048, 2048);
   lantern.shadow.camera.near = 0.3;
@@ -140,8 +143,8 @@ export function createStage3D(canvas, layout, colors) {
   const camera = new THREE.PerspectiveCamera(
     60, canvas.clientWidth / canvas.clientHeight, 0.1, 200,
   );
-  camera.position.set(0, 1.3, 2.0);
-  camera.lookAt(new THREE.Vector3(0, 1.75, -10));   // horizon up: the far wall and the arcs are in view
+  camera.position.set(0, 1.7, 0.75);           // standing, just behind the kit (VR uses the headset)
+  camera.lookAt(new THREE.Vector3(0, 1.0, -2.2));  // tilted down: both rows in view, the arcs above
 
   // AO for everything: GTAO (screen-space) between the scene render and output
   const FX_LAYER = 1;
@@ -180,7 +183,7 @@ export function createStage3D(canvas, layout, colors) {
   const drumFace = [];
   const drumLabels = [];
   const drumLabelMats = [];
-  const labelGeo = new THREE.PlaneGeometry(0.34, 0.34);
+  const labelGeo = new THREE.PlaneGeometry(0.2, 0.2);   // ~half a 0.19-0.2 m drumhead
   const labelTex = (key) => {
     const c = document.createElement("canvas");
     c.width = 128;
@@ -236,6 +239,21 @@ export function createStage3D(canvas, layout, colors) {
       drumFace.push(new THREE.Vector3(L.x, L.y + L.depth / 2 + 0.02, L.z));
     }
   }
+
+  // DRUM STANDS (placeholder): a post from the ground to each drum's body
+  const standMat = new THREE.MeshStandardMaterial({ color: 0x3b2a1e, roughness: 0.8, metalness: 0.2 });
+  const stands = LANES3D.map((L) => {
+    const g = new THREE.Group();
+    const bottom = L.upright ? L.y - L.radius : L.y - L.depth / 2;      // where the drum body starts
+    const zBack = L.upright ? L.z - L.depth * 0.3 : L.z;
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, bottom, 10), standMat);
+    post.position.set(L.x, bottom / 2, zBack);
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.03, 18), standMat);
+    foot.position.set(L.x, 0.015, zBack);
+    for (const m of [post, foot]) { m.castShadow = true; m.receiveShadow = true; g.add(m); }
+    scene.add(g);
+    return g;
+  });
 
   // flame texture: built ONCE, a 64x64 radial gradient
   const flameTexture = (() => {
@@ -359,6 +377,7 @@ export function createStage3D(canvas, layout, colors) {
   const FADE_S = 0.6;
   function setDrumVisible(laneIdx, visible) {
     if (laneIdx < 0 || laneIdx > 5) return;
+    stands[laneIdx].visible = visible;
     const mesh = drumMeshes[laneIdx];
     const mat = drumMat[laneIdx];
     const f = drumFade[laneIdx];
@@ -390,9 +409,9 @@ export function createStage3D(canvas, layout, colors) {
   //      swaps in his own models later — each hand+stick stays in one Group
   //      per hand so it can be replaced wholesale). Pooled: built once, reused.
   const STICK_LEN = 0.42;
-  const handGeo = new THREE.SphereGeometry(0.1, 20, 14);   // big enough to read as a fist
+  const handGeo = new THREE.SphereGeometry(0.055, 20, 14);   // real fist size (it's right in front of you now)
   handGeo.scale(1, 0.8, 1.3);   // slightly squashed fist
-  const stickGeo = new THREE.CylinderGeometry(0.022, 0.026, STICK_LEN, 10);
+  const stickGeo = new THREE.CylinderGeometry(0.013, 0.016, STICK_LEN, 10);
   stickGeo.translate(0, STICK_LEN / 2, 0);   // fist at origin, tip at +y
   // warm and partly self-lit, like the arrows: dark-brown hands vanished in the night scene
   const handMat = new THREE.MeshStandardMaterial({ color: 0x7e5a46, roughness: 0.8, metalness: 0.05,
@@ -404,9 +423,9 @@ export function createStage3D(canvas, layout, colors) {
   // screen (a fist at y 0.95 would occlude the upright drums' heads)
   // in the bottom CORNERS of the view: visible, and outside every drum on screen
   // (at y 0.74 they were off-screen; the bottom edge at z 1.35 is ~y 0.95)
-  const HAND_REST = [
-    new THREE.Vector3(-0.55, 1.0, 1.35),
-    new THREE.Vector3(0.55, 1.0, 1.35),
+  const HAND_REST = [               // close in front of the player: sticks reach the heads
+    new THREE.Vector3(-0.66, 0.98, -0.1),   // just outside the kit: letters stay readable
+    new THREE.Vector3(0.66, 0.98, -0.1),
   ];
   // rest stick heading: up-forward ~35° from vertical (toward the drums)
   const REST_DIR = new THREE.Vector3(0, Math.cos(35 * Math.PI / 180), -Math.sin(35 * Math.PI / 180));
