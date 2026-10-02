@@ -603,9 +603,18 @@ function frame() {
     stage3d.update(0, []);
   }
   pads.poll();
-  // look around: arrow keys + thumbsticks (VR ignores it: the head looks)
+  // the mouse's nudge drifts back to centre once the mouse rests
+  const tNow = performance.now();
+  const mdt = Math.min(0.05, (tNow - mouseLook.tFrame) / 1000);
+  mouseLook.tFrame = tNow;
+  if (tNow - mouseLook.tMove > 150) {
+    const d = Math.exp(-mdt * 1.6);
+    mouseLook.x *= d; mouseLook.y *= d;
+  }
+  // look around: arrow keys + thumbsticks + mouse (VR ignores it: the head looks)
   const k = (key) => (lookKeys.has(key) ? 1 : 0);
-  stage3d.setLookInput(k("ArrowRight") - k("ArrowLeft") + pads.look.x, k("ArrowUp") - k("ArrowDown") + pads.look.y);
+  stage3d.setLookInput(k("ArrowRight") - k("ArrowLeft") + pads.look.x + mouseLook.x,
+    k("ArrowUp") - k("ArrowDown") + pads.look.y + mouseLook.y);
   drawChart();
 }
 
@@ -614,6 +623,17 @@ const lookKeys = new Set();
 window.addEventListener("keydown", (e) => { if (e.key.startsWith("Arrow")) { lookKeys.add(e.key); e.preventDefault(); } });
 window.addEventListener("keyup", (e) => lookKeys.delete(e.key));
 window.addEventListener("blur", () => lookKeys.clear());
+
+// mouse look: moving the mouse nudges the view (~300 px = the full turn);
+// when it rests, the view eases back to forward. The cursor stays free, and
+// the settings panel / buttons never steer the camera.
+const mouseLook = { x: 0, y: 0, tMove: 0, tFrame: performance.now() };
+window.addEventListener("mousemove", (e) => {
+  if (e.target.closest && e.target.closest("#gr-set, button, input, select, a")) return;
+  mouseLook.x = Math.max(-1, Math.min(1, mouseLook.x + e.movementX / 300));
+  mouseLook.y = Math.max(-1, Math.min(1, mouseLook.y - e.movementY / 300));
+  mouseLook.tMove = performance.now();
+});
 
 makeStartButton();
 makeCalibrateButton();
