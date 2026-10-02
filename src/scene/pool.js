@@ -12,7 +12,7 @@
 import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 
-export const POOL = { x0: -2.4, x1: 2.4, z0: -18.5, z1: -9.5 };   // the water's extent (metres)
+export const POOL = { x0: -4.2, x1: 4.2, z0: -15.5, z1: -3.5 };   // the water (metres): big and close, just past the drum kit (owner, 2026-10-02)
 export const SURFACE_Y = 0.17;
 const CURB_W = 0.35, CURB_H = 0.28;
 const MAX_RIPPLES = 8;
