@@ -381,6 +381,19 @@ const pads = createPads({
   },
 });
 
+// --- VR: a stick tip entering a drumhead (force = stick speed) --------------
+const KEYMAP_BY_IDX = [];
+for (const e of Object.values(KEYMAP)) KEYMAP_BY_IDX[e.idx] = e;
+stage3d.setVrHitHandler((idx, force, ms) => {
+  if (!ctx || !drums || !pool || !clock) return;
+  const entry = KEYMAP_BY_IDX[idx];
+  if (!entry) return;
+  const o = ctx.getOutputTimestamp();
+  hitLane(entry.idx, entry.ln, o.contextTime + (ms - o.performanceTime) / 1000 - calibration, force);
+});
+stage3d.setVrBellHandler(() => ringBell());
+stage3d.addVrButton();
+
 function hitLane(idx, lane, press, padVel = 1) {
 
   // timing against this lane's chart notes, loop-wrapped
@@ -402,6 +415,7 @@ function hitLane(idx, lane, press, padVel = 1) {
     lab = off ? "OFF" : label(j.offset);
   }
   vel *= padVel;   // a soft pad hit / a slow VR swing plays softer
+  if (window.__gr) (window.__gr.hits ||= []).push({ lane: lane.name, lab, force: +padVel.toFixed(2), vel: +vel.toFixed(3) });   // harness readout
 
   // record exactly as played (real timing, real velocity, mistakes and OFF
   // included) — it becomes this lane's ghost from the next pass on
@@ -590,7 +604,6 @@ function frame() {
     stage3d.update(0, []);
   }
   drawChart();
-  requestAnimationFrame(frame);
 }
 
 makeStartButton();
@@ -598,4 +611,4 @@ makeCalibrateButton();
 window.addEventListener("keydown", onKey);
 resize();
 window.addEventListener("resize", resize);
-requestAnimationFrame(frame);
+stage3d.setLoop(frame);   // screen or headset: the renderer drives the frames

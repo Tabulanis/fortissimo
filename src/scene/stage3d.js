@@ -12,6 +12,8 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
+import { createVrHits } from "../input/vrhits.js";
 
 const APPROACH_S = 3.2;   // seconds of visible flight: launched from the far wall, tracked all the way
 const STUCK_S = 0.6;      // seconds an unhit arrow stays stuck at the face
@@ -81,6 +83,9 @@ export function createStage3D(canvas, layout, colors) {
   renderer.shadowMap.enabled = true;                 // the foreground lantern casts shadows
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.setPixelRatio(window.devicePixelRatio || 1);
+  // VR: the headset is the camera, the controllers hold the sticks
+  renderer.xr.enabled = true;
+  renderer.xr.setReferenceSpaceType("local-floor");   // y = 0 is the real floor
 
   const scene = new THREE.Scene();
 
@@ -476,9 +481,14 @@ export function createStage3D(canvas, layout, colors) {
    */
   function strike(laneIdx, kind) {
     if (laneIdx < 0 || laneIdx > 5) return;
-    const h = handFor(laneIdx);
+    const h = vrOn() ? (vrLastStick ?? handFor(laneIdx)) : handFor(laneIdx);
     const hand = hands[h];
     const face = drumFace[laneIdx];
+    if (vrOn()) {                       // the controller owns the pose: just the flash
+      hand.last = performance.now();
+      if (kind === "HIT") { hand.group.add(hand.flash); hand.flash.position.set(0, STICK_LEN, 0); hand.flash.visible = true; hand.flash.material.opacity = 1; hand.flashT0 = performance.now(); }
+      return;
+    }
     // stick points from the fist to the face; the fist sits STICK_LEN back
     // along that line so the tip lands on the face/head
     _hDir.copy(face).sub(hand.group.position).normalize();
@@ -586,7 +596,7 @@ export function createStage3D(canvas, layout, colors) {
 
   function updateHands(now) {
     for (const hand of hands) {
-      if (!hand.active) continue;
+      if (!hand.active || vrOn()) continue;
       const t = now - hand.t0;
       if (t >= REBOUND_MS) {
         hand.active = false;
@@ -1104,6 +1114,7 @@ export function createStage3D(canvas, layout, colors) {
   }
 
   function resize() {
+    if (renderer.xr.isPresenting) return;   // the headset owns the size in VR
     const w = canvas.clientWidth || 1;
     const h = canvas.clientHeight || 1;
     renderer.setSize(w, h, false);
@@ -1244,11 +1255,103 @@ export function createStage3D(canvas, layout, colors) {
     if (n === fxCount) fxSorted = true;   // stable two frames in a row: done
     fxCount = n;
   }
+  // ---- VR ------------------------------------------------------------------
+  // The kit is already at standing reach (LANES3D). In a session each
+  // controller grip carries one hand (fist + stick); the stick tips are fed to
+  // the hit detector every frame, and a hit goes to the game exactly like a
+  // key or pad press, with its force from the stick's speed.
+  const vrOn = () => renderer.xr.isPresenting;
+  let vrLastStick = null;        // which hand made the last VR hit (for its flash)
+  let onVrHit = null;            // (laneIdx, force 0..1, timeMs on performance.now())
+  let onVrBell = null;
+  let frameT = 0;                // this frame's time (XR frame time in a session)
+  const vrHits = createVrHits(LANES3D.map((L, i) => ({
+    center: { x: drumFace[i].x, y: drumFace[i].y, z: drumFace[i].z },
+    normal: L.upright ? { x: 0, y: 0, z: 1 } : { x: 0, y: 1, z: 0 },
+    radius: L.radius,
+  })));
+  // stick held like a drumstick: out of the fist, forward and a little down
+  const GRIP_DIR = new THREE.Vector3(0, -0.45, -1).normalize();
+  const vrPads = [null, null];   // hand index -> XRInputSource gamepad (haptics)
+  const deskCam = { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
+  for (let g = 0; g < 2; g++) {
+    const grip = renderer.xr.getControllerGrip(g);
+    scene.add(grip);
+    grip.addEventListener("connected", (e) => {
+      const h = e.data.handedness === "left" ? 0 : 1;
+      const hand = hands[h];
+      hand.grip = grip;
+      grip.add(hand.group);
+      hand.group.position.set(0, 0, 0);
+      hand.group.quaternion.setFromUnitVectors(UP, GRIP_DIR);
+      vrPads[h] = e.data.gamepad || null;
+      grip.userData.hand = h;
+    });
+    grip.addEventListener("disconnected", () => {
+      const h = grip.userData.hand;
+      if (h == null) return;
+      vrHits.drop(h);
+      vrPads[h] = null;
+      restHand(h);
+      grip.userData.hand = null;
+    });
+  }
+  function restHand(h) {
+    const hand = hands[h];
+    scene.add(hand.group);
+    hand.grip = null;
+    hand.group.position.copy(hand.rest);
+    hand.group.quaternion.setFromUnitVectors(UP, REST_DIR);
+  }
+  renderer.xr.addEventListener("sessionstart", () => {
+    deskCam.pos.copy(camera.position); deskCam.quat.copy(camera.quaternion);
+    camera.layers.enable(FX_LAYER);    // one pass in VR: the fx sprites render with everything
+  });
+  renderer.xr.addEventListener("sessionend", () => {
+    camera.layers.disable(FX_LAYER);
+    camera.position.copy(deskCam.pos); camera.quaternion.copy(deskCam.quat);
+    for (let h = 0; h < 2; h++) { vrHits.drop(h); restHand(h); }
+    resize();
+  });
+  const _tip = new THREE.Vector3();
+  function updateVrSticks() {
+    for (let h = 0; h < 2; h++) {
+      const hand = hands[h];
+      if (!hand.grip || !hand.grip.visible) { vrHits.drop(h); continue; }   // lost tracking
+      hand.group.updateWorldMatrix(true, false);
+      hand.group.localToWorld(_tip.set(0, STICK_LEN, 0));
+      for (const hit of vrHits.step(h, _tip, frameT)) {
+        if (!stands[hit.head].visible) continue;          // that drum isn't in play yet
+        vrLastStick = h;
+        const pad = vrPads[h];
+        const act = pad && pad.hapticActuators && pad.hapticActuators[0];
+        if (act && act.pulse) act.pulse(0.25 + 0.75 * hit.force, 18);
+        if (onVrHit) onVrHit(hit.head, hit.force, hit.time);
+      }
+      // A / X (face button 4 on xr-standard) rings the ghost bell
+      const b = vrPads[h] && vrPads[h].buttons[4];
+      const down = !!(b && b.pressed);
+      if (down && !hand.btnWas && onVrBell) onVrBell();
+      hand.btnWas = down;
+    }
+  }
+  /** the game's frame loop: runs on the screen normally and on the headset in VR */
+  function setLoop(fn) {
+    renderer.setAnimationLoop((t) => { frameT = t ?? performance.now(); fn(); });
+  }
+  /** add the "Enter VR" button (shows "VR not supported" without a headset) */
+  function addVrButton(parent = document.body) {
+    const b = VRButton.createButton(renderer);
+    parent.appendChild(b);
+    return b;
+  }
+
   function update(heardNow, upcoming, ghosts = []) {
     updateGhostHands(heardNow, ghosts);
     updateDecoys(heardNow);
     _frameNo++;
     updateHands(performance.now());
+    if (vrOn()) updateVrSticks();
     // spawn / retire
     for (const u of upcoming) {
       if (!drumVisible[u.laneIdx]) continue;         // hidden drums get no arrows
@@ -1575,7 +1678,9 @@ export function createStage3D(canvas, layout, colors) {
     fxCamera.projectionMatrix.copy(camera.projectionMatrix);
     fxCamera.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
     if (!fxSorted) sortFx();
-    composer.render();
+    // the composer's passes don't render to a headset: draw straight to it
+    if (vrOn()) renderer.render(scene, camera);
+    else composer.render();
   }
 
   /**
@@ -1688,5 +1793,9 @@ export function createStage3D(canvas, layout, colors) {
     }
   }, undefined, (err) => console.warn("drum model failed to load; keeping stand-ins", err));
 
-  return { resize, update, hit, press, strike, setDrumVisible, debugDrums };
+  return { resize, update, hit, press, strike, setDrumVisible, debugDrums,
+    setLoop, addVrButton, setVrHitHandler: (fn) => { onVrHit = fn; }, setVrBellHandler: (fn) => { onVrBell = fn; },
+    /** debug: where each stick tip is (world), and whether a controller holds it */
+    debugVr: () => hands.map((h, i) => { h.group.updateWorldMatrix(true, false); const p = h.group.localToWorld(new THREE.Vector3(0, STICK_LEN, 0));
+      return { hand: i, held: !!h.grip, gripVisible: h.grip ? h.grip.visible : null, tip: [p.x, p.y, p.z].map((v) => +v.toFixed(3)) }; }), get vr() { return vrOn(); } };
 }
