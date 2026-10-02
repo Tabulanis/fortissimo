@@ -171,7 +171,8 @@ export function createMixer(ctx) {
     setVolume(which, v) {
       const g = Math.max(0, Math.min(1, v));
       const node = { master, hits: drumFader, backing, metronome }[which];
-      if (node) node.gain.setTargetAtTime(which === "master" ? g * 1.0 : g, ctx.currentTime, 0.02);
+      // the master's internal level is 1.6 (gain staging): the slider scales that
+      if (node) node.gain.setTargetAtTime(which === "master" ? g * 1.6 : g, ctx.currentTime, 0.02);
     },
   };
 }

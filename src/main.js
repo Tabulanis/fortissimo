@@ -21,6 +21,7 @@ import { DIFFICULTY } from "./game/difficulty.js";
 import { SONG, partArrows, isShown } from "./game/stages.js";
 import { createHud } from "./ui/hud.js";
 import { createMixer } from "./audio/mixer.js";
+import { loadSettings, createSettings } from "./ui/settings.js";
 
 const { VoicePool, VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
 
@@ -28,7 +29,8 @@ const hud = document.querySelector("#hud");
 const stage = document.querySelector("#stage");
 const chart = document.querySelector("#chart");
 const ctx2d = chart.getContext("2d");
-let difficulty = DIFFICULTY.easy;   // sets "correct enough" and the starting tempo
+const SET = loadSettings();         // saved settings (Esc / gear)
+let difficulty = DIFFICULTY[SET.difficulty] || DIFFICULTY.easy;   // sets "correct enough" and the tempo
 const BPM = difficulty.bpm;
 const CALIB_KEY = "gr.calib";
 
@@ -51,9 +53,16 @@ let loops = null;                         // locked measures, replayed exactly a
 const songDone = () => stageIdx >= SONG.parts.length;
 const currentPart = () => (songDone() ? [] : SONG.parts[stageIdx].part);
 const hudUI = createHud({ onBell: ringBell });
-let autoCorrect = true;   // A toggles
+let autoCorrect = SET.autoCorrect;   // A toggles; also in settings
 function showDifficulty() { hudUI.setDifficulty(`${difficulty.name}${autoCorrect ? " · Auto ✓" : ""}`); }
 showDifficulty();
+const settingsUI = createSettings({
+  onChange: (k, v) => {
+    if (k === "autoCorrect") { autoCorrect = v; showDifficulty(); return; }
+    if (mixer) mixer.setVolume(k, v);
+  },
+  onRestart: () => location.reload(),   // difficulty sets the tempo the clock starts at
+});
 
 // where a hit is RECORDED: snapped onto its note (or, with no notes to follow,
 // the nearest eighth) when auto-correct is on and it landed inside the box
@@ -202,6 +211,7 @@ function makeStartButton() {
     ctx = new AudioContext();
     await ctx.resume();
     mixer = createMixer(ctx);
+    for (const k of ["master", "hits", "metronome"]) mixer.setVolume(k, SET[k]);
     masterGain = mixer.master;
 
     drums = await makeDrums(ctx.sampleRate);
@@ -313,6 +323,7 @@ function onKey(e) {
   if (e.key === "a" || e.key === "A") {   // auto-correct on/off
     e.preventDefault();
     autoCorrect = !autoCorrect;
+    settingsUI.set("autoCorrect", autoCorrect);
     showDifficulty();
     hudUI.say(autoCorrect ? "Auto-correct ON — hits inside the box record on the beat" : "Auto-correct OFF — loops record exactly as played", "", 1800);
     return;
