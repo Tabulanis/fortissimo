@@ -602,7 +602,7 @@ export function createStage3D(canvas, layout, colors) {
   // the material differs (Fresnel ghost in the drum's colour). One per lane, so
   // overlapping loop hits never steal each other's hand. The loop's hit time is
   // known ahead, so a ghost winds up 0.15 s before it lands EXACTLY on time.
-  const GHOST_WIND = 0.15, GHOST_RECOIL = REBOUND_MS / 1000, GHOST_OPACITY = 0.7;
+  const GHOST_WIND = 0.15, GHOST_RECOIL = REBOUND_MS / 1000, GHOST_OPACITY = 1.0;
   function ghostMaterial(color) {
     return new THREE.ShaderMaterial({
       uniforms: { uColor: { value: color.clone() }, uOpacity: { value: 0 } },
@@ -612,7 +612,7 @@ export function createStage3D(canvas, layout, colors) {
           gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `uniform vec3 uColor; uniform float uOpacity; varying vec3 vN; varying vec3 vV;
         void main(){ float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2);
-          gl_FragColor = vec4(uColor * (0.35 + 1.8 * f), uOpacity * (0.18 + 0.82 * f)); }`,
+          gl_FragColor = vec4(uColor * (0.6 + 2.4 * f), uOpacity * (0.3 + 0.7 * f)); }`,   // bright enough for the dusk scene
       transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
     });
   }
@@ -624,14 +624,23 @@ export function createStage3D(canvas, layout, colors) {
     group.add(new THREE.Mesh(handGeo, mat), new THREE.Mesh(stickGeo, mat));
     group.visible = false;
     scene.add(group);
-    const rest = HAND_REST[GHOST_SIDE[i]].clone().add(new THREE.Vector3(0, 0.08, -0.12));
+    // each ghost hovers at ITS OWN drum (above and in front of the head), so
+    // the whole band's ghosts can play at once without piling onto one spot
+    // (they all shared the player's rest pose and read as a single hand)
+    const L = LANES3D[i];
+    const rest = drumFace[i].clone().add(L.upright
+      ? new THREE.Vector3((GHOST_SIDE[i] ? 0.12 : -0.12), 0.3, 0.5)
+      : new THREE.Vector3((GHOST_SIDE[i] ? 0.1 : -0.1), 0.5, 0.3));
     // impact pose, computed once exactly like strike(): stick from rest toward the face
     const dir = drumFace[i].clone().sub(rest).normalize();
     const impact = drumFace[i].clone().addScaledVector(dir, -STICK_LEN);
-    ghostHands.push({ group, mat, rest, dir, impact, pulsedAt: -1 });
+    // poised like a drummer: at rest the stick points at its own drum (tip just
+    // over the head); the wind-up tips it back and up
+    const restDir = dir.clone().lerp(UP, 0.35).normalize();
+    const windDir = UP.clone().addScaledVector(dir, -0.45).normalize();
+    ghostHands.push({ group, mat, rest, dir, impact, restDir, windDir, pulsedAt: -1 });
   }
   const _gDir = new THREE.Vector3(), _gPos = new THREE.Vector3();
-  const WIND_DIR = REST_DIR.clone().applyAxisAngle(new THREE.Vector3(1, 0, 0), -0.6);   // tipped back
 
   function updateGhostHands(heardNow, ghosts) {
     for (let i = 0; i < 6; i++) {
@@ -649,9 +658,9 @@ export function createStage3D(canvas, layout, colors) {
       if (heardNow < T) {
         // wind-up: from rest, rising and tipping back (bigger for louder notes)
         const e = into / GHOST_WIND;
-        _gPos.copy(g.rest); _gPos.y += 0.22 * vel * e;
+        _gPos.copy(g.rest); _gPos.y += 0.12 * vel * e;
         g.group.position.copy(_gPos);
-        _gDir.copy(REST_DIR).lerp(WIND_DIR, e * vel).normalize();
+        _gDir.copy(g.restDir).lerp(g.windDir, e * vel).normalize();
         g.group.quaternion.setFromUnitVectors(UP, _gDir);
         g.mat.uniforms.uOpacity.value = GHOST_OPACITY * e;
       } else {
@@ -661,7 +670,7 @@ export function createStage3D(canvas, layout, colors) {
         _gPos.copy(g.impact).lerp(g.rest, e);
         _gPos.y += 0.16 * Math.sin(Math.PI * e);
         g.group.position.copy(_gPos);
-        _gDir.copy(g.dir).lerp(REST_DIR, e).normalize();
+        _gDir.copy(g.dir).lerp(g.restDir, e).normalize();
         g.group.quaternion.setFromUnitVectors(UP, _gDir);
         g.mat.uniforms.uOpacity.value = GHOST_OPACITY * (1 - 0.7 * e);
         if (g.pulsedAt !== T) {   // the drum answers the ghost's hit, softly
@@ -1976,6 +1985,8 @@ export function createStage3D(canvas, layout, colors) {
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; }, setVrBellHandler: (fn) => { onVrBell = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */
+    /** debug: which ghost hands are showing right now (lane order) */
+    debugGhosts: () => ghostHands.map((g) => g.group.visible),
     debugPasses: { bloom, lens, smaa, gtao, fxPass, renderer, scene },   // harness: toggle .enabled to compare
     debugVr: () => hands.map((h, i) => { h.group.updateWorldMatrix(true, false); const p = h.group.localToWorld(new THREE.Vector3(0, STICK_LEN, 0));
       return { hand: i, held: !!h.grip, gripVisible: h.grip ? h.grip.visible : null, tip: [p.x, p.y, p.z].map((v) => +v.toFixed(3)) }; }), get vr() { return vrOn(); } };

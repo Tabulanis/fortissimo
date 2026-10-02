@@ -640,4 +640,9 @@ makeCalibrateButton();
 window.addEventListener("keydown", onKey);
 resize();
 window.addEventListener("resize", resize);
-stage3d.setLoop(frame);   // screen or headset: the renderer drives the frames
+stage3d.setLoop(frame);
+// test hook (the harness robot reads the song state through this)
+if (window.__gr) window.__gr.game = {
+  get clock() { return clock; }, get ctx() { return ctx; }, get bell() { return bell; },
+  get stageIdx() { return stageIdx; }, get calibration() { return calibration; }, get loops() { return loops; },
+};   // screen or headset: the renderer drives the frames
