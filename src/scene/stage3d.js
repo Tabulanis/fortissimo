@@ -7,7 +7,7 @@
 
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { createCourtyard, ARCHER_ROOF_Y, ARCHER_ROOF_X, ARCHER_ROOF_Z, FAR_WALL } from "./courtyard.js";
+import { createCourtyard, ARCHER_ROOF_Y, ARCHER_ROOF_X, ARCHER_ROOF_Z, FAR_WALL, armToWorld } from "./courtyard.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
@@ -18,7 +18,7 @@ import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { createVrHits } from "../input/vrhits.js";
 import { createFire } from "./fire.js";
-import { createStation } from "./stations.js";
+import { createStation, BAR_MID_Z } from "./stations.js";
 import { createPool, poolContains, POOL, SURFACE_Y } from "./pool.js";
 import { bootlog } from "../bootlog.js";
 
@@ -379,6 +379,24 @@ export function createStage3D(canvas, layout, colors) {
     }
   }
 
+  // ---- TARGETS 6..21: the melody bars (bass 6-13, treble 14-21) ride the same
+  // per-lane systems as the drums — face, size, colour, arc, archers, visibility
+  const N_T = 22;
+  const BAR_HEX = { bass: "#e8963c", treble: "#9fd4ff" };
+  const BAR_TARGET = { radius: 0.07, depth: 0.04, upright: false, bar: true };
+  const stationOf = (i) => (i < 6 ? "drums" : i < 14 ? "bass" : "treble");
+  const TARGET = (i) => (i < 6 ? LANES3D[i] : BAR_TARGET);
+  function laneHex(i) { return i < 6 ? (colors[drumOf(i)] || "#888888") : BAR_HEX[stationOf(i)]; }
+  for (const kind of ["bass", "treble"]) {
+    for (const b of melodyStations[kind].bars) { drumFace.push(b.top.clone()); drumMat.push(b.mat); }
+  }
+  // the bars' archers: fixed spots along their own court's roofs, alternating sides
+  for (let i = 6; i < N_T; i++) {
+    const k = (i - 6) % 8, side = k % 2 ? 1 : -1;
+    SPAWNS[i] = armToWorld(stationOf(i), side * ARCHER_ROOF_X, ARCHER_ROOF_Y, -8 - (k >> 1) * 4.5);
+    ARC_LIFT[i] = 4;
+  }
+
   // DRUM STANDS (placeholder): a post from the ground to each drum's body
   const standMat = new THREE.MeshStandardMaterial({ color: 0x3b2a1e, roughness: 0.8, metalness: 0.2 });
   const stands = LANES3D.map((L) => {
@@ -496,7 +514,7 @@ export function createStage3D(canvas, layout, colors) {
   const activeNotes = [];   // entries currently in flight / stuck
 
   // drum visibility (per song part): hidden drums get no arrows and no ring
-  const drumVisible = [true, true, true, true, true, true];
+  const drumVisible = new Array(N_T).fill(true);   // drums fade in by part; bars always stand
   const drumMeshes = [];
   const drumFade = [];
   for (let i = 0; i < 6; i++) {
@@ -558,6 +576,13 @@ export function createStage3D(canvas, layout, colors) {
   ];
   // rest stick heading: up-forward ~35° from vertical (toward the drums)
   const REST_DIR = new THREE.Vector3(0, Math.cos(35 * Math.PI / 180), -Math.sin(35 * Math.PI / 180));
+  const restDir = REST_DIR.clone();   // turns with the station you face
+  // where the hands rest at each station: just outside the kit / the bar row
+  const HAND_RESTS = {
+    drums:  [new THREE.Vector3(-0.66, 0.98, -0.1), new THREE.Vector3(0.66, 0.98, -0.1)],
+    bass:   [new THREE.Vector3(0.4, 0.98, BAR_MID_Z - 0.75), new THREE.Vector3(0.4, 0.98, BAR_MID_Z + 0.75)],
+    treble: [new THREE.Vector3(-0.4, 0.98, BAR_MID_Z + 0.75), new THREE.Vector3(-0.4, 0.98, BAR_MID_Z - 0.75)],
+  };
 
   const hands = [];
   for (let h = 0; h < 2; h++) {
@@ -590,6 +615,7 @@ export function createStage3D(canvas, layout, colors) {
   // which hand plays a lane: outer lanes fixed, middle lanes alternate
   // like a drummer (whichever hand struck LESS recently)
   function handFor(laneIdx) {
+    if (laneIdx >= 6) return ((laneIdx - 6) % 8) < 4 ? 0 : 1;   // bars: low half left hand, high half right
     if (laneIdx === 0 || laneIdx === 3) return 0;
     if (laneIdx === 2 || laneIdx === 5) return 1;
     return hands[0].last <= hands[1].last ? 0 : 1;
@@ -604,7 +630,7 @@ export function createStage3D(canvas, layout, colors) {
    * @param {"HIT"|"NEAR"|string} kind "HIT" fires a short bright tip flash
    */
   function strike(laneIdx, kind) {
-    if (laneIdx < 0 || laneIdx > 5) return;
+    if (laneIdx < 0 || laneIdx >= N_T) return;
     const h = vrOn() ? (vrLastStick ?? handFor(laneIdx)) : handFor(laneIdx);
     const hand = hands[h];
     const face = drumFace[laneIdx];
@@ -655,8 +681,8 @@ export function createStage3D(canvas, layout, colors) {
   }
   const GHOST_SIDE = [0, 0, 1, 0, 1, 1];   // left: hat, snare, kick; right: crash, low tom, high tom
   const ghostHands = [];
-  for (let i = 0; i < 6; i++) {
-    const mat = ghostMaterial(hexToColor(colors[drumOf(i)] || "#888888"));
+  for (let i = 0; i < N_T; i++) {
+    const mat = ghostMaterial(hexToColor(laneHex(i)));
     const group = new THREE.Group();
     group.add(new THREE.Mesh(handGeo, mat), new THREE.Mesh(stickGeo, mat));
     group.visible = false;
@@ -664,8 +690,11 @@ export function createStage3D(canvas, layout, colors) {
     // each ghost hovers at ITS OWN drum (above and in front of the head), so
     // the whole band's ghosts can play at once without piling onto one spot
     // (they all shared the player's rest pose and read as a single hand)
-    const L = LANES3D[i];
-    const rest = drumFace[i].clone().add(L.upright
+    const L = TARGET(i);
+    const sideOf = i < 6 ? 0 : stationOf(i) === "bass" ? 1 : -1;   // bars: the player stands on the -x (bass) / +x (treble) side
+    const rest = drumFace[i].clone().add(L.bar
+      ? new THREE.Vector3(-sideOf * 0.32, 0.3, 0)
+      : L.upright
       ? new THREE.Vector3((GHOST_SIDE[i] ? 0.12 : -0.12), 0.3, 0.5)
       : new THREE.Vector3((GHOST_SIDE[i] ? 0.1 : -0.1), 0.5, 0.3));
     // impact pose, computed once exactly like strike(): stick from rest toward the face
@@ -680,7 +709,7 @@ export function createStage3D(canvas, layout, colors) {
   const _gDir = new THREE.Vector3(), _gPos = new THREE.Vector3();
 
   function updateGhostHands(heardNow, ghosts) {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < N_T; i++) {
       const g = ghostHands[i];
       // the hit this ghost is working on: the soonest one not yet fully recoiled
       let T = Infinity, vel = 1;
@@ -714,7 +743,7 @@ export function createStage3D(canvas, layout, colors) {
           g.pulsedAt = T;
           const dm = drumMat[i];
           if (dm && dm.emissive) {
-            dm.emissive.copy(hexToColor(colors[drumOf(i)] || "#888888"));
+            dm.emissive.copy(hexToColor(laneHex(i)));
             dm.emissiveIntensity = Math.max(dm.emissiveIntensity || 0, 0.3 * vel);
             const t0 = performance.now();
             const tick = () => { const q = (performance.now() - t0) / 150;
@@ -734,7 +763,7 @@ export function createStage3D(canvas, layout, colors) {
       if (t >= REBOUND_MS) {
         hand.active = false;
         hand.group.position.copy(hand.rest);
-        hand.group.quaternion.setFromUnitVectors(UP, REST_DIR);
+        hand.group.quaternion.setFromUnitVectors(UP, restDir);
       } else {
         const p = Math.min(1, t / REBOUND_MS);
         const e = 1 - (1 - p) * (1 - p);   // ease-out
@@ -742,7 +771,7 @@ export function createStage3D(canvas, layout, colors) {
         _hPos.copy(hand.startPos).lerp(hand.rest, e);
         _hPos.y += overshoot;
         hand.group.position.copy(_hPos);
-        _hDir.copy(hand.startDir).lerp(REST_DIR, e);
+        _hDir.copy(hand.startDir).lerp(restDir, e);
         hand.group.quaternion.setFromUnitVectors(UP, _hDir.normalize());
       }
       if (hand.flash && hand.flash.visible) {
@@ -901,7 +930,7 @@ export function createStage3D(canvas, layout, colors) {
       if (mixed) {
         s.sprite.material.color.copy(_eWhite);
         if (Math.random() < 0.5) {
-          s.sprite.material.color.copy(hexToColor(colors[drumOf(laneIdx)] || "#888888"));
+          s.sprite.material.color.copy(hexToColor(laneHex(laneIdx)));
         }
       }
     }
@@ -1048,8 +1077,8 @@ export function createStage3D(canvas, layout, colors) {
     const face = drumFace[laneIdx];
     fireBurst(face, P);
     // the fireball: blown out of the head toward the player
-    fireSim.burst(face, P, LANES3D[laneIdx].upright ? { x: 0, y: 0.2, z: 1 } : { x: 0, y: 1, z: 0.3 });
-    const drumColor = hexToColor(colors[drumOf(laneIdx)] || "#888888");
+    fireSim.burst(face, P, TARGET(laneIdx).upright ? { x: 0, y: 0.2, z: 1 } : { x: 0, y: 1, z: 0.3 });
+    const drumColor = hexToColor(laneHex(laneIdx));
 
     // 1. FLASH — white-hot core tinted by the drum colour,
     //    scale 0 -> 1.8 m over 60 ms, then fade over 180 ms.
@@ -1073,7 +1102,7 @@ export function createStage3D(canvas, layout, colors) {
       sw.active = true;
       sw.t0 = heardNow;
       sw.laneIdx = laneIdx;
-      sw.r0 = LANES3D[laneIdx].radius;
+      sw.r0 = TARGET(laneIdx).radius;
       sw.color.copy(_eWhite).lerp(drumColor, 0.25);
       sw.mesh.material.color.copy(sw.color);
       sw.mesh.position.copy(face);
@@ -1201,9 +1230,8 @@ export function createStage3D(canvas, layout, colors) {
   const rings = [];
   const _mc = new THREE.Color(), _white = new THREE.Color(0xffffff);
   const firelights = [];
-  for (let i = 0; i < 6; i++) {
-    const lane = i < 3 ? layout.top[i] : layout.bottom[i - 3];
-    const color = hexToColor(colors[lane.drum] || "#888888");
+  for (let i = 0; i < N_T; i++) {
+    const color = hexToColor(laneHex(i));
     const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
       color,
       transparent: true,
@@ -1223,7 +1251,7 @@ export function createStage3D(canvas, layout, colors) {
     }
     ring.visible = false;
     scene.add(ring);
-    rings.push({ mesh: ring, radius: LANES3D[i].radius });
+    rings.push({ mesh: ring, radius: TARGET(i).radius });
 
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
       map: flameTexture,
@@ -1235,10 +1263,10 @@ export function createStage3D(canvas, layout, colors) {
       opacity: 0,
     }));
     glow.position.copy(face);
-    glow.scale.setScalar(2.2 * LANES3D[i].radius);
+    glow.scale.setScalar(2.2 * TARGET(i).radius);
     glow.visible = false;
     scene.add(glow);
-    firelights.push({ glow, radius: LANES3D[i].radius, base: hexToColor(colors[drumOf(i)] || "#888888").clone() });
+    firelights.push({ glow, radius: TARGET(i).radius, base: hexToColor(laneHex(i)).clone() });
   }
 
   // path point p(f): lerp(spawn, face, f) + the parabolic arc lift.
@@ -1451,7 +1479,17 @@ export function createStage3D(canvas, layout, colors) {
         _flamePos.set(0, -0.2, 0).applyQuaternion(a.group.quaternion).add(a.group.position);
         _flamePos.y = Math.max(_flamePos.y, 0.3);
         const d = _flamePos.distanceTo(camera.position);
-        _cands.push({ x: _flamePos.x, y: _flamePos.y, z: _flamePos.z, op, score: op / (1 + d * 0.35) });
+        // near its target the light FADES: a point light inches from a surface
+        // (shiny bars especially) blows out to white; the impact burst does the
+        // flash. Stuck/smouldering arrows keep a dim glow.
+        let near = 1;
+        if (a.face) {
+          const df = _flamePos.distanceTo(a.face);
+          near = df >= 0.9 ? 1 : df <= 0.2 ? 0 : (df - 0.2) / 0.7;
+          if (a.stuckUntil > 0) near = Math.max(near, 0.15);
+        }
+        if (op * near < 0.03) continue;
+        _cands.push({ x: _flamePos.x, y: _flamePos.y, z: _flamePos.z, op: op * near, score: (op * near) / (1 + d * 0.35) });
       }
     }
     _cands.sort((p, q) => q.score - p.score);
@@ -1481,10 +1519,10 @@ export function createStage3D(canvas, layout, colors) {
   let onVrHit = null;            // (laneIdx, force 0..1, timeMs on performance.now())
   let onVrBell = null;
   let frameT = 0;                // this frame's time (XR frame time in a session)
-  const vrHits = createVrHits(LANES3D.map((L, i) => ({
+  const vrHits = createVrHits(Array.from({ length: N_T }, (_, i) => ({
     center: { x: drumFace[i].x, y: drumFace[i].y, z: drumFace[i].z },
-    normal: L.upright ? { x: 0, y: 0, z: 1 } : { x: 0, y: 1, z: 0 },
-    radius: L.radius,
+    normal: TARGET(i).upright ? { x: 0, y: 0, z: 1 } : { x: 0, y: 1, z: 0 },
+    radius: TARGET(i).radius,
   })));
   // stick held like a drumstick: out of the fist, forward and a little down
   const GRIP_DIR = new THREE.Vector3(0, -0.45, -1).normalize();
@@ -1517,7 +1555,7 @@ export function createStage3D(canvas, layout, colors) {
     scene.add(hand.group);
     hand.grip = null;
     hand.group.position.copy(hand.rest);
-    hand.group.quaternion.setFromUnitVectors(UP, REST_DIR);
+    hand.group.quaternion.setFromUnitVectors(UP, restDir);
   }
   renderer.xr.addEventListener("sessionstart", () => {
     deskCam.pos.copy(camera.position); deskCam.quat.copy(camera.quaternion);
@@ -1559,15 +1597,15 @@ export function createStage3D(canvas, layout, colors) {
     const r = canvas.getBoundingClientRect();
     _pc.copy(drumFace[i]).project(camera);
     _camRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
-    _pr.copy(drumFace[i]).addScaledVector(_camRight, LANES3D[i].radius).project(camera);
+    _pr.copy(drumFace[i]).addScaledVector(_camRight, TARGET(i).radius).project(camera);
     const x = r.left + (_pc.x * 0.5 + 0.5) * r.width, y = r.top + (-_pc.y * 0.5 + 0.5) * r.height;
     const rad = Math.abs(_pr.x - _pc.x) * 0.5 * r.width;
     return { x, y, rad };
   }
   function pickDrum(cx, cy) {
     let best = -1, bestD = Infinity;
-    for (let i = 0; i < 6; i++) {
-      if (!drumVisible[i]) continue;
+    for (let i = 0; i < N_T; i++) {
+      if (!drumVisible[i] || stationOf(i) !== station) continue;   // only what you're facing
       const p = drumScreen(i);
       const d = Math.hypot(cx - p.x, cy - p.y);
       if (d <= Math.max(36, p.rad * 1.35) && d < bestD) { best = i; bestD = d; }
@@ -1633,7 +1671,7 @@ export function createStage3D(canvas, layout, colors) {
         e.flame.material.color.setRGB(1, 1, 1);   // the fire texture carries the colour
         e.flame.material.opacity = 1;              // a recycled glance left these faded
         e.glow.material.opacity = 0.42;
-        e.glow.material.color.copy(hexToColor(colors[drumOf(u.laneIdx)] || "#888888"));
+        e.glow.material.color.copy(hexToColor(laneHex(u.laneIdx)));
         e.spawn.copy(SPAWNS[u.laneIdx]);
         e.face.copy(drumFace[u.laneIdx]);
         activeNotes.push(e);
@@ -1727,7 +1765,8 @@ export function createStage3D(canvas, layout, colors) {
           continue;
         }
         // still stuck: the sim keeps a small fire going at the head
-        fireSim.smoulder(e.face, 30, fireDt, 0.8);
+        // a bar is metal: a stuck arrow there gutters small (bars sit low and close to the eye)
+        if (e.laneIdx >= 6) fireSim.smoulder(e.face, 8, fireDt, 0.45); else fireSim.smoulder(e.face, 30, fireDt, 0.8);
         // smoulder flicker + smoke puffs
         for (const sm of smould) {
           if (sm.active && sm.face.equals(e.face)) {
@@ -1779,7 +1818,7 @@ export function createStage3D(canvas, layout, colors) {
     // light fades in as the arrow comes, accelerating, and is BRIGHTEST —
     // whitening and flashing — exactly at the hit time, then drops in 0.12 s.
     // Hit at the peak = the magic at full strength = the arrow explodes.
-    for (let lane = 0; lane < 6; lane++) {
+    for (let lane = 0; lane < N_T; lane++) {
       let next = null;
       for (const e of activeNotes) {
         if (e.laneIdx !== lane || e.hit) continue;
@@ -1954,7 +1993,7 @@ export function createStage3D(canvas, layout, colors) {
   function press(laneIdx, kind) {
     const mat = drumMat[laneIdx];
     if (!mat) return;
-    mat.emissive.copy(hexToColor(colors[drumOf(laneIdx)] || "#888888"));
+    mat.emissive.copy(hexToColor(laneHex(laneIdx)));
     mat.emissiveIntensity = kind === "HIT" ? 1.0 : 0.4;
     const started = performance.now();
     const tick = () => {
@@ -2033,7 +2072,7 @@ export function createStage3D(canvas, layout, colors) {
         o.castShadow = true; o.receiveShadow = true;
         if (!mat) {
           mat = o.material.clone();
-          mat.color.lerp(hexToColor(colors[drumOf(i)] || "#888888"), 0.22);
+          mat.color.lerp(hexToColor(laneHex(i)), 0.22);
           mat.emissive = new THREE.Color(0x000000);
         }
         o.material = mat;
@@ -2050,15 +2089,23 @@ export function createStage3D(canvas, layout, colors) {
   return { resize, update, hit, press, strike, setDrumVisible, debugDrums,
     setLoop, addVrButton,
     /** turn to a station: "drums" | "bass" | "treble" */
-    setStation(name) { if (STATIONS[name]) station = name; }, get station() { return station; }, melodyStations, pickDrum, drumScreen, get mobile() { return MOBILE; },
+    setStation(name) {
+      if (!STATIONS[name]) return;
+      station = name;
+      restDir.copy(REST_DIR).applyAxisAngle(UP, STATIONS[name].yaw);
+      hands.forEach((hand, h) => {
+        hand.rest.copy(HAND_RESTS[name][h]);
+        if (!hand.active && !vrOn()) { hand.group.position.copy(hand.rest); hand.group.quaternion.setFromUnitVectors(UP, restDir); }
+      });
+    }, get station() { return station; }, melodyStations, pickDrum, drumScreen, get mobile() { return MOBILE; },
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; }, setVrBellHandler: (fn) => { onVrBell = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */
     /** debug: arrows in flight per lane, and which drums are shown */
-    debugArrows: () => ({ flying: [0, 1, 2, 3, 4, 5].map((i) => activeNotes.filter((e) => e.laneIdx === i).length), shown: [...drumVisible] }),
+    debugArrows: () => ({ flying: Array.from({ length: N_T }, (_, i) => i).map((i) => activeNotes.filter((e) => e.laneIdx === i).length), shown: [...drumVisible] }),
     /** debug: which ghost hands are showing right now (lane order) */
     debugGhosts: () => ghostHands.map((g) => g.group.visible),
-    debugPasses: { bloom, lens, smaa, gtao, fxPass, renderer, scene },   // harness: toggle .enabled to compare
+    debugPasses: { bloom, lens, smaa, gtao, fxPass, renderer, scene, fireLights },   // harness: toggle .enabled to compare
     debugVr: () => hands.map((h, i) => { h.group.updateWorldMatrix(true, false); const p = h.group.localToWorld(new THREE.Vector3(0, STICK_LEN, 0));
       return { hand: i, held: !!h.grip, gripVisible: h.grip ? h.grip.visible : null, tip: [p.x, p.y, p.z].map((v) => +v.toFixed(3)) }; }), get vr() { return vrOn(); } };
 }

@@ -65,8 +65,10 @@ if (stage3d.mobile) document.documentElement.classList.add("touch");   // touch 
 window.__gr = { stage3d };   // debug handle for the browser harness
 
 // --- the song: parts unlock two drums at a time; the ghost bell locks them ---
-const LANE_INDEX = {};                    // lane name -> 0..5
+const LANE_INDEX = {};                    // lane name -> target 0..21
 [...LAYOUT.top, ...LAYOUT.bottom].forEach((ln, i) => { LANE_INDEX[ln.name] = i; });
+// melody bars: "bass 1".."bass 8" -> 6..13, "treble 1".."treble 8" -> 14..21
+for (let k = 0; k < 8; k++) { LANE_INDEX[`bass ${k + 1}`] = 6 + k; LANE_INDEX[`treble ${k + 1}`] = 14 + k; }
 let stageIdx = 0;
 let bell = null;                          // created when the clock starts
 let loops = null;                         // locked measures, replayed exactly as played
@@ -576,7 +578,8 @@ const APPROACH_S = 3.2;   // must match stage3d.js
 function buildUpcoming(heardNow) {
   // arrows only for the part you're learning; none in free play
   if (mode === "free" || songDone()) return [];
-  return partArrows(currentPart(), (n) => LANE_INDEX[n], clock.first, 4 * clock.beatDur,
+  const part = (window.__gr && window.__gr.game && window.__gr.game.testPart) || currentPart();   // testPart: harness only
+  return partArrows(part, (n) => LANE_INDEX[n], clock.first, 4 * clock.beatDur,
                     clock.beatDur, heardNow - 0.6, heardNow + APPROACH_S);
 }
 
