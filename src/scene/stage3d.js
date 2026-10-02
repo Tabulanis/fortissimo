@@ -86,6 +86,7 @@ const _eWhite = new THREE.Color(0xffffff);
  * @returns {{resize: Function, update: Function, hit: Function, press: Function}}
  */
 export function createStage3D(canvas, layout, colors, opts = {}) {
+  let skyMatRef = null;   // the sky dome's material (clouds animate on it)
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.shadowMap.enabled = true;                 // the foreground lantern casts shadows
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -125,7 +126,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   scene.background = null;   // the sky dome is the background; a colour here would be repainted by the fx pass over the whole frame
   scene.fog = new THREE.FogExp2(HORIZON_HAZE, 0.011);   // fire ignores fog (fog:false on sprites)
   {
-    const skyMat = new THREE.ShaderMaterial({
+    const skyMat = skyMatRef = new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
       uniforms: {
         zenith:  { value: new THREE.Color(0x0e1434) },
@@ -135,11 +136,16 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         // the owner's sunset panorama, painted across the sky IN FRONT (it
         // isn't a full 360 image: its ends fade into the gradient behind)
         pano:    { value: null },
+        // the owner's CLOUD MAP (equirect, white = cloud): alpha over the sky,
+        // slowly rotating; lit by the sunset on the side facing the sun
+        clouds:   { value: null },
+        cloudOn:  { value: 0 },
+        cloudRot: { value: 0 },
         panoOn:  { value: 0 },
       },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform vec3 zenith, mid, glow, ground; uniform sampler2D pano; uniform float panoOn; varying vec3 vDir;
+      fragmentShader: `uniform vec3 zenith, mid, glow, ground; uniform sampler2D pano; uniform float panoOn; uniform sampler2D clouds; uniform float cloudOn, cloudRot; varying vec3 vDir;
         // panorama placement: sun (u 0.40 in the image) dead ahead, behind the
         // archers' far wall; image horizon (v 0.725 from the top) lifted 9.5 deg
         // so the sun sits just above the (8 m) wall; square pixels: 220 deg wide
@@ -164,6 +170,18 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
           c = mix(c, glow, clamp(band, 0.0, 1.0) * 0.85);
           vec4 p = panoSample(vDir);
           c = mix(c, p.rgb, p.a);
+          if (cloudOn > 0.5 && h > 0.0) {
+            float az = atan(vDir.x, -vDir.z) + cloudRot;
+            float el = asin(clamp(h, 0.0, 1.0));
+            vec2 cuv = vec2(fract(az / 6.2832 + 0.5), 0.5 + el / 3.1416);   // upper half of the map = the sky
+            float cov = smoothstep(0.18, 0.75, texture2D(clouds, cuv).r);
+            cov *= smoothstep(0.0, 0.10, el);                                // melt into the horizon
+            cov *= mix(1.0, 0.5, p.a);                                       // lighter over the painted sunset
+            float toward = pow(max(dot(normalize(vDir), normalize(vec3(0.0, 0.165, -0.986))), 0.0), 2.0);
+            vec3 lit = mix(vec3(0.20, 0.14, 0.24), vec3(1.05, 0.56, 0.34), toward * 0.85 + 0.12);
+            lit += vec3(0.5, 0.28, 0.12) * toward * (1.0 - cov);             // thin edges facing the sun glow
+            c = mix(c, lit, cov * 0.85);
+          }
           gl_FragColor = vec4(c, 1.0);
         }`,
     });
@@ -202,6 +220,37 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   scene.add(new THREE.HemisphereLight(0x6a78b8, 0x3a2a24, 0.45));   // the sky map does most of the fill now
   scene.add(new THREE.AmbientLight(0x2a2440, 0.15));
   const afterglow = new THREE.DirectionalLight(0xff9a6a, 0.9);
+  const AFTERGLOW = 0.9;   // full sunlight; clouds over the sun dim it (below)
+  // CLOUDS: the owner's cloud map rotates slowly across the sky; the game reads
+  // the map's pixels to know how much cloud is in front of the sun, and the
+  // sunlight dims / brightens with it
+  const CLOUD_SPEED = (2 * Math.PI) / 600;   // one full turn of the sky in ten minutes
+  let cloudPix = null, cloudW = 0, cloudH = 0, cloudRot = 0, sunlit = 1;
+  new THREE.TextureLoader().load("/textures/clouds.jpg", (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping;
+    skyMatRef.uniforms.clouds.value = tex;
+    skyMatRef.uniforms.cloudOn.value = 1;
+    const c = document.createElement("canvas");
+    cloudW = c.width = 256; cloudH = c.height = 128;            // a small copy is plenty to read coverage
+    const g = c.getContext("2d");
+    g.drawImage(tex.image, 0, 0, cloudW, cloudH);
+    cloudPix = g.getImageData(0, 0, cloudW, cloudH).data;
+  }, undefined, (err) => console.warn("cloud map failed to load", err));
+  /** how much cloud covers the sun right now (0 clear .. 1 thick), a small blur around it */
+  function cloudOverSun() {
+    if (!cloudPix) return 0;
+    const u = ((cloudRot / (2 * Math.PI) + 0.5) % 1 + 1) % 1;   // the sun is dead ahead (azimuth 0)
+    const v = 0.5 + Math.asin(0.165) / Math.PI;                   // ~9.5 degrees up
+    const cx = Math.floor(u * cloudW), cy = Math.floor((1 - v) * cloudH);
+    let sum = 0, n = 0;
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -4; dx <= 4; dx++) {
+      const x = ((cx + dx) % cloudW + cloudW) % cloudW, y = Math.min(cloudH - 1, Math.max(0, cy + dy));
+      sum += cloudPix[(y * cloudW + x) * 4] / 255; n++;
+    }
+    const cov = sum / n;
+    return Math.min(1, Math.max(0, (cov - 0.18) / 0.57));         // same thresholds as the sky shader
+  }
   afterglow.position.set(0, 4, -40);           // low, from the panorama's sun (dead ahead)
   scene.add(afterglow);
   // the drum lantern: textured wood/leather needs a warm key light close in
@@ -1667,6 +1716,12 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
 
   function update(heardNow, upcoming, ghosts = []) {
     { const t = performance.now(); fireDt = Math.min(0.05, (t - fireT) / 1000); fireT = t; }
+    // clouds drift; the sunlight follows how much cloud is over the sun (eased over ~1.5 s)
+    cloudRot += fireDt * CLOUD_SPEED;
+    if (skyMatRef) skyMatRef.uniforms.cloudRot.value = cloudRot;
+    sunlit += ((1 - 0.6 * cloudOverSun()) - sunlit) * (1 - Math.exp(-fireDt / 1.5));
+    afterglow.intensity = AFTERGLOW * sunlit;
+    scene.environmentIntensity = 0.55 * (0.55 + 0.45 * sunlit);   // the sky's glow dims with the cloud too
     if (!vrOn()) {
       // follow the input quickly; with no input, ease back to forward (~0.6 s)
       const active = Math.abs(look.inX) + Math.abs(look.inY) > 0.01;
@@ -2158,7 +2213,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     /** debug: which ghost hands are showing right now (lane order) */
     debugGhosts: () => ghostHands.map((g) => g.group.visible),
     debugPasses: { bloom, lens, smaa, gtao, fxPass, renderer, scene, fireLights },
-    debugRipple: (x, z, s = 1) => waterPool.addRipple(x, z, s),   // harness: a splash in the pool   // harness: toggle .enabled to compare
+    debugRipple: (x, z, s = 1) => waterPool.addRipple(x, z, s),   // harness: a splash in the pool
+    debugClouds: (rot) => { if (rot != null) cloudRot = rot; return { rot: +cloudRot.toFixed(3), overSun: +cloudOverSun().toFixed(2), sunlit: +sunlit.toFixed(2) }; },   // harness: toggle .enabled to compare
     debugVr: () => hands.map((h, i) => { h.group.updateWorldMatrix(true, false); const p = h.group.localToWorld(new THREE.Vector3(0, STICK_LEN, 0));
       return { hand: i, held: !!h.grip, gripVisible: h.grip ? h.grip.visible : null, tip: [p.x, p.y, p.z].map((v) => +v.toFixed(3)) }; }), get vr() { return vrOn(); } };
 }
