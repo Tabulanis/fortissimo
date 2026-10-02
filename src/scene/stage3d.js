@@ -6,7 +6,6 @@
    is fake: additive sprite flames and glows, no PointLights. */
 
 import * as THREE from "three";
-import { createSpirits } from "./spirits.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
@@ -269,10 +268,7 @@ export function createStage3D(canvas, layout, colors) {
     return t < 0.5 ? out.copy(_fireA).lerp(_fireB, t * 2) : out.copy(_fireB).lerp(_fireC, (t - 0.5) * 2);
   }
 
-  // GHOSTS PLAY VISIBLY: a spirit stick per drum strikes each loop hit
-  const spirits = createSpirits(scene, LANES3D,
-    [0, 1, 2, 3, 4, 5].map((i) => hexToColor(colors[drumOf(i)] || "#888888")),
-    flameTexture, drumMat);
+
 
   // shared arrow geometry (one allocation)
   const shaftGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.6, 6);
@@ -476,6 +472,90 @@ export function createStage3D(canvas, layout, colors) {
       hand.flashT0 = performance.now();
       hand.flash.visible = true;
       hand.flash.material.opacity = 1;
+    }
+  }
+
+  // ---- GHOST HANDS: the player's OWN hands, ghosted --------------------------
+  // Same fist + stick geometry, same sizes, same impact maths as strike(); only
+  // the material differs (Fresnel ghost in the drum's colour). One per lane, so
+  // overlapping loop hits never steal each other's hand. The loop's hit time is
+  // known ahead, so a ghost winds up 0.15 s before it lands EXACTLY on time.
+  const GHOST_WIND = 0.15, GHOST_RECOIL = REBOUND_MS / 1000, GHOST_OPACITY = 0.7;
+  function ghostMaterial(color) {
+    return new THREE.ShaderMaterial({
+      uniforms: { uColor: { value: color.clone() }, uOpacity: { value: 0 } },
+      vertexShader: `varying vec3 vN; varying vec3 vV;
+        void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz);
+          gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform vec3 uColor; uniform float uOpacity; varying vec3 vN; varying vec3 vV;
+        void main(){ float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2);
+          gl_FragColor = vec4(uColor * (0.35 + 1.8 * f), uOpacity * (0.18 + 0.82 * f)); }`,
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+  }
+  const GHOST_SIDE = [0, 0, 1, 0, 1, 1];   // left: hat, snare, kick; right: crash, low tom, high tom
+  const ghostHands = [];
+  for (let i = 0; i < 6; i++) {
+    const mat = ghostMaterial(hexToColor(colors[drumOf(i)] || "#888888"));
+    const group = new THREE.Group();
+    group.add(new THREE.Mesh(handGeo, mat), new THREE.Mesh(stickGeo, mat));
+    group.visible = false;
+    scene.add(group);
+    const rest = HAND_REST[GHOST_SIDE[i]].clone().add(new THREE.Vector3(0, 0.08, -0.12));
+    // impact pose, computed once exactly like strike(): stick from rest toward the face
+    const dir = drumFace[i].clone().sub(rest).normalize();
+    const impact = drumFace[i].clone().addScaledVector(dir, -STICK_LEN);
+    ghostHands.push({ group, mat, rest, dir, impact, pulsedAt: -1 });
+  }
+  const _gDir = new THREE.Vector3(), _gPos = new THREE.Vector3();
+  const WIND_DIR = REST_DIR.clone().applyAxisAngle(new THREE.Vector3(1, 0, 0), -0.6);   // tipped back
+
+  function updateGhostHands(heardNow, ghosts) {
+    for (let i = 0; i < 6; i++) {
+      const g = ghostHands[i];
+      // the hit this ghost is working on: the soonest one not yet fully recoiled
+      let T = Infinity, vel = 1;
+      for (const h of ghosts) {
+        if (h.laneIdx !== i) continue;
+        if (h.time + GHOST_RECOIL < heardNow) continue;
+        if (h.time < T) { T = h.time; vel = h.velocity; }
+      }
+      const into = heardNow - (T - GHOST_WIND);
+      if (!isFinite(T) || into < 0 || !drumVisible[i]) { g.group.visible = false; continue; }
+      g.group.visible = true;
+      if (heardNow < T) {
+        // wind-up: from rest, rising and tipping back (bigger for louder notes)
+        const e = into / GHOST_WIND;
+        _gPos.copy(g.rest); _gPos.y += 0.22 * vel * e;
+        g.group.position.copy(_gPos);
+        _gDir.copy(REST_DIR).lerp(WIND_DIR, e * vel).normalize();
+        g.group.quaternion.setFromUnitVectors(UP, _gDir);
+        g.mat.uniforms.uOpacity.value = GHOST_OPACITY * e;
+      } else {
+        // impact at T, then the same recoil as the player's hands
+        const p = Math.min(1, (heardNow - T) / GHOST_RECOIL);
+        const e = 1 - (1 - p) * (1 - p);
+        _gPos.copy(g.impact).lerp(g.rest, e);
+        _gPos.y += 0.16 * Math.sin(Math.PI * e);
+        g.group.position.copy(_gPos);
+        _gDir.copy(g.dir).lerp(REST_DIR, e).normalize();
+        g.group.quaternion.setFromUnitVectors(UP, _gDir);
+        g.mat.uniforms.uOpacity.value = GHOST_OPACITY * (1 - 0.7 * e);
+        if (g.pulsedAt !== T) {   // the drum answers the ghost's hit, softly
+          g.pulsedAt = T;
+          const dm = drumMat[i];
+          if (dm && dm.emissive) {
+            dm.emissive.copy(hexToColor(colors[drumOf(i)] || "#888888"));
+            dm.emissiveIntensity = Math.max(dm.emissiveIntensity || 0, 0.3 * vel);
+            const t0 = performance.now();
+            const tick = () => { const q = (performance.now() - t0) / 150;
+              if (q >= 1) { dm.emissiveIntensity = 0; return; }
+              dm.emissiveIntensity = Math.min(dm.emissiveIntensity, 0.3 * vel * (1 - q)); requestAnimationFrame(tick); };
+            requestAnimationFrame(tick);
+          }
+        }
+      }
     }
   }
 
@@ -1041,7 +1121,7 @@ export function createStage3D(canvas, layout, colors) {
     fxCount = n;
   }
   function update(heardNow, upcoming, ghosts = []) {
-    spirits.update(heardNow, ghosts);
+    updateGhostHands(heardNow, ghosts);
     _frameNo++;
     updateHands(performance.now());
     // spawn / retire
