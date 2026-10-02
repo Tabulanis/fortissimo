@@ -113,10 +113,29 @@ export function createStage3D(canvas, layout, colors) {
         mid:     { value: new THREE.Color(0x3a2f62) },
         glow:    { value: new THREE.Color(0xf08a5a) },
         ground:  { value: new THREE.Color(0x1c1624) },
+        // the owner's sunset panorama, painted across the sky IN FRONT (it
+        // isn't a full 360 image: its ends fade into the gradient behind)
+        pano:    { value: null },
+        panoOn:  { value: 0 },
       },
       vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position);
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `uniform vec3 zenith, mid, glow, ground; varying vec3 vDir;
+      fragmentShader: `uniform vec3 zenith, mid, glow, ground; uniform sampler2D pano; uniform float panoOn; varying vec3 vDir;
+        // panorama placement: sun (u 0.40 in the image) dead ahead, behind the
+        // archers' far wall; image horizon (v 0.725 from the top) lifted 11 deg
+        // so the sunset band glows just above the wall; square pixels: 220 deg wide
+        const float SUN_U = 0.40, HOR_V = 0.725, SPAN = 3.8397, LIFT = 0.192;
+        vec4 panoSample(vec3 d) {
+          float az = atan(d.x, -d.z);                       // 0 = straight ahead (-z)
+          float el = asin(clamp(d.y, -1.0, 1.0)) - LIFT;
+          float u = SUN_U + az / SPAN;
+          float v = HOR_V - el / SPAN * 2.0;               // 1024 x 506 px: v spans half the angle per unit
+          float edge = smoothstep(0.0, 0.12, u) * (1.0 - smoothstep(0.88, 1.0, u)) * smoothstep(0.0, 0.1, v);
+          vec3 c = texture2D(pano, vec2(u, 1.0 - v)).rgb;
+          float lum = dot(c, vec3(0.3, 0.55, 0.15));
+          c *= 1.0 + 5.0 * smoothstep(0.82, 1.0, lum);     // the sun and hot cloud rims glow (bloom)
+          return vec4(c, edge * panoOn);
+        }
         void main(){
           float h = vDir.y;
           // the afterglow is strongest toward the archers (-z) and hugs the horizon
@@ -124,6 +143,8 @@ export function createStage3D(canvas, layout, colors) {
           float band = exp(-abs(h) * 9.0) * (0.35 + 0.65 * toward);
           vec3 c = h > 0.0 ? mix(mid, zenith, smoothstep(0.0, 0.55, h)) : ground;
           c = mix(c, glow, clamp(band, 0.0, 1.0) * 0.85);
+          vec4 p = panoSample(vDir);
+          c = mix(c, p.rgb, p.a);
           gl_FragColor = vec4(c, 1.0);
         }`,
     });
@@ -137,8 +158,22 @@ export function createStage3D(canvas, layout, colors) {
     envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), skyMat));
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(envScene, 0.02).texture;
-    scene.environmentIntensity = 0.55;
     pmrem.dispose();
+    // load the panorama; once in, rebuild the sky lighting from it too
+    new THREE.TextureLoader().load("/textures/sky_sunset.webp", (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.wrapS = THREE.ClampToEdgeWrapping;
+      tex.minFilter = THREE.LinearFilter;          // no mips: the atan seam would pick a tiny mip and draw a line
+      tex.generateMipmaps = false;
+      skyMat.uniforms.pano.value = tex;
+      skyMat.uniforms.panoOn.value = 1;
+      const pm = new THREE.PMREMGenerator(renderer);
+      const old = scene.environment;
+      scene.environment = pm.fromScene(envScene, 0.02).texture;
+      if (old) old.dispose();
+      pm.dispose();
+    }, undefined, (err) => console.warn("sky panorama failed to load", err));
+    scene.environmentIntensity = 0.55;
     }
   }
 
@@ -147,7 +182,7 @@ export function createStage3D(canvas, layout, colors) {
   scene.add(new THREE.HemisphereLight(0x6a78b8, 0x3a2a24, 0.45));   // the sky map does most of the fill now
   scene.add(new THREE.AmbientLight(0x2a2440, 0.15));
   const afterglow = new THREE.DirectionalLight(0xff9a6a, 0.9);
-  afterglow.position.set(-6, 3, -40);          // low, from the sunset side
+  afterglow.position.set(0, 4, -40);           // low, from the panorama's sun (dead ahead)
   scene.add(afterglow);
   // the drum lantern: textured wood/leather needs a warm key light close in
   // the drum lantern: a warm SPOT just above and behind the player, aimed at the
