@@ -49,7 +49,7 @@ for (const r of ROUNDS) {
 {
   const proj = projectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] }, { samples, melody: melodyFor(ROUNDS[0]) });
   const ch = proj.channels.findIndex((c) => c.name === "bass top");
-  [67, 60, 64, 72, 71].forEach((note, i) => (proj.patterns[0].data[i * 4][ch] = { note, inst: 6, vol: null }));
+  [67, 60, 64, 72, 71].forEach((note, i) => (proj.patterns[0].data[i * 4][ch] = { note, inst: 7, vol: null }));   // slot 07 = the bass sample
   const r = roundFromProject(proj);
   // bass top = bars 5-8: 60 64 67 71 (72 is the fifth note: left out, warned)
   assert.deepStrictEqual(r.parts[0].part.filter((n) => n.lane.startsWith("bass")).map((n) => n.lane), ["bass 7", "bass 5", "bass 6", "bass 8"]);
@@ -61,7 +61,7 @@ for (const r of ROUNDS) {
 // swing written IN Hackbeat (a row split in 3) reads exactly, no manifest swing needed
 {
   const proj = projectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] }, { samples, melody: melodyFor(ROUNDS[0]) });
-  proj.patterns[0].data[5][0] = { split: 3, subs: [null, { note: 60, inst: 0, vol: null }, null] };   // row 5 + 1/3 = beat 0.6667
+  proj.patterns[0].data[5][0] = { split: 3, subs: [null, { note: 60, inst: 1, vol: null }, null] };   // row 5 + 1/3 = beat 0.6667
   const r = roundFromProject(proj);
   assert.ok(r.parts[0].part.some((n) => n.lane === "hat" && Math.abs(n.beat - 2 / 3) < 1e-4), "split-cell swing");
 }
@@ -70,10 +70,10 @@ for (const r of ROUNDS) {
 {
   const proj = projectFromRound({ parts: [{ part: [{ lane: "snare", beat: 1, vel: 0.5 }] }] }, { samples, melody: melodyFor(ROUNDS[0]) });
   const backing = proj.channels.findIndex((c) => c.name === "backing 1");
-  proj.patterns[0].data[0][backing] = { note: 67, inst: 0, vol: null };
+  proj.patterns[0].data[0][backing] = { note: 67, inst: 1, vol: null };
   const r = roundFromProject(proj);
   assert.strictEqual(r.parts[0].part[0].vel, 0.5);
-  assert.deepStrictEqual(r.parts[0].music, [{ ch: backing, beat: 0, note: 67, inst: 0, vel: 1 }]);
+  assert.deepStrictEqual(r.parts[0].music, [{ ch: backing, beat: 0, note: 67, inst: 1, vel: 1 }]);
 }
 
 // channels are matched by NAME, any order, any case

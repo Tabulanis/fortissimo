@@ -18,6 +18,8 @@
  * Swing: write it in Hackbeat (split a row in 3) or set `swing` in the round
  * manifest — straight "and"s are then played at that fraction.
  * Volume column 0..64 (empty = full) becomes the note's velocity.
+ * A note's `inst` counts from 1 (Hackbeat's slots 01, 02...); empty = the
+ * instrument selected in Hackbeat (ui.curInstrument, from 0).
  */
 
 export const DRUM_LANES = ["hat", "snare", "crash", "kick", "tom low", "tom high"];   // = lane index 0..5
@@ -82,6 +84,7 @@ export function roundFromProject(project, meta = {}) {
         for (const ev of cellEvents(cell)) {
           const beat = round6(swingBeat((r + ev.frac) / rpb, meta.swing));
           const vel = ev.vol == null ? 1 : ev.vol / 64;
+          if (ev.inst == null) ev.inst = ((project.ui && project.ui.curInstrument) || 0) + 1;   // empty = Hackbeat's selected instrument
           const drum = drumOf[c], row = rowOf[c];
           if (drum) {
             part.push({ lane: drum, beat, vel });
@@ -112,7 +115,7 @@ export function roundFromProject(project, meta = {}) {
 
   // the sounds: each drum / bar -> the sample used on its channel, at its pitch
   const sounds = {};
-  const pathOf = (inst) => (project.instruments[+inst] || {}).path;
+  const pathOf = (inst) => (project.instruments[+inst - 1] || {}).path;   // Hackbeat slots count from 1
   for (const drum of DRUM_LANES) {
     if (instCount[drum]) sounds[drum] = { path: pathOf(mostUsed(instCount[drum])), note: +mostUsed(noteCount[drum]) };
   }
@@ -160,10 +163,10 @@ export function projectFromRound(round, { bpm = 80, samples, melody, rowsPerBeat
       let c, inst, note;
       if (bar) {
         c = channels.findIndex((ch) => ch.name === `${kind} ${bar <= 4 ? "bottom" : "top"}`);
-        inst = DRUM_LANES.length + (kind === "bass" ? 0 : 1);
+        inst = DRUM_LANES.length + (kind === "bass" ? 1 : 2);   // slots count from 1
         note = melody[kind].notes[bar - 1];
       } else {
-        c = DRUM_LANES.indexOf(n.lane); inst = c; note = BASE_NOTE;
+        c = DRUM_LANES.indexOf(n.lane); inst = c + 1; note = BASE_NOTE;
       }
       if (c < 0) continue;
       const cellNote = { note, inst, vol: n.vel == null || n.vel >= 1 ? null : Math.round(n.vel * 64) };
