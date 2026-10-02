@@ -9,20 +9,22 @@ const laneIndexByName = (name) => ({
 assert.strictEqual(SONG.parts.length, 4, "four parts");
 assert.deepStrictEqual(SONG.parts[0].show, [3, 1], "part 1 shows exactly lanes 3 and 1");
 
-// part 1 over [0.5, 8.5): 8 kicks at 0.5, 1.5, ..., 7.5, all laneIdx 3
+// part 1 (groove: kick on 1, 3, and-of-3) over two bars from 0.5 with bar 4, beat 1
 const kicks = partArrows(SONG.parts[0].part, laneIndexByName, 0.5, 4, 1, 0.5, 8.5);
-assert.strictEqual(kicks.length, 8, "eight kicks");
-for (let i = 0; i < 8; i++) {
+const want = [0.5, 2.5, 3.0, 4.5, 6.5, 7.0];
+assert.strictEqual(kicks.length, want.length, "six kicks in two bars");
+for (let i = 0; i < want.length; i++) {
   assert.strictEqual(kicks[i].laneIdx, 3, `kick ${i} is lane 3`);
-  assert.ok(Math.abs(kicks[i].time - (0.5 + i)) < 1e-9, `kick ${i} at ${0.5 + i}`);
+  assert.ok(Math.abs(kicks[i].time - want[i]) < 1e-9, `kick ${i} at ${want[i]}`);
 }
 
-// part 3 over one bar: 8 hats
+// part 3 over one bar: hat eighths with the "and" of 2 skipped (7 hats)
 const hats = partArrows(SONG.parts[2].part, laneIndexByName, 0, 4, 1, 0, 4);
-assert.strictEqual(hats.length, 8, "eight hats");
-for (let i = 0; i < 8; i++) {
+const hatWant = [0, 0.5, 1, 2, 2.5, 3, 3.5];
+assert.strictEqual(hats.length, hatWant.length, "seven hats");
+for (let i = 0; i < hatWant.length; i++) {
   assert.strictEqual(hats[i].laneIdx, 0, `hat ${i} is lane 0`);
-  assert.ok(Math.abs(hats[i].time - (i * 0.5)) < 1e-9, `hat ${i} at ${i * 0.5}`);
+  assert.ok(Math.abs(hats[i].time - hatWant[i]) < 1e-9, `hat ${i} at ${hatWant[i]}`);
 }
 
 // visibility

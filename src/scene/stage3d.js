@@ -1108,6 +1108,99 @@ export function createStage3D(canvas, layout, colors) {
    * @param {Array<{laneIdx: number, time: number}>} upcoming chart notes
    *   within the next APPROACH_S seconds (both rows)
    */
+  // ---- DECOY VOLLEYS: more fire in the sky, not all of it for you -----------
+  // Arrows that never target a drum: they lob in from all across the far wall
+  // and thud into the courtyard ground around the player, then burn out. They
+  // carry NO lane halo, no charge light, no timing — only playable arrows do,
+  // so the player can always tell which arrows are theirs.
+  const DECOY_N = 36, DECOY_TRAIL = 8;
+  const decoys = [];
+  for (let i = 0; i < DECOY_N; i++) {
+    const group = new THREE.Group();
+    const flame = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false, map: fireTexture,
+      blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+    flame.position.set(0, 0.3, 0);
+    group.add(new THREE.Mesh(shaftGeo, SHAFT_MAT), new THREE.Mesh(headGeo, HEAD_MAT), flame);
+    group.visible = false;
+    scene.add(group);
+    const trail = [];
+    for (let k = 0; k < DECOY_TRAIL; k++) {
+      const t = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false, map: fireTexture,
+        blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+      t.visible = false; scene.add(t); trail.push(t);
+    }
+    decoys.push({ group, flame, trail, active: false, t0: 0, dur: 3, arc: 6,
+      from: new THREE.Vector3(), to: new THREE.Vector3(), landed: -1 });
+  }
+  let nextVolley = -1;
+  const _dP = new THREE.Vector3(), _dQ = new THREE.Vector3(), _dT = new THREE.Vector3();
+  function decoyPoint(d, f, out) {
+    out.copy(d.from).lerp(d.to, f);
+    out.y += d.arc * 4 * f * (1 - f);
+    return out;
+  }
+  function launchDecoy(heardNow) {
+    const d = decoys.find((x) => !x.active);
+    if (!d) return;
+    d.active = true; d.t0 = heardNow; d.landed = -1;
+    d.dur = 2.4 + Math.random() * 1.0;
+    d.arc = 5 + Math.random() * 6;
+    d.from.set(-40 + Math.random() * 80, 2.5 + Math.random() * 1.5, -70 + Math.random() * 20);
+    // a ground spot around the player — never the drum area or the player
+    for (let tries = 0; tries < 20; tries++) {
+      d.to.set(-7 + Math.random() * 14, 0, -14 + Math.random() * 16.5);
+      const nearDrums = Math.abs(d.to.x) < 1.6 && d.to.z > -2.4 && d.to.z < 2.6;
+      if (!nearDrums) break;
+    }
+    d.group.visible = true;
+    d.flame.material.opacity = 1;
+  }
+  function updateDecoys(heardNow) {
+    if (heardNow <= 0) return;
+    if (nextVolley < 0) nextVolley = heardNow + 0.8;
+    if (heardNow >= nextVolley) {
+      const n = 1 + Math.floor(Math.random() * 4);           // volleys of 1-4
+      for (let k = 0; k < n; k++) launchDecoy(heardNow - k * 0.09);
+      nextVolley = heardNow + 0.6 + Math.random() * 1.0;
+    }
+    for (const d of decoys) {
+      if (!d.active) continue;
+      const f = (heardNow - d.t0) / d.dur;
+      if (f < 1) {
+        decoyPoint(d, Math.max(0, f), _dP);
+        decoyPoint(d, Math.max(0, f - 0.01), _dQ);
+        d.group.position.copy(_dP);
+        d.group.quaternion.setFromUnitVectors(UP, _dT.copy(_dP).sub(_dQ).normalize());
+        const far = Math.max(1, _dP.distanceTo(camera.position) / 5);
+        const s = 0.4 * Math.min(far, 5) * (0.9 + 0.2 * Math.random());
+        d.flame.scale.setScalar(s);
+        for (let k = 0; k < DECOY_TRAIL; k++) {
+          const t = d.trail[k];
+          const fk = f - (k + 1) * 0.0075;
+          if (fk <= 0) { t.visible = false; continue; }
+          t.position.copy(decoyPoint(d, fk, _dT));
+          const cool = (k + 1) / DECOY_TRAIL;
+          t.scale.setScalar(s * 0.9 * (1 - 0.75 * cool));
+          fireColor(0.15 + 0.85 * cool, _fc);
+          t.material.color.copy(_fc);
+          t.material.opacity = 0.75 * Math.pow(1 - cool, 1.3);
+          t.visible = true;
+        }
+      } else {
+        // stuck in the ground, burning out over 1.2 s
+        if (d.landed < 0) {
+          d.landed = heardNow;
+          for (const t of d.trail) t.visible = false;
+          d.group.position.copy(d.to);          // head buried at the landing spot
+        }
+        const b = (heardNow - d.landed) / 1.2;
+        if (b >= 1) { d.active = false; d.group.visible = false; continue; }
+        d.flame.material.opacity = (1 - b) * (0.7 + 0.3 * Math.random());
+        d.flame.scale.setScalar(0.35 * (1 - 0.6 * b));
+      }
+    }
+  }
+
   let _frameNo = 0;
   let fxSorted = false, fxCount = -1;
   function sortFx() {
@@ -1122,6 +1215,7 @@ export function createStage3D(canvas, layout, colors) {
   }
   function update(heardNow, upcoming, ghosts = []) {
     updateGhostHands(heardNow, ghosts);
+    updateDecoys(heardNow);
     _frameNo++;
     updateHands(performance.now());
     // spawn / retire
