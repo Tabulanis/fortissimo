@@ -17,6 +17,7 @@ import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { createVrHits } from "../input/vrhits.js";
+import { createFire } from "./fire.js";
 
 const APPROACH_S = 3.2;   // seconds of visible flight: launched from the far wall, tracked all the way
 const STUCK_S = 0.6;      // seconds an unhit arrow stays stuck at the face
@@ -184,6 +185,9 @@ export function createStage3D(canvas, layout, colors) {
   fxPass.clear = false;
   fxPass.clearDepth = false;
   composer.addPass(fxPass);
+  // THE FIRE: one particle simulation for every flame, ember and smoke wisp
+  const fireSim = createFire(scene, { layer: FX_LAYER });
+  let fireT = performance.now(), fireDt = 0;
   const gtao = new GTAOPass(scene, camera, canvas.clientWidth || 1280, canvas.clientHeight || 720);
   gtao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 16 });
   gtao.blendIntensity = 1.0;
@@ -358,8 +362,6 @@ export function createStage3D(canvas, layout, colors) {
   // the drum body as firelight; the small flame sprite and the arrow meshes
   // keep depth testing.
   const _pT = new THREE.Vector3();
-  const TRAIL_N = 12;          // fire puffs behind each arrow, along its own path
-  const TRAIL_STEP = 0.0075;   // path fraction between puffs (~0.5 m)
   const pool = [];
   for (let i = 0; i < 40; i++) {
     const group = new THREE.Group();
@@ -382,26 +384,18 @@ export function createStage3D(canvas, layout, colors) {
       depthWrite: false,
       depthTest: false,
       transparent: true,
-      opacity: 0.42,
+      opacity: 0.25,
     }));
     glow.position.set(0, 0.3, 0);
     glow.scale.setScalar(1.4);
     group.add(shaft, head, flame, glow);
     group.visible = false;
     scene.add(group);
-    const trail = [];
-    for (let k = 0; k < TRAIL_N; k++) {
-      const t = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false, map: fireTexture,
-        blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
-      t.visible = false;
-      scene.add(t);
-      trail.push(t);
-    }
     pool.push({
+      id: "a" + i,      // fire-simulation emitter id
       group,
       flame,
       glow,
-      trail,
       active: false,
       laneIdx: -1,
       time: 0,
@@ -958,6 +952,8 @@ export function createStage3D(canvas, layout, colors) {
     const P = 0.35 + 0.65 * Math.max(0, Math.min(1, power));   // dead-on = full blast
     const face = drumFace[laneIdx];
     fireBurst(face, P);
+    // the fireball: blown out of the head toward the player
+    fireSim.burst(face, P, LANES3D[laneIdx].upright ? { x: 0, y: 0.2, z: 1 } : { x: 0, y: 1, z: 0.3 });
     const drumColor = hexToColor(colors[drumOf(laneIdx)] || "#888888");
 
     // 1. FLASH — white-hot core tinted by the drum colour,
@@ -1178,7 +1174,7 @@ export function createStage3D(canvas, layout, colors) {
   function recycle(e) {
     e.active = false;
     e.group.visible = false;
-    for (const t of e.trail) t.visible = false;
+    fireSim.forget(e.id);
     const i = activeNotes.indexOf(e);
     if (i >= 0) activeNotes.splice(i, 1);
   }
@@ -1194,7 +1190,7 @@ export function createStage3D(canvas, layout, colors) {
   // and thud into the courtyard ground around the player, then burn out. They
   // carry NO lane halo, no charge light, no timing — only playable arrows do,
   // so the player can always tell which arrows are theirs.
-  const DECOY_N = 36, DECOY_TRAIL = 8;
+  const DECOY_N = 36;
   const decoys = [];
   for (let i = 0; i < DECOY_N; i++) {
     const group = new THREE.Group();
@@ -1204,13 +1200,7 @@ export function createStage3D(canvas, layout, colors) {
     group.add(new THREE.Mesh(shaftGeo, SHAFT_MAT), new THREE.Mesh(headGeo, HEAD_MAT), flame);
     group.visible = false;
     scene.add(group);
-    const trail = [];
-    for (let k = 0; k < DECOY_TRAIL; k++) {
-      const t = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false, map: fireTexture,
-        blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
-      t.visible = false; scene.add(t); trail.push(t);
-    }
-    decoys.push({ group, flame, trail, active: false, t0: 0, dur: 3, arc: 6,
+    decoys.push({ id: "d" + decoys.length, group, flame, active: false, t0: 0, dur: 3, arc: 6,
       from: new THREE.Vector3(), to: new THREE.Vector3(), landed: -1 });
   }
   let nextVolley = -1;
@@ -1261,28 +1251,18 @@ export function createStage3D(canvas, layout, colors) {
         const far = Math.max(1, _dP.distanceTo(camera.position) / 5);
         const s = 0.4 * Math.min(far, 5) * (0.9 + 0.2 * Math.random());
         d.flame.scale.setScalar(s);
-        for (let k = 0; k < DECOY_TRAIL; k++) {
-          const t = d.trail[k];
-          const fk = f - (k + 1) * 0.0075;
-          if (fk <= 0) { t.visible = false; continue; }
-          t.position.copy(decoyPoint(d, fk, _dT));
-          const cool = (k + 1) / DECOY_TRAIL;
-          t.scale.setScalar(s * 0.9 * (1 - 0.75 * cool));
-          fireColor(0.15 + 0.85 * cool, _fc);
-          t.material.color.copy(_fc);
-          t.material.opacity = 0.75 * Math.pow(1 - cool, 1.3);
-          t.visible = true;
-        }
+        fireSim.trail(d.id, _dP, Math.min(far, 3));
       } else {
         // stuck in the ground, burning out over 1.2 s
         if (d.landed < 0) {
           d.landed = heardNow;
-          for (const t of d.trail) t.visible = false;
+          fireSim.forget(d.id);
           d.group.position.copy(d.to);          // head buried at the landing spot
         }
         const b = (heardNow - d.landed) / 1.2;
         if (b >= 1) { d.active = false; d.group.visible = false; continue; }
         d.flame.material.opacity = (1 - b) * (0.7 + 0.3 * Math.random());
+        fireSim.smoulder(d.to, 40 * (1 - b), fireDt);
         d.flame.scale.setScalar(0.35 * (1 - 0.6 * b));
       }
     }
@@ -1446,6 +1426,7 @@ export function createStage3D(canvas, layout, colors) {
   }
 
   function update(heardNow, upcoming, ghosts = []) {
+    { const t = performance.now(); fireDt = Math.min(0.05, (t - fireT) / 1000); fireT = t; }
     updateGhostHands(heardNow, ghosts);
     updateDecoys(heardNow);
     _frameNo++;
@@ -1510,7 +1491,7 @@ export function createStage3D(canvas, layout, colors) {
             continue;
           }
           // NEAR: glance-off, flying away while fading over 0.4 s
-          for (const t of e.trail) t.visible = false;   // no frozen trail left hanging
+          fireSim.forget(e.id);
           const g = (heardNow - e.hitAt) / e.life;
           if (g >= 1) {
             recycle(e);
@@ -1569,7 +1550,9 @@ export function createStage3D(canvas, layout, colors) {
           recycle(e);
           continue;
         }
-        // still stuck: smoulder flicker + smoke puffs
+        // still stuck: the sim keeps a small fire going at the head
+        fireSim.smoulder(e.face, 30, fireDt, 0.8);
+        // smoulder flicker + smoke puffs
         for (const sm of smould) {
           if (sm.active && sm.face.equals(e.face)) {
             sm.flicker.material.opacity = 0.4 + 0.3 * Math.random();
@@ -1604,23 +1587,15 @@ export function createStage3D(canvas, layout, colors) {
       const far = Math.max(1, e.group.position.distanceTo(camera.position) / 5);
       // flame core keeps a readable size far away; the halo grows only a little,
       // so distant arrows are sharp points of fire, not blobs
-      const s = 0.45 * Math.min(far, 5) * (0.9 + 0.2 * Math.random());
+      const s = 0.28 * Math.min(far, 5) * (0.9 + 0.2 * Math.random());   // hot core; the sim is the fire
       e.flame.scale.setScalar(s);
       e.glow.scale.setScalar(1.4 * Math.min(far, 1.8) * (0.9 + 0.2 * Math.random()));
-      // FIRE TRAIL: puffs along the arrow's own path just behind it, shrinking,
-      // cooling orange -> deep red and fading — smooth because it IS the path
-      for (let k = 0; k < TRAIL_N; k++) {
-        const t = e.trail[k];
-        const fk = clamped - (k + 1) * TRAIL_STEP;
-        if (dt < 0 || fk <= 0) { t.visible = false; continue; }
-        pathPoint(e, fk, _pT);
-        t.position.copy(_pT);
-        const cool = (k + 1) / TRAIL_N;
-        t.scale.setScalar(s * 0.95 * (1 - 0.75 * cool));
-        fireColor(0.15 + 0.85 * cool, _fc);
-        t.material.color.copy(_fc);
-        t.material.opacity = 0.85 * Math.pow(1 - cool, 1.3);
-        t.visible = true;
+      // FIRE: the head pours flame into the simulation as it flies (world-space
+      // head = group position + 0.3 m along the heading). Far arrows emit
+      // bigger flames so they stay readable, like the core sprite.
+      if (dt >= 0) {
+        _pT.copy(e.group.position).addScaledVector(_tan, 0.3);
+        fireSim.trail(e.id, _pT, Math.min(far, 3));
       }
     }
 
@@ -1773,6 +1748,7 @@ export function createStage3D(canvas, layout, colors) {
       }
     }
 
+    fireSim.update(fireDt);
     fxCamera.position.copy(camera.position);
     fxCamera.quaternion.copy(camera.quaternion);
     fxCamera.projectionMatrix.copy(camera.projectionMatrix);
