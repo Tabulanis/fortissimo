@@ -45,6 +45,7 @@ const DRUM_COLOR = {
 
 // --- the 3D stage (created once at load; canvas#stage becomes WebGL) --------
 const stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR);
+if (stage3d.mobile) document.documentElement.classList.add("touch");   // touch layout (no keyboard hints)
 window.__gr = { stage3d };   // debug handle for the browser harness
 
 // --- the song: parts unlock two drums at a time; the ghost bell locks them ---
@@ -102,7 +103,8 @@ function stageMessage() {
   } else if (songDone()) {
     hudUI.say("Song complete! Play anything — ring the bell 🔔 to add a measure", "good");
   } else {
-    hudUI.say("Follow the arrows. Got it? Ring the bell 🔔 (Space)");
+    hudUI.say(stage3d.mobile ? "Follow the arrows — tap the drums. Got it? Tap the bell 🔔"
+      : "Follow the arrows. Got it? Ring the bell 🔔 (Space)");
   }
 }
 
@@ -660,8 +662,49 @@ window.addEventListener("blur", () => lookKeys.clear());
 // when it rests, the view eases back to forward. The cursor stays free, and
 // the settings panel / buttons never steer the camera.
 const mouseLook = { x: 0, y: 0, tMove: 0, tFrame: performance.now() };
+let lastTouch = -1e9;
+
+// TOUCH / PEN / CLICK on the 3D view: hit the drum under the finger (any number
+// of fingers at once). A finger that lands off the drums drags the view instead.
+const drags = new Map();   // pointerId -> last x, y (look-around drags)
+stage.style.touchAction = "none";
+stage.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "touch") lastTouch = performance.now();
+  const lane = stage3d.pickDrum(e.clientX, e.clientY);
+  if (lane < 0 || !ctx || !drums || !pool || !clock) {
+    if (e.pointerType !== "mouse") { drags.set(e.pointerId, { x: e.clientX, y: e.clientY }); try { stage.setPointerCapture(e.pointerId); } catch { /* not a live pointer: the drag still works without capture */ } }
+    return;
+  }
+  e.preventDefault();
+  const entry = KEYMAP_BY_IDX[lane];
+  // the touch's own timestamp, on the heard audio clock (like a key press)
+  const o = ctx.getOutputTimestamp();
+  const force = e.pointerType === "pen" && e.pressure > 0 ? 0.4 + 0.6 * e.pressure : 1;
+  hitLane(entry.idx, entry.ln, o.contextTime + (e.timeStamp - o.performanceTime) / 1000 - calibration, force);
+});
+stage.addEventListener("pointermove", (e) => {
+  const d = drags.get(e.pointerId);
+  if (!d) return;
+  if (e.pointerType === "touch") lastTouch = performance.now();
+  mouseLook.x = Math.max(-1, Math.min(1, mouseLook.x + (e.clientX - d.x) / 250));
+  mouseLook.y = Math.max(-1, Math.min(1, mouseLook.y - (e.clientY - d.y) / 250));
+  mouseLook.tMove = performance.now();
+  d.x = e.clientX; d.y = e.clientY;
+});
+for (const ev of ["pointerup", "pointercancel"]) stage.addEventListener(ev, (e) => drags.delete(e.pointerId));
+
+// held upright on a phone/tablet: suggest turning it sideways (once per visit)
+let toldRotate = false;
+function maybeSuggestLandscape() {
+  if (toldRotate || !stage3d.mobile || innerWidth >= innerHeight) return;
+  toldRotate = true;
+  hudUI.say("Turn sideways for the best view ↻", "good", 4000);
+}
+window.addEventListener("resize", maybeSuggestLandscape);
+setTimeout(maybeSuggestLandscape, 1200);
 window.addEventListener("mousemove", (e) => {
   if (e.target.closest && e.target.closest("#gr-set, button, input, select, a")) return;
+  if (performance.now() - lastTouch < 800) return;   // phones fire fake mouse events after a tap: not a look
   mouseLook.x = Math.max(-1, Math.min(1, mouseLook.x + e.movementX / 300));
   mouseLook.y = Math.max(-1, Math.min(1, mouseLook.y - e.movementY / 300));
   mouseLook.tMove = performance.now();

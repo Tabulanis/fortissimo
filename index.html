@@ -2,11 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>Garden Rhythm</title>
     <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
-      #stage { display: block; width: 100vw; height: 100vh; }
+      /* phones/tablets: no pinch-zoom, no bounce, no text selection while drumming */
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #000;
+        touch-action: none; overscroll-behavior: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+      #stage { display: block; width: 100vw; height: 100vh; height: 100dvh; }
       #chart {
         position: fixed;
         display: none;   /* developer timing chart: H toggles */

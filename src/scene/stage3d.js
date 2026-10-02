@@ -87,7 +87,12 @@ export function createStage3D(canvas, layout, colors) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.shadowMap.enabled = true;                 // the foreground lantern casts shadows
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  // QUALITY: phones and tablets (coarse pointer) get a lighter tier — fewer
+  // pixels, no AO/SMAA, smaller shadow + mirror maps, fewer particles and
+  // fire lights. ?quality=mobile|high in the URL forces a tier.
+  const qParam = new URLSearchParams(location.search).get("quality");
+  const MOBILE = qParam ? qParam === "mobile" : window.matchMedia("(pointer: coarse)").matches;
+  renderer.setPixelRatio(MOBILE ? Math.min(window.devicePixelRatio || 1, 1.5) : (window.devicePixelRatio || 1));
   // VR: the headset is the camera, the controllers hold the sticks
   renderer.xr.enabled = true;
   // FILM LOOK: ACES filmic tone mapping (the Unreal Engine curve) — bright fire
@@ -191,7 +196,7 @@ export function createStage3D(canvas, layout, colors) {
   lantern.position.set(0.35, 2.7, 1.1);
   lantern.target.position.set(0, 0.9, -0.5);
   lantern.castShadow = true;
-  lantern.shadow.mapSize.set(2048, 2048);
+  lantern.shadow.mapSize.set(MOBILE ? 1024 : 2048, MOBILE ? 1024 : 2048);
   lantern.shadow.camera.near = 0.3;
   lantern.shadow.camera.far = 9;
   lantern.shadow.bias = -0.0004;
@@ -203,8 +208,13 @@ export function createStage3D(canvas, layout, colors) {
     60, canvas.clientWidth / canvas.clientHeight, 0.1, 200,
   );
   // FOV is set HORIZONTALLY (games' convention; owner: 110), vertical follows the window shape
-  const HFOV = 110;
-  const fitFov = () => { camera.fov = 2 * Math.atan(Math.tan(HFOV * Math.PI / 360) / camera.aspect) * 180 / Math.PI; };
+  // held upright (portrait) a 110-degree width would mean a ~145-degree fisheye
+  // height: narrower there, and the height capped
+  const fitFov = () => {
+    const h = camera.aspect >= 1 ? 110 : 80;
+    const v = 2 * Math.atan(Math.tan(h * Math.PI / 360) / camera.aspect) * 180 / Math.PI;
+    camera.fov = Math.min(v, 120);
+  };
   fitFov();
   camera.position.set(0, 1.7, 0.75);           // standing, just behind the kit (VR uses the headset)
   camera.lookAt(new THREE.Vector3(0, 1.0, -2.2));  // tilted down: both rows in view, the arcs above
@@ -232,12 +242,13 @@ export function createStage3D(canvas, layout, colors) {
   fxPass.clearDepth = false;
   composer.addPass(fxPass);
   // THE FIRE: one particle simulation for every flame, ember and smoke wisp
-  const fireSim = createFire(scene, { layer: FX_LAYER });
+  const fireSim = createFire(scene, { layer: FX_LAYER, ...(MOBILE ? { maxFire: 6000, maxSmoke: 1500 } : {}) });
   let fireT = performance.now(), fireDt = 0;
   const gtao = new GTAOPass(scene, camera, canvas.clientWidth || 1280, canvas.clientHeight || 720);
   gtao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 16 });
   gtao.blendIntensity = 1.0;
   composer.addPass(gtao);
+  gtao.enabled = !MOBILE;
   // BLOOM: only what's brighter than white glows (fire, sparks, hit flashes)
   const bloom = new UnrealBloomPass(new THREE.Vector2(canvas.clientWidth || 1280, canvas.clientHeight || 720), 0.55, 0.6, 0.85);
   composer.addPass(bloom);
@@ -263,6 +274,7 @@ export function createStage3D(canvas, layout, colors) {
   // anti-aliasing (the effect chain bypasses the canvas's own MSAA)
   const smaa = new SMAAPass((canvas.clientWidth || 1280) * renderer.getPixelRatio(), (canvas.clientHeight || 720) * renderer.getPixelRatio());
   composer.addPass(smaa);
+  smaa.enabled = !MOBILE;   // the mobile tier relies on its higher pixel density instead
 
   // ground: dark stone, flat at y = 0
   const ground = new THREE.Mesh(
@@ -277,7 +289,7 @@ export function createStage3D(canvas, layout, colors) {
   const courtyard = createCourtyard(scene);
   // the reflecting pool (drawn with the fx layer: after the scene, so the
   // AO's extra scene render doesn't re-render its mirror a second time)
-  const waterPool = createPool(scene, { bottomMap: courtyard.userData.flagsMap, layer: FX_LAYER });
+  const waterPool = createPool(scene, { bottomMap: courtyard.userData.flagsMap, layer: FX_LAYER, resolution: MOBILE ? 0.25 : 0.5 });
 
   // drums
   const drumMat = [];
@@ -1381,7 +1393,7 @@ export function createStage3D(canvas, layout, colors) {
   // A fixed set of real point lights (fixed count = no shader rebuilds) rides
   // the burning arrows that matter most each frame — brightest and nearest the
   // player — with a flicker; impacts add a short hot burst at the drumhead.
-  const FIRE_LIGHTS = 6;
+  const FIRE_LIGHTS = MOBILE ? 3 : 6;   // every light costs every pixel on a phone GPU
   const fireLights = [];
   for (let i = 0; i < FIRE_LIGHTS; i++) {
     const l = new THREE.PointLight(0xff8a3a, 0, 7, 2);
@@ -1515,13 +1527,39 @@ export function createStage3D(canvas, layout, colors) {
     }
   }
   /** the game's frame loop: runs on the screen normally and on the headset in VR */
+  /** TOUCH: which drum is under screen point (clientX, clientY)? -1 = none.
+   *  Generous: nearest drum centre within 1.35x its on-screen radius (min 36 px). */
+  const _pc = new THREE.Vector3(), _pr = new THREE.Vector3(), _camRight = new THREE.Vector3();
+  function drumScreen(i) {
+    const r = canvas.getBoundingClientRect();
+    _pc.copy(drumFace[i]).project(camera);
+    _camRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+    _pr.copy(drumFace[i]).addScaledVector(_camRight, LANES3D[i].radius).project(camera);
+    const x = r.left + (_pc.x * 0.5 + 0.5) * r.width, y = r.top + (-_pc.y * 0.5 + 0.5) * r.height;
+    const rad = Math.abs(_pr.x - _pc.x) * 0.5 * r.width;
+    return { x, y, rad };
+  }
+  function pickDrum(cx, cy) {
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < 6; i++) {
+      if (!drumVisible[i]) continue;
+      const p = drumScreen(i);
+      const d = Math.hypot(cx - p.x, cy - p.y);
+      if (d <= Math.max(36, p.rad * 1.35) && d < bestD) { best = i; bestD = d; }
+    }
+    return best;
+  }
+
   function setLoop(fn) {
     renderer.setAnimationLoop((t) => { frameT = t ?? performance.now(); fn(); });
   }
   /** add the "Enter VR" button (shows "VR not supported" without a headset) */
   function addVrButton(parent = document.body) {
     const b = VRButton.createButton(renderer);
-    parent.appendChild(b);
+    // only on devices that can do VR: elsewhere it was a grey "WEBXR NOT AVAILABLE" box
+    if (navigator.xr && navigator.xr.isSessionSupported) {
+      navigator.xr.isSessionSupported("immersive-vr").then((ok) => { if (ok) parent.appendChild(b); }).catch(() => {});
+    }
     return b;
   }
 
@@ -1981,7 +2019,7 @@ export function createStage3D(canvas, layout, colors) {
   }, undefined, (err) => console.warn("drum model failed to load; keeping stand-ins", err));
 
   return { resize, update, hit, press, strike, setDrumVisible, debugDrums,
-    setLoop, addVrButton,
+    setLoop, addVrButton, pickDrum, drumScreen, get mobile() { return MOBILE; },
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; }, setVrBellHandler: (fn) => { onVrBell = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */

@@ -23,6 +23,17 @@ const CSS = `
   font-size: 22px; text-shadow: 0 2px 8px #000; text-align: center; white-space: nowrap; }
 #gr-hud .status.good { color: #9dff9a; } #gr-hud .status.bad { color: #ffb070; }
 #gr-hud .count { font-size: 15px; opacity: 0.85; }
+/* small screens (phones): tighter chips, wrapping status, smaller bell */
+@media (max-width: 760px), (max-height: 480px) {
+  #gr-hud { font-size: 13px; }
+  #gr-hud .top { top: max(8px, env(safe-area-inset-top)); left: max(10px, env(safe-area-inset-left)); right: max(10px, env(safe-area-inset-right)); }
+  #gr-hud .status { top: 48px; font-size: 16px; white-space: normal; width: min(64vw, calc(100vw - 130px)); }   /* clear of the gear on the right */
+  #gr-hud .bellbox { right: max(14px, env(safe-area-inset-right)); bottom: max(14px, env(safe-area-inset-bottom)); }
+  #gr-hud .bell { width: 64px; height: 64px; font-size: 32px; }
+}
+/* touch screens: no keyboard hint under the bell */
+@media (pointer: coarse) { #gr-hud .bellkey { display: none; } }
+.touch #gr-hud .bellkey { display: none; }
 `;
 
 export function createHud({ onBell } = {}) {
@@ -46,7 +57,8 @@ export function createHud({ onBell } = {}) {
 
   const $ = (s) => root.querySelector(s);
   const bell = $(".bell");
-  bell.addEventListener("click", (e) => { e.stopPropagation(); onBell && onBell(); });
+  // pointerdown, not click: rings the moment a finger lands (no tap delay)
+  bell.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); onBell && onBell(); });
 
   let statusTimer = 0;
   return {
