@@ -7,6 +7,7 @@
 
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { createCourtyard, ARCHER_ROOF_Y, ARCHER_ROOF_X, ARCHER_ROOF_Z, FAR_WALL } from "./courtyard.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
@@ -38,16 +39,18 @@ const LANES3D = [
 // (~70 m out). Every arrow is visible from launch and lobs in on a high arc;
 // the horizontal fan keeps each shaft readable side-on, never a dot.
 const SPAWNS = [
-  new THREE.Vector3(-38, 3.0, -55),   // upright 0  — far left
-  new THREE.Vector3(-24, 3.0, -62),   // upright 1  — left of centre (never dead centre: a centre arc is seen edge-on)
-  new THREE.Vector3(38, 3.0, -55),    // upright 2  — far right
-  new THREE.Vector3(-30, 2.5, -48),   // floor 3
-  new THREE.Vector3(26, 2.5, -60),    // floor 4    — right of centre
-  new THREE.Vector3(30, 2.5, -48),    // floor 5
+  // archers on the COLONNADE ROOFS (courtyard.js: roof y 7.6, inner edge x ±6.3),
+  // far down the courtyard, firing across the open space onto the drums
+  new THREE.Vector3(-6.3, 7.6, -30),   // upright 0 — left roof
+  new THREE.Vector3(-6.3, 7.6, -38),   // upright 1 — left roof, further
+  new THREE.Vector3(6.3, 7.6, -30),    // upright 2 — right roof
+  new THREE.Vector3(-6.3, 7.6, -20),   // floor 3   — left roof
+  new THREE.Vector3(6.3, 7.6, -38),    // floor 4   — right roof, further
+  new THREE.Vector3(6.3, 7.6, -20),    // floor 5   — right roof
 ];
 
 // arc height of the parabolic lift on top of the straight line: a real lob
-const ARC_LIFT = [6.5, 6.5, 6.5, 8, 8, 8];
+const ARC_LIFT = [3.5, 3.5, 3.5, 4.5, 4.5, 4.5];   // they start high already
 
 function hexToColor(s) {
   return new THREE.Color(s);   // accepts "#rrggbb"
@@ -167,6 +170,9 @@ export function createStage3D(canvas, layout, colors) {
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
+
+  // the environment mock-up (owner's reference: sandstone colonnade courtyard)
+  createCourtyard(scene);
 
   // drums
   const drumMat = [];
@@ -1144,11 +1150,17 @@ export function createStage3D(canvas, layout, colors) {
     if (!d) return;
     d.active = true; d.t0 = heardNow; d.landed = -1;
     d.dur = 2.4 + Math.random() * 1.0;
-    d.arc = 5 + Math.random() * 6;
-    d.from.set(-40 + Math.random() * 80, 2.5 + Math.random() * 1.5, -70 + Math.random() * 20);
+    d.arc = 2.5 + Math.random() * 4;
+    if (Math.random() < 0.3) {             // from the top of the far building
+      d.from.set((Math.random() * 2 - 1) * FAR_WALL.halfWidth, FAR_WALL.top, FAR_WALL.z);
+    } else {                               // from either colonnade roof
+      const side = Math.random() < 0.5 ? -1 : 1;
+      d.from.set(side * (ARCHER_ROOF_X + Math.random() * 1.5), ARCHER_ROOF_Y,
+        ARCHER_ROOF_Z[0] + Math.random() * (ARCHER_ROOF_Z[1] - ARCHER_ROOF_Z[0]));
+    }
     // a ground spot around the player — never the drum area or the player
     for (let tries = 0; tries < 20; tries++) {
-      d.to.set(-7 + Math.random() * 14, 0, -14 + Math.random() * 16.5);
+      d.to.set(-5 + Math.random() * 10, 0, -30 + Math.random() * 32.5);   // the courtyard paving
       const nearDrums = Math.abs(d.to.x) < 1.6 && d.to.z > -2.4 && d.to.z < 2.6;
       if (!nearDrums) break;
     }
