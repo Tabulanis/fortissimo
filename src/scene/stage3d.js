@@ -122,9 +122,9 @@ export function createStage3D(canvas, layout, colors) {
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
       fragmentShader: `uniform vec3 zenith, mid, glow, ground; uniform sampler2D pano; uniform float panoOn; varying vec3 vDir;
         // panorama placement: sun (u 0.40 in the image) dead ahead, behind the
-        // archers' far wall; image horizon (v 0.725 from the top) lifted 11 deg
-        // so the sunset band glows just above the wall; square pixels: 220 deg wide
-        const float SUN_U = 0.40, HOR_V = 0.725, SPAN = 3.8397, LIFT = 0.192;
+        // archers' far wall; image horizon (v 0.725 from the top) lifted 9.5 deg
+        // so the sun sits just above the (8 m) wall; square pixels: 220 deg wide
+        const float SUN_U = 0.40, HOR_V = 0.725, SPAN = 3.8397, LIFT = 0.165;
         vec4 panoSample(vec3 d) {
           float az = atan(d.x, -d.z);                       // 0 = straight ahead (-z)
           float el = asin(clamp(d.y, -1.0, 1.0)) - LIFT;
@@ -202,6 +202,10 @@ export function createStage3D(canvas, layout, colors) {
   const camera = new THREE.PerspectiveCamera(
     60, canvas.clientWidth / canvas.clientHeight, 0.1, 200,
   );
+  // FOV is set HORIZONTALLY (games' convention; owner: 110), vertical follows the window shape
+  const HFOV = 110;
+  const fitFov = () => { camera.fov = 2 * Math.atan(Math.tan(HFOV * Math.PI / 360) / camera.aspect) * 180 / Math.PI; };
+  fitFov();
   camera.position.set(0, 1.7, 0.75);           // standing, just behind the kit (VR uses the headset)
   camera.lookAt(new THREE.Vector3(0, 1.0, -2.2));  // tilted down: both rows in view, the arcs above
   // LOOK AROUND (screen mode): arrow keys / thumbsticks turn the view a little
@@ -1206,6 +1210,7 @@ export function createStage3D(canvas, layout, colors) {
     renderer.setSize(w, h, false);
     if (composer) { composer.setSize(w, h); gtao.setSize(w, h); bloom.setSize(w, h); }
     camera.aspect = w / h;
+    fitFov();
     camera.updateProjectionMatrix();
   }
 
@@ -1395,7 +1400,10 @@ export function createStage3D(canvas, layout, colors) {
         if (!a.group.visible || !a.flame.visible) continue;
         const op = a.flame.material.opacity;
         if (op < 0.05) continue;
-        a.flame.getWorldPosition(_flamePos);
+        // light rides the shaft behind the head (toward the tail) and never
+        // sits below 0.3 m, so an arrow stuck in the ground still lights it
+        _flamePos.set(0, -0.2, 0).applyQuaternion(a.group.quaternion).add(a.group.position);
+        _flamePos.y = Math.max(_flamePos.y, 0.3);
         const d = _flamePos.distanceTo(camera.position);
         _cands.push({ x: _flamePos.x, y: _flamePos.y, z: _flamePos.z, op, score: op / (1 + d * 0.35) });
       }

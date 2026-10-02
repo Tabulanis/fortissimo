@@ -17,7 +17,8 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 export const ARCHER_ROOF_Y = 7.6;      // top of the colonnade roofs
 export const ARCHER_ROOF_X = 6.3;      // inner roof edge, each side
 export const ARCHER_ROOF_Z = [-42, -8]; // the stretch of roof archers use
-export const FAR_WALL = { z: -46.5, top: 11.6, halfWidth: 9 };
+const FAR_H = 8;   // far building height (was 11: it hid the sunset — owner 2026-10-02)
+export const FAR_WALL = { z: -46.5, top: FAR_H + 0.6, halfWidth: 9 };
 
 const SAND = 0xc9a77c, SAND_DARK = 0x8f6f4f, TERRACOTTA = 0xb5643c, LEAF = 0x3f5a2e, WOOD = 0x6b4a32;
 
@@ -187,16 +188,16 @@ export function createCourtyard(scene) {
 
   // --- far building: wall with an OPEN archway, cornice, rooftop finials
   const F = FAR_WALL;
-  box(7.0, 11, 1.2, stone, -5.5, 5.5, F.z);
-  box(7.0, 11, 1.2, stone, 5.5, 5.5, F.z);
-  box(4.0, 4.6, 1.2, stone, 0, 8.7, F.z);                             // over the arch
+  box(7.0, FAR_H, 1.2, stone, -5.5, FAR_H / 2, F.z);
+  box(7.0, FAR_H, 1.2, stone, 5.5, FAR_H / 2, F.z);
+  box(4.0, FAR_H - 6.4, 1.2, stone, 0, (FAR_H + 6.4) / 2, F.z);     // over the arch
   const archTop = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 1.2, 32, 1, false, 0, Math.PI), stone);
   archTop.rotation.z = Math.PI / 2; archTop.rotation.y = Math.PI / 2;
   archTop.position.set(0, 6.4, F.z);
   root.add(archTop);
-  box(19.6, 0.6, 1.8, stoneDark, 0, 11.3, F.z);                       // cornice
-  for (const x of [-8.5, -3.5, 3.5, 8.5]) box(0.7, 1.0, 0.7, stoneDark, x, 12.1, F.z);
-  box(20, 11, 0.6, stoneDark, 0, 5.5, F.z - 9);                       // the next wall beyond the arch
+  box(19.6, 0.6, 1.8, stoneDark, 0, FAR_H + 0.3, F.z);                // cornice
+  for (const x of [-8.5, -3.5, 3.5, 8.5]) box(0.7, 1.0, 0.7, stoneDark, x, FAR_H + 1.1, F.z);
+  box(20, FAR_H, 0.6, stoneDark, 0, FAR_H / 2, F.z - 9);              // the next wall beyond the arch
 
   // --- terracotta pots with plants along the walkway edges, benches between
   const potMat = new THREE.MeshStandardMaterial({ color: TERRACOTTA, roughness: 0.8 });
