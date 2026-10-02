@@ -957,6 +957,7 @@ export function createStage3D(canvas, layout, colors) {
   function explode(laneIdx, heardNow, power = 1) {
     const P = 0.35 + 0.65 * Math.max(0, Math.min(1, power));   // dead-on = full blast
     const face = drumFace[laneIdx];
+    fireBurst(face, P);
     const drumColor = hexToColor(colors[drumOf(laneIdx)] || "#888888");
 
     // 1. FLASH — white-hot core tinted by the drum colour,
@@ -1299,6 +1300,60 @@ export function createStage3D(canvas, layout, colors) {
     if (n === fxCount) fxSorted = true;   // stable two frames in a row: done
     fxCount = n;
   }
+  // ---- FIRE LIGHTS: the flames really light the courtyard --------------------
+  // A fixed set of real point lights (fixed count = no shader rebuilds) rides
+  // the burning arrows that matter most each frame — brightest and nearest the
+  // player — with a flicker; impacts add a short hot burst at the drumhead.
+  const FIRE_LIGHTS = 6;
+  const fireLights = [];
+  for (let i = 0; i < FIRE_LIGHTS; i++) {
+    const l = new THREE.PointLight(0xff8a3a, 0, 7, 2);
+    scene.add(l);
+    fireLights.push(l);
+  }
+  const bursts = [0, 1].map(() => {
+    const l = new THREE.PointLight(0xffc68a, 0, 5, 2);
+    scene.add(l);
+    return { light: l, t0: -1, power: 0 };
+  });
+  let burstNext = 0;
+  function fireBurst(pos, power) {
+    const b = bursts[burstNext++ % bursts.length];
+    b.light.position.copy(pos).add(new THREE.Vector3(0, 0.15, 0.25));   // just off the head, toward the player
+    b.t0 = performance.now();
+    b.power = power;
+  }
+  const _flamePos = new THREE.Vector3();
+  const _cands = [];
+  function updateFireLights(now) {
+    _cands.length = 0;
+    for (const list of [pool, decoys]) {
+      for (const a of list) {
+        if (!a.group.visible || !a.flame.visible) continue;
+        const op = a.flame.material.opacity;
+        if (op < 0.05) continue;
+        a.flame.getWorldPosition(_flamePos);
+        const d = _flamePos.distanceTo(camera.position);
+        _cands.push({ x: _flamePos.x, y: _flamePos.y, z: _flamePos.z, op, score: op / (1 + d * 0.35) });
+      }
+    }
+    _cands.sort((p, q) => q.score - p.score);
+    for (let i = 0; i < FIRE_LIGHTS; i++) {
+      const l = fireLights[i], c = _cands[i];
+      if (!c) { l.intensity = 0; continue; }
+      l.position.set(c.x, c.y, c.z);
+      // flicker: two incommensurate wobbles + a little noise, per light
+      const f = 0.82 + 0.1 * Math.sin(now * 0.023 + i * 1.7) + 0.06 * Math.sin(now * 0.061 + i) + 0.04 * Math.random();
+      l.intensity = 5 * c.op * f;
+    }
+    for (const b of bursts) {
+      if (b.t0 < 0) continue;
+      const t = (now - b.t0) / 280;                     // 280 ms: flash then fade
+      if (t >= 1) { b.light.intensity = 0; b.t0 = -1; continue; }
+      b.light.intensity = 22 * b.power * (t < 0.12 ? t / 0.12 : Math.pow(1 - (t - 0.12) / 0.88, 2));
+    }
+  }
+
   // ---- VR ------------------------------------------------------------------
   // The kit is already at standing reach (LANES3D). In a session each
   // controller grip carries one hand (fist + stick); the stick tips are fed to
@@ -1395,6 +1450,7 @@ export function createStage3D(canvas, layout, colors) {
     updateDecoys(heardNow);
     _frameNo++;
     updateHands(performance.now());
+    updateFireLights(performance.now());
     if (vrOn()) updateVrSticks();
     // spawn / retire
     for (const u of upcoming) {

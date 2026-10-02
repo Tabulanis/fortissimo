@@ -21,10 +21,68 @@ export const FAR_WALL = { z: -46.5, top: 11.6, halfWidth: 9 };
 
 const SAND = 0xc9a77c, SAND_DARK = 0x8f6f4f, TERRACOTTA = 0xb5643c, LEAF = 0x3f5a2e, WOOD = 0x6b4a32;
 
+/** height canvas (white = high) -> tangent-space normal map canvas (Sobel) */
+function heightToNormal(hc, strength) {
+  const W = hc.width, H = hc.height;
+  const src = hc.getContext("2d").getImageData(0, 0, W, H).data;
+  const out = document.createElement("canvas");
+  out.width = W; out.height = H;
+  const og = out.getContext("2d");
+  const img = og.createImageData(W, H);
+  const h = (x, y) => src[(((y + H) % H) * W + ((x + W) % W)) * 4] / 255;   // wraps: tiles seamlessly
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const dx = (h(x + 1, y - 1) + 2 * h(x + 1, y) + h(x + 1, y + 1)) - (h(x - 1, y - 1) + 2 * h(x - 1, y) + h(x - 1, y + 1));
+      const dy = (h(x - 1, y + 1) + 2 * h(x, y + 1) + h(x + 1, y + 1)) - (h(x - 1, y - 1) + 2 * h(x, y - 1) + h(x + 1, y - 1));
+      let nx = -dx * strength, ny = dy * strength, nz = 1;
+      const l = Math.hypot(nx, ny, nz); nx /= l; ny /= l; nz /= l;
+      const i = (y * W + x) * 4;
+      img.data[i] = (nx * 0.5 + 0.5) * 255; img.data[i + 1] = (ny * 0.5 + 0.5) * 255; img.data[i + 2] = (nz * 0.5 + 0.5) * 255; img.data[i + 3] = 255;
+    }
+  }
+  og.putImageData(img, 0, 0);
+  return out;
+}
+function canvasTex(c, srgb) {
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
+/** stone grain for walls and columns: soft blotches + fine pits, tiling */
+function stoneGrainMaps() {
+  const N = 512;
+  const hc = document.createElement("canvas"); hc.width = hc.height = N;
+  const hg = hc.getContext("2d");
+  const rc = document.createElement("canvas"); rc.width = rc.height = N;
+  const rg = rc.getContext("2d");
+  hg.fillStyle = "#808080"; hg.fillRect(0, 0, N, N);
+  rg.fillStyle = "#d8d8d8"; rg.fillRect(0, 0, N, N);
+  const blot = (g, x, y, r, col) => { for (const ox of [-N, 0, N]) for (const oy of [-N, 0, N]) { g.fillStyle = col; g.beginPath(); g.arc(x + ox, y + oy, r, 0, Math.PI * 2); g.fill(); } };
+  for (let k = 0; k < 900; k++) {
+    const x = Math.random() * N, y = Math.random() * N, r = 2 + Math.random() * 22;
+    const v = Math.random();
+    blot(hg, x, y, r, `rgba(${v > 0.5 ? 255 : 0},${v > 0.5 ? 255 : 0},${v > 0.5 ? 255 : 0},0.05)`);
+    blot(rg, x, y, r, `rgba(${v > 0.5 ? 255 : 120},${v > 0.5 ? 255 : 120},${v > 0.5 ? 255 : 120},0.06)`);
+  }
+  for (let k = 0; k < 2500; k++) blot(hg, Math.random() * N, Math.random() * N, 0.6 + Math.random() * 1.4, "rgba(0,0,0,0.35)");   // pits
+  return { normalMap: canvasTex(heightToNormal(hc, 2.2)), roughnessMap: canvasTex(rc) };
+}
+
 function flagstoneTexture() {
   const c = document.createElement("canvas");
   c.width = c.height = 1024;
   const g = c.getContext("2d");
+  // matching height + roughness canvases: grout sits low and rough, stone faces
+  // are slightly domed and worn smoother in places (catches the fire's glints)
+  const hc = document.createElement("canvas"); hc.width = hc.height = 1024;
+  const hg = hc.getContext("2d");
+  hg.fillStyle = "#000"; hg.fillRect(0, 0, 1024, 1024);
+  const rc = document.createElement("canvas"); rc.width = rc.height = 1024;
+  const rg = rc.getContext("2d");
+  rg.fillStyle = "#fff"; rg.fillRect(0, 0, 1024, 1024);
   g.fillStyle = "#5c4a38";                       // grout
   g.fillRect(0, 0, 1024, 1024);
   // rows of irregular flagstones in warm sandstone tones
@@ -37,6 +95,24 @@ function flagstoneTexture() {
       const tone = 150 + Math.random() * 60;
       g.fillStyle = `rgb(${tone + 40},${tone + 12},${tone - 30})`;
       g.fillRect(x + 4, y + 4, w - 8, h - 8);
+      // height: bevelled edge rising to a slightly uneven face
+      const lift = 150 + Math.random() * 70;
+      for (let b = 0; b < 6; b++) {
+        const v = Math.round(lift * (b + 1) / 6);
+        hg.fillStyle = `rgb(${v},${v},${v})`;
+        hg.fillRect(x + 4 + b, y + 4 + b, w - 8 - 2 * b, h - 8 - 2 * b);
+      }
+      // roughness: each stone its own wear, polished patches where feet go
+      const rough = 200 + Math.random() * 55;   // 0.78..1: worn sandstone, never glossy
+      rg.fillStyle = `rgb(${rough},${rough},${rough})`;
+      rg.fillRect(x + 4, y + 4, w - 8, h - 8);
+      for (let k = 0; k < 3; k++) {
+        const px = x + Math.random() * w, py = y + Math.random() * h, pr = 15 + Math.random() * 40;
+        rg.fillStyle = "rgba(120,120,120,0.18)";
+        rg.beginPath(); rg.arc(px, py, pr, 0, Math.PI * 2); rg.fill();
+        hg.fillStyle = Math.random() > 0.5 ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";   // gentle dips and rises
+        hg.beginPath(); hg.arc(px, py, pr, 0, Math.PI * 2); hg.fill();
+      }
       // a little mottling so it isn't flat
       for (let k = 0; k < 6; k++) {
         g.fillStyle = `rgba(${60 + Math.random() * 60},${40 + Math.random() * 40},20,0.08)`;
@@ -48,11 +124,7 @@ function flagstoneTexture() {
     }
     y += h;
   }
-  const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 8;
-  return t;
+  return { map: canvasTex(c, true), normalMap: canvasTex(heightToNormal(hc, 1.4)), roughnessMap: canvasTex(rc) };
 }
 
 function medallionTexture() {
@@ -78,8 +150,10 @@ export function createCourtyard(scene) {
   const root = new THREE.Group();
   root.name = "courtyard";
   scene.add(root);
-  const stone = new THREE.MeshStandardMaterial({ color: SAND, roughness: 0.9 });
-  const stoneDark = new THREE.MeshStandardMaterial({ color: SAND_DARK, roughness: 0.95 });
+  const grain = stoneGrainMaps();
+  for (const t of [grain.normalMap, grain.roughnessMap]) t.repeat.set(2, 2);
+  const stone = new THREE.MeshStandardMaterial({ color: SAND, roughness: 0.95, normalMap: grain.normalMap, roughnessMap: grain.roughnessMap });
+  const stoneDark = new THREE.MeshStandardMaterial({ color: SAND_DARK, roughness: 1, normalMap: grain.normalMap, roughnessMap: grain.roughnessMap });
   const shadowy = new THREE.MeshStandardMaterial({ color: 0x1c1410, roughness: 1 });
   const box = (w, h, d, mat, x, y, z) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
@@ -90,10 +164,11 @@ export function createCourtyard(scene) {
   };
 
   // --- paved floor
-  const tex = flagstoneTexture();
-  tex.repeat.set(4, 13);
+  const flags = flagstoneTexture();
+  for (const t of [flags.map, flags.normalMap, flags.roughnessMap]) t.repeat.set(4, 13);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 52),
-    new THREE.MeshStandardMaterial({ map: tex, roughness: 0.92 }));
+    new THREE.MeshStandardMaterial({ map: flags.map, normalMap: flags.normalMap, roughnessMap: flags.roughnessMap,
+      roughness: 1, normalScale: new THREE.Vector2(0.8, 0.8), envMapIntensity: 0.45 }));   // stone reflects little sky
   floor.rotation.x = -Math.PI / 2;
   floor.position.set(0, 0.005, -20);
   floor.receiveShadow = true;
