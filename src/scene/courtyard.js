@@ -12,6 +12,7 @@
      colonnade roofs  y = 7.4  (archers stand on the inner edge, x = ±6.3)
      far building     wall at z = -46, 11 m tall, open arch in the middle */
 import * as THREE from "three";
+import { bootlog } from "../bootlog.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export const ARCHER_ROOF_Y = 7.6;      // top of the colonnade roofs
@@ -22,15 +23,18 @@ export const FAR_WALL = { z: -46.5, top: FAR_H + 0.6, halfWidth: 9 };
 
 const SAND = 0xc9a77c, SAND_DARK = 0x8f6f4f, TERRACOTTA = 0xb5643c, LEAF = 0x3f5a2e, WOOD = 0x6b4a32;
 
-/** soften a tiling canvas: blur a 3x3 tiled copy, keep the middle (seams stay seamless) */
+/** soften a tiling canvas: blur it inside a thin wrapped border, keep the middle
+ *  (seams stay seamless). Only a 4-blur-radius margin is added: a full 3x3 copy
+ *  was a 3072-px canvas per blur and crashed a budget tablet's GPU (2026-10-02). */
 function blurTiled(c, px) {
-  const W = c.width, H = c.height;
-  const big = document.createElement("canvas"); big.width = W * 3; big.height = H * 3;
-  const bg = big.getContext("2d");
-  bg.filter = `blur(${px}px)`;
-  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) bg.drawImage(c, i * W, j * H);
+  const W = c.width, H = c.height, m = Math.ceil(px * 4);
+  const pad = document.createElement("canvas"); pad.width = W + 2 * m; pad.height = H + 2 * m;
+  const pg = pad.getContext("2d");
+  pg.filter = `blur(${px}px)`;
+  // the tile plus its wrapped-around neighbours, offset so only the margin shows them
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) pg.drawImage(c, m + i * W, m + j * H);
   const out = document.createElement("canvas"); out.width = W; out.height = H;
-  out.getContext("2d").drawImage(big, W, H, W, H, 0, 0, W, H);
+  out.getContext("2d").drawImage(pad, m, m, W, H, 0, 0, W, H);
   return out;
 }
 
@@ -144,6 +148,7 @@ export function createCourtyard(scene) {
   const root = new THREE.Group();
   root.name = "courtyard";
   scene.add(root);
+  bootlog("courtyard: stone grain");
   const grain = stoneGrainMaps();
   for (const t of [grain.normalMap, grain.roughnessMap]) t.repeat.set(2, 2);
   const stone = new THREE.MeshStandardMaterial({ color: SAND, roughness: 0.95, normalMap: grain.normalMap, roughnessMap: grain.roughnessMap });
@@ -158,7 +163,9 @@ export function createCourtyard(scene) {
   };
 
   // --- paved floor
+  bootlog("courtyard: floor textures");
   const flags = flagstoneTexture();
+  bootlog("courtyard: floor textures done");
   for (const t of [flags.map, flags.normalMap, flags.roughnessMap]) t.repeat.set(4, 13);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(16, 52),
     new THREE.MeshStandardMaterial({ map: flags.map, normalMap: flags.normalMap, roughnessMap: flags.roughnessMap,
@@ -222,6 +229,7 @@ export function createCourtyard(scene) {
     }
   }
 
+  bootlog("courtyard: geometry done");
   // --- columns: the owner's Pillar.glb, scaled to 6.3 m, both sides
   new GLTFLoader().load("/models/Pillar.glb", (gltf) => {
     const src = gltf.scene;

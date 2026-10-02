@@ -19,6 +19,7 @@ import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { createVrHits } from "../input/vrhits.js";
 import { createFire } from "./fire.js";
 import { createPool, poolContains, POOL, SURFACE_Y } from "./pool.js";
+import { bootlog } from "../bootlog.js";
 
 const APPROACH_S = 3.2;   // seconds of visible flight: launched from the far wall, tracked all the way
 const STUCK_S = 0.6;      // seconds an unhit arrow stays stuck at the face
@@ -92,6 +93,12 @@ export function createStage3D(canvas, layout, colors) {
   // fire lights. ?quality=mobile|high in the URL forces a tier.
   const qParam = new URLSearchParams(location.search).get("quality");
   const MOBILE = qParam ? qParam === "mobile" : window.matchMedia("(pointer: coarse)").matches;
+  {
+    const gl = renderer.getContext();
+    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+    bootlog("renderer", { gpu: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "?", maxTex: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+      webgl2: renderer.capabilities.isWebGL2, mobileTier: MOBILE });
+  }
   renderer.setPixelRatio(MOBILE ? Math.min(window.devicePixelRatio || 1, 1.5) : (window.devicePixelRatio || 1));
   // VR: the headset is the camera, the controllers hold the sticks
   renderer.xr.enabled = true;
@@ -163,6 +170,7 @@ export function createStage3D(canvas, layout, colors) {
     envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), skyMat));
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(envScene, 0.02).texture;
+    bootlog("sky lighting built");
     pmrem.dispose();
     // load the panorama; once in, rebuild the sky lighting from it too
     new THREE.TextureLoader().load("/textures/sky_sunset.webp", (tex) => {
@@ -274,6 +282,7 @@ export function createStage3D(canvas, layout, colors) {
   // anti-aliasing (the effect chain bypasses the canvas's own MSAA)
   const smaa = new SMAAPass((canvas.clientWidth || 1280) * renderer.getPixelRatio(), (canvas.clientHeight || 720) * renderer.getPixelRatio());
   composer.addPass(smaa);
+  bootlog("effects chain built");
   smaa.enabled = !MOBILE;   // the mobile tier relies on its higher pixel density instead
 
   // ground: dark stone, flat at y = 0
@@ -286,9 +295,12 @@ export function createStage3D(canvas, layout, colors) {
   scene.add(ground);
 
   // the environment mock-up (owner's reference: sandstone colonnade courtyard)
+  bootlog("courtyard: start");
   const courtyard = createCourtyard(scene);
+  bootlog("courtyard: done");
   // the reflecting pool (drawn with the fx layer: after the scene, so the
   // AO's extra scene render doesn't re-render its mirror a second time)
+  bootlog("pool: start");
   const waterPool = createPool(scene, { bottomMap: courtyard.userData.flagsMap, layer: FX_LAYER, resolution: MOBILE ? 0.25 : 0.5 });
 
   // drums
@@ -2018,6 +2030,7 @@ export function createStage3D(canvas, layout, colors) {
     }
   }, undefined, (err) => console.warn("drum model failed to load; keeping stand-ins", err));
 
+  bootlog("stage3d: end of build");
   return { resize, update, hit, press, strike, setDrumVisible, debugDrums,
     setLoop, addVrButton, pickDrum, drumScreen, get mobile() { return MOBILE; },
     /** look input, each -1..1: x = right, y = up (screen mode only) */

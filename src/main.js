@@ -25,6 +25,11 @@ import { createHud } from "./ui/hud.js";
 import { createMixer } from "./audio/mixer.js";
 import { loadSettings, createSettings } from "./ui/settings.js";
 import { createPads } from "./input/pads.js";
+import { bootlog } from "./bootlog.js";
+bootlog("page", { ua: navigator.userAgent, screen: `${screen.width}x${screen.height}`, dpr: window.devicePixelRatio,
+  view: `${innerWidth}x${innerHeight}`, memGB: navigator.deviceMemory, cores: navigator.hardwareConcurrency });
+window.addEventListener("error", (e) => bootlog("error", { msg: String(e.message), at: `${e.filename}:${e.lineno}` }));
+window.addEventListener("unhandledrejection", (e) => bootlog("rejection", { msg: String(e.reason && (e.reason.stack || e.reason)).slice(0, 600) }));
 
 const { VoicePool, VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
 
@@ -45,6 +50,11 @@ const DRUM_COLOR = {
 
 // --- the 3D stage (created once at load; canvas#stage becomes WebGL) --------
 const stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR);
+bootlog("stage3d built");
+stage.addEventListener("webglcontextlost", () => bootlog("WEBGL CONTEXT LOST"));
+// once running: a heartbeat with the frame rate, so a later crash shows when
+{ let frames = 0; const tick = () => { frames++; requestAnimationFrame(tick); }; requestAnimationFrame(tick);
+  setInterval(() => { bootlog("alive", { fps: Math.round(frames / 5), started: !!ctx }); frames = 0; }, 5000); }
 if (stage3d.mobile) document.documentElement.classList.add("touch");   // touch layout (no keyboard hints)
 window.__gr = { stage3d };   // debug handle for the browser harness
 
@@ -241,6 +251,7 @@ function makeStartButton() {
     "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:21;font:22px system-ui;border-radius:12px;" +
     "padding:18px 48px;background:#2a1606;color:#ffd27a;border:2px solid #ffb84a;cursor:pointer;box-shadow:0 0 30px rgba(255,170,60,.45)";
   btn.addEventListener("click", async () => {
+    bootlog("start tapped");
     if (ctx) return;
     ctx = new AudioContext();
     await ctx.resume();
