@@ -51,7 +51,22 @@ let loops = null;                         // locked measures, replayed exactly a
 const songDone = () => stageIdx >= SONG.parts.length;
 const currentPart = () => (songDone() ? [] : SONG.parts[stageIdx].part);
 const hudUI = createHud({ onBell: ringBell });
-hudUI.setDifficulty(difficulty.name);
+let autoCorrect = true;   // A toggles
+function showDifficulty() { hudUI.setDifficulty(`${difficulty.name}${autoCorrect ? " · Auto ✓" : ""}`); }
+showDifficulty();
+
+// where a hit is RECORDED: snapped onto its note (or, with no notes to follow,
+// the nearest eighth) when auto-correct is on and it landed inside the box
+function autoCorrectHit(press, vel, j, free) {
+  if (!autoCorrect || !clock) return { t: press, velocity: vel };
+  const box = difficulty.window;
+  if (!free && j && Math.abs(j.offset) <= box) return { t: j.time, velocity: Math.max(vel, 0.95) };
+  if (free) {
+    const g = nearestOnGrid(clock.first, clock.beatDur / 2, press);   // eighth notes
+    if (Math.abs(g.offset) <= box) return { t: g.time, velocity: vel };
+  }
+  return { t: press, velocity: vel };
+}
 hudUI.setLives(3);
 
 function applyStage() {
@@ -295,6 +310,14 @@ function onKey(e) {
     return;
   }
 
+  if (e.key === "a" || e.key === "A") {   // auto-correct on/off
+    e.preventDefault();
+    autoCorrect = !autoCorrect;
+    showDifficulty();
+    hudUI.say(autoCorrect ? "Auto-correct ON — hits inside the box record on the beat" : "Auto-correct OFF — loops record exactly as played", "", 1800);
+    return;
+  }
+
   if (e.key === "h" || e.key === "H") {   // developer timing chart
     e.preventDefault();
     chart.style.display = chart.style.display === "block" ? "none" : "block";
@@ -346,7 +369,10 @@ function onKey(e) {
 
   // record exactly as played (real timing, real velocity, mistakes and OFF
   // included) — it becomes this lane's ghost from the next pass on
-  if (bell) bell.add({ lane: lane.name, t: press, velocity: vel });
+  // AUTO-CORRECT (quantize): a hit inside the scoring box for its note is
+  // RECORDED on the exact beat at full strength; the live sound still fired
+  // the instant you hit. Outside the box it's recorded exactly as played.
+  if (bell) bell.add({ lane: lane.name, ...autoCorrectHit(press, vel, j, free) });
 
   // the player IS the instrument: play immediately, on this lane's channel
   pool.noteOn({
