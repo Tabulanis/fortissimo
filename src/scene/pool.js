@@ -98,7 +98,7 @@ const WaterShader = {
  * @param {THREE.Scene} scene
  * @param {{ bottomMap: THREE.Texture, layer?: number, resolution?: number }} opts
  */
-export function createPool(scene, { bottomMap, layer = 0, resolution = 0.5 } = {}) {
+export function createPool(scene, { bottomMap, layer = 0, resolution = 0.5, cheap = false } = {}) {
   const root = new THREE.Group();
   root.name = "pool";
   scene.add(root);
@@ -117,6 +117,17 @@ export function createPool(scene, { bottomMap, layer = 0, resolution = 0.5 } = {
   curb(W + 2 * CURB_W, CURB_W, cx, POOL.z1 + CURB_W / 2);
   curb(CURB_W, D, POOL.x0 - CURB_W / 2, cz);
   curb(CURB_W, D, POOL.x1 + CURB_W / 2, cz);
+
+  // --- LOW graphics levels: a dark polished surface that reflects only the sky
+  // lighting (no mirror: the mirror re-draws the whole scene every frame)
+  if (cheap) {
+    const water = new THREE.Mesh(new THREE.PlaneGeometry(W, D),
+      new THREE.MeshStandardMaterial({ color: 0x0c1a1c, metalness: 0.85, roughness: 0.12, envMapIntensity: 1.3 }));
+    water.rotation.x = -Math.PI / 2;
+    water.position.set(cx, SURFACE_Y, cz);
+    root.add(water);
+    return { root, water, addRipple() {}, update() {} };
+  }
 
   // --- the water: a mirror with the shader above
   const dpr = window.devicePixelRatio || 1;

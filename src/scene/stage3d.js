@@ -85,22 +85,28 @@ const _eWhite = new THREE.Color(0xffffff);
  * @param {Object<string,string>} colors drum-name -> hex colour string
  * @returns {{resize: Function, update: Function, hit: Function, press: Function}}
  */
-export function createStage3D(canvas, layout, colors) {
+export function createStage3D(canvas, layout, colors, opts = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.shadowMap.enabled = true;                 // the foreground lantern casts shadows
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  // QUALITY: phones and tablets (coarse pointer) get a lighter tier — fewer
-  // pixels, no AO/SMAA, smaller shadow + mirror maps, fewer particles and
-  // fire lights. ?quality=mobile|high in the URL forces a tier.
-  const qParam = new URLSearchParams(location.search).get("quality");
-  const MOBILE = qParam ? qParam === "mobile" : window.matchMedia("(pointer: coarse)").matches;
+  // GRAPHICS LEVEL — the game chooses it (auto-measured per device, or Settings):
+  //   high    everything
+  //   medium  phones: fewer pixels, no AO/SMAA, smaller shadow + mirror maps,
+  //           fewer particles and fire lights
+  //   low     tablets / weak GPUs: NO effect chain (drawn directly), no
+  //           shadows, no fire lights, a simple shiny pool (sky reflection, no
+  //           mirror), fewer particles, 1x pixels
+  //   lowest  low + 0.7x render resolution
+  const TIER = ["high", "medium", "low", "lowest"].includes(opts.tier) ? opts.tier : "high";
+  const MOBILE = TIER !== "high";                     // medium and below
+  const LOW = TIER === "low" || TIER === "lowest";
   {
     const gl = renderer.getContext();
     const dbg = gl.getExtension("WEBGL_debug_renderer_info");
     bootlog("renderer", { gpu: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "?", maxTex: gl.getParameter(gl.MAX_TEXTURE_SIZE),
-      webgl2: renderer.capabilities.isWebGL2, mobileTier: MOBILE });
+      webgl2: renderer.capabilities.isWebGL2, tier: TIER });
   }
-  renderer.setPixelRatio(MOBILE ? Math.min(window.devicePixelRatio || 1, 1.5) : (window.devicePixelRatio || 1));
+  renderer.setPixelRatio(TIER === "lowest" ? 0.7 : LOW ? 1 : MOBILE ? Math.min(window.devicePixelRatio || 1, 1.5) : (window.devicePixelRatio || 1));
   // VR: the headset is the camera, the controllers hold the sticks
   renderer.xr.enabled = true;
   // FILM LOOK: ACES filmic tone mapping (the Unreal Engine curve) — bright fire
@@ -212,6 +218,7 @@ export function createStage3D(canvas, layout, colors) {
   lantern.shadow.normalBias = 0.02;
   lantern.shadow.radius = 4;
   scene.add(lantern, lantern.target);
+  if (LOW) { renderer.shadowMap.enabled = false; lantern.castShadow = false; }   // no real-time shadows on the low levels
 
   const camera = new THREE.PerspectiveCamera(
     60, canvas.clientWidth / canvas.clientHeight, 0.1, 200,
@@ -247,7 +254,9 @@ export function createStage3D(canvas, layout, colors) {
 
   // AO for everything: GTAO (screen-space) between the scene render and output
   const FX_LAYER = 1;
-  const composer = new EffectComposer(renderer);
+  let composer = null, gtao = null, bloom = null, lens = null, smaa = null;
+  if (!LOW) {
+  composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   // glowing effects (sprites, additive cards) live on layer 1 and render in
   // their own pass RIGHT AFTER the scene, into the same buffer: they're
@@ -255,27 +264,32 @@ export function createStage3D(canvas, layout, colors) {
   // AO's own depth pass (main camera = layer 0) never sees them, so no black
   // squares. (Drawn after the AO they tested against a stale depth buffer the
   // full-screen passes had written into, and every distant flame vanished.)
+  }
   const fxCamera = camera.clone();
   fxCamera.layers.set(FX_LAYER);
-  const fxPass = new RenderPass(scene, fxCamera);
+  let fxPass = null;
+  if (composer) {
+  fxPass = new RenderPass(scene, fxCamera);
   fxPass.clear = false;
   fxPass.clearDepth = false;
   composer.addPass(fxPass);
+  } else camera.layers.enable(FX_LAYER);   // drawn directly: the main camera sees the glowing effects too
   // THE FIRE: one particle simulation for every flame, ember and smoke wisp
-  const fireSim = createFire(scene, { layer: FX_LAYER, ...(MOBILE ? { maxFire: 6000, maxSmoke: 1500 } : {}) });
+  const fireSim = createFire(scene, { layer: FX_LAYER, ...(LOW ? { maxFire: TIER === "lowest" ? 1500 : 2500, maxSmoke: 400 } : MOBILE ? { maxFire: 6000, maxSmoke: 1500 } : {}) });
   let fireT = performance.now(), fireDt = 0;
-  const gtao = new GTAOPass(scene, camera, canvas.clientWidth || 1280, canvas.clientHeight || 720);
+  if (composer) {
+  gtao = new GTAOPass(scene, camera, canvas.clientWidth || 1280, canvas.clientHeight || 720);
   gtao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 16 });
   gtao.blendIntensity = 1.0;
   composer.addPass(gtao);
   gtao.enabled = !MOBILE;
   // BLOOM: only what's brighter than white glows (fire, sparks, hit flashes)
-  const bloom = new UnrealBloomPass(new THREE.Vector2(canvas.clientWidth || 1280, canvas.clientHeight || 720), 0.55, 0.6, 0.85);
+  bloom = new UnrealBloomPass(new THREE.Vector2(canvas.clientWidth || 1280, canvas.clientHeight || 720), 0.55, 0.6, 0.85);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
   // LENS FINISH (display space): vignette, a touch of chromatic fringing toward
   // the edges, fine film grain — small amounts, it should be felt not seen
-  const lens = new ShaderPass({
+  lens = new ShaderPass({
     uniforms: { tDiffuse: { value: null }, time: { value: 0 } },
     vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: `uniform sampler2D tDiffuse; uniform float time; varying vec2 vUv;
@@ -292,10 +306,11 @@ export function createStage3D(canvas, layout, colors) {
   });
   composer.addPass(lens);
   // anti-aliasing (the effect chain bypasses the canvas's own MSAA)
-  const smaa = new SMAAPass((canvas.clientWidth || 1280) * renderer.getPixelRatio(), (canvas.clientHeight || 720) * renderer.getPixelRatio());
+  smaa = new SMAAPass((canvas.clientWidth || 1280) * renderer.getPixelRatio(), (canvas.clientHeight || 720) * renderer.getPixelRatio());
   composer.addPass(smaa);
   bootlog("effects chain built");
   smaa.enabled = !MOBILE;   // the mobile tier relies on its higher pixel density instead
+  }
 
   // ground: dark stone, flat at y = 0
   const ground = new THREE.Mesh(
@@ -314,7 +329,7 @@ export function createStage3D(canvas, layout, colors) {
   // the reflecting pool (drawn with the fx layer: after the scene, so the
   // AO's extra scene render doesn't re-render its mirror a second time)
   bootlog("pool: start");
-  const waterPool = createPool(scene, { bottomMap: courtyard.userData.flagsMap, layer: FX_LAYER, resolution: MOBILE ? 0.25 : 0.5 });
+  const waterPool = createPool(scene, { bottomMap: courtyard.userData.flagsMap, layer: FX_LAYER, resolution: MOBILE ? 0.25 : 0.5, cheap: LOW });
 
   // drums
   const drumMat = [];
@@ -1469,20 +1484,21 @@ export function createStage3D(canvas, layout, colors) {
   // A fixed set of real point lights (fixed count = no shader rebuilds) rides
   // the burning arrows that matter most each frame — brightest and nearest the
   // player — with a flicker; impacts add a short hot burst at the drumhead.
-  const FIRE_LIGHTS = MOBILE ? 3 : 6;   // every light costs every pixel on a phone GPU
+  const FIRE_LIGHTS = LOW ? 0 : MOBILE ? 3 : 6;   // every light costs every pixel on a phone GPU
   const fireLights = [];
   for (let i = 0; i < FIRE_LIGHTS; i++) {
     const l = new THREE.PointLight(0xff8a3a, 0, 7, 2);
     scene.add(l);
     fireLights.push(l);
   }
-  const bursts = [0, 1].map(() => {
+  const bursts = (LOW ? [] : [0, 1]).map(() => {
     const l = new THREE.PointLight(0xffc68a, 0, 5, 2);
     scene.add(l);
     return { light: l, t0: -1, power: 0 };
   });
   let burstNext = 0;
   function fireBurst(pos, power) {
+    if (!bursts.length) return;
     const b = bursts[burstNext++ % bursts.length];
     b.light.position.copy(pos).add(new THREE.Vector3(0, 0.15, 0.25));   // just off the head, toward the player
     b.t0 = performance.now();
@@ -1585,7 +1601,7 @@ export function createStage3D(canvas, layout, colors) {
     camera.layers.enable(FX_LAYER);    // one pass in VR: the fx sprites render with everything
   });
   renderer.xr.addEventListener("sessionend", () => {
-    camera.layers.disable(FX_LAYER);
+    if (composer) camera.layers.disable(FX_LAYER);
     camera.position.copy(deskCam.pos); camera.quaternion.copy(deskCam.quat);
     for (let h = 0; h < 2; h++) { vrHits.drop(h); restHand(h); }
     resize();
@@ -2007,7 +2023,7 @@ export function createStage3D(canvas, layout, colors) {
     fxCamera.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
     if (!fxSorted) sortFx();
     // the composer's passes don't render to a headset: draw straight to it
-    if (vrOn()) renderer.render(scene, camera);
+    if (vrOn() || !composer) renderer.render(scene, camera);
     else { lens.uniforms.time.value = performance.now() % 1000; composer.render(); }
   }
 
@@ -2133,7 +2149,7 @@ export function createStage3D(canvas, layout, colors) {
         hand.rest.copy(HAND_RESTS[name][h]);
         if (!hand.active && !vrOn()) { hand.group.position.copy(hand.rest); hand.group.quaternion.setFromUnitVectors(UP, restDir); }
       });
-    }, get station() { return station; }, melodyStations, pickDrum, drumScreen, get mobile() { return MOBILE; },
+    }, get station() { return station; }, melodyStations, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; },
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; }, setVrBellHandler: (fn) => { onVrBell = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */

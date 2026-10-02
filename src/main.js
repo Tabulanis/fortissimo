@@ -54,7 +54,20 @@ const DRUM_COLOR = {
 };
 
 // --- the 3D stage (created once at load; canvas#stage becomes WebGL) --------
-const stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR);
+// GRAPHICS LEVEL: high | medium | low | lowest. Settings can fix it; on Auto the
+// game starts from a guess (touch screen -> medium) and MEASURES the frame rate
+// after loading: too slow and it steps down a level and reloads, remembering the
+// level for this device. ?quality=... in the URL forces one (mobile = medium).
+const TIERS = ["high", "medium", "low", "lowest"];
+const urlQ = new URLSearchParams(location.search).get("quality");
+const IS_TOUCH = window.matchMedia("(pointer: coarse)").matches || urlQ === "mobile";   // touch layout, separate from graphics
+const AUTO_GFX = !urlQ && (SET.quality || "auto") === "auto";
+let savedTier = null;
+try { savedTier = localStorage.getItem("gr.autoTier"); } catch { /* storage blocked: guess each time */ }
+const TIER = urlQ === "mobile" ? "medium" : TIERS.includes(urlQ) ? urlQ
+  : !AUTO_GFX && TIERS.includes(SET.quality) ? SET.quality
+  : TIERS.includes(savedTier) ? savedTier : IS_TOUCH ? "medium" : "high";
+const stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR, { tier: TIER });
 bootlog("stage3d built");
 stage.addEventListener("webglcontextlost", () => bootlog("WEBGL CONTEXT LOST"));
 // once running: a heartbeat with the frame rate, so a later crash shows when
@@ -66,7 +79,7 @@ stage.addEventListener("webglcontextlost", () => bootlog("WEBGL CONTEXT LOST"));
       flying: a.flying, shown: a.shown && a.shown.map((v) => (v ? 1 : 0)).join(""), taps: recentTaps.splice(0) });
     frames = 0;
   }, 5000); }
-if (stage3d.mobile) document.documentElement.classList.add("touch");   // touch layout (no keyboard hints)
+if (IS_TOUCH) document.documentElement.classList.add("touch");   // touch layout (no keyboard hints)
 window.__gr = { stage3d };   // debug handle for the browser harness
 
 // --- the song: parts unlock two drums at a time; the ghost bell locks them ---
@@ -116,8 +129,37 @@ const settingsUI = createSettings({
     if (k === "autoCorrect") { autoCorrect = v; showDifficulty(); return; }
     if (mixer) mixer.setVolume(k, v);
   },
-  onRestart: () => location.reload(),   // difficulty sets the tempo the clock starts at
+  onRestart: () => location.reload(),   // difficulty sets the tempo; graphics rebuild the scene
 });
+settingsUI.setAutoNote(`Auto — measures this device (now: ${TIER})`);
+
+// AUTO GRAPHICS CHECK: after a 2.5 s warm-up, count frames for 4 s (only while
+// the page is visible). Under 28 fps -> step down a level and reload (or, once
+// a game has started, just remember it for next time).
+if (AUTO_GFX) {
+  let frames = 0, t0 = 0, measuring = false, done = false;
+  const begin = () => { frames = 0; t0 = performance.now(); measuring = document.visibilityState === "visible"; };
+  setTimeout(begin, 2500);
+  document.addEventListener("visibilitychange", () => { if (!done && document.visibilityState === "visible") begin(); else measuring = false; });
+  const count = () => {
+    if (done) return;
+    if (measuring && ++frames && performance.now() - t0 >= 4000) { done = true; judgeGraphics(frames / ((performance.now() - t0) / 1000)); return; }
+    requestAnimationFrame(count);
+  };
+  requestAnimationFrame(count);
+}
+function judgeGraphics(measured) {
+  const fake = +new URLSearchParams(location.search).get("fakefps");   // TEST ONLY: pretend this frame rate
+  const fps = fake || measured;
+  const i = TIERS.indexOf(TIER), next = TIERS[i + 1];
+  bootlog("graphics check", { tier: TIER, fps: Math.round(fps) });
+  const remember = (t) => { try { localStorage.setItem("gr.autoTier", t); } catch { /* fine */ } };
+  if (fps >= 28 || !next) { remember(TIER); return; }
+  remember(next);
+  if (ctx) { hudUI.say(`Graphics are slow here — next time this device uses ${next}`, "", 3500); return; }
+  hudUI.say(`Adjusting graphics for this device: ${next}…`, "", 2500);
+  setTimeout(() => location.reload(), 1200);
+}
 
 // where a hit is RECORDED: snapped onto its note (or, with no notes to follow,
 // the nearest eighth) when auto-correct is on and it landed inside the box
@@ -154,10 +196,10 @@ function stageMessage() {
     const take = bars > 1 ? ` (${bars}-bar take)` : "";
     if (m !== "drums") {
       const where = m === "bass" ? "Bass — turned right" : "Treble — turned left";
-      const how = stage3d.mobile ? "tap the bars" : padConnected ? "D-pad + X A B Y" : "keys A S D F · H J K L";
-      hudUI.say(`${where}: ${how}${take}. Got it? Ring the bell 🔔 ${padConnected ? "(Menu)" : stage3d.mobile ? "" : "(Space)"}`);
+      const how = IS_TOUCH ? "tap the bars" : padConnected ? "D-pad + X A B Y" : "keys A S D F · H J K L";
+      hudUI.say(`${where}: ${how}${take}. Got it? Ring the bell 🔔 ${padConnected ? "(Menu)" : IS_TOUCH ? "" : "(Space)"}`);
     } else {
-      hudUI.say(stage3d.mobile ? "Follow the arrows — tap the drums. Got it? Tap the bell 🔔"
+      hudUI.say(IS_TOUCH ? "Follow the arrows — tap the drums. Got it? Tap the bell 🔔"
         : "Follow the arrows. Got it? Ring the bell 🔔 (Space)");
     }
   }
@@ -916,7 +958,7 @@ for (const ev of ["pointerup", "pointercancel"]) stage.addEventListener(ev, (e) 
 // held upright on a phone/tablet: suggest turning it sideways (once per visit)
 let toldRotate = false;
 function maybeSuggestLandscape() {
-  if (toldRotate || !stage3d.mobile || innerWidth >= innerHeight) return;
+  if (toldRotate || !IS_TOUCH || innerWidth >= innerHeight) return;
   toldRotate = true;
   hudUI.say("Turn sideways for the best view ↻", "good", 4000);
 }
@@ -945,6 +987,7 @@ if (window.__gr) window.__gr.game = {
   song: () => song(),
   get hint() { return hint; },
   source: () => (LESSONS ? "files" : "built-in"),
+  tier: TIER,
   backLevels: () => Object.fromEntries(Object.entries(backGain).map(([m, g]) => [m, +g.gain.value.toFixed(2)])),
   samples: () => [...sampleCache].map(([p, b]) => `${p}: ${b ? b.duration.toFixed(2) + " s" : "FAILED"}`), get calibration() { return calibration; }, get loops() { return loops; },
 };   // screen or headset: the renderer drives the frames

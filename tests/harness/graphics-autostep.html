@@ -1,0 +1,19 @@
+<!doctype html><body style="margin:0">
+<!-- Auto graphics check: clears the remembered level, loads /?fakefps=10 (pretend slow) and records the level stepping high -> medium -> low -> lowest, then stopping. Copy to public/_gfx.html. Use a FRESH firefox profile: a corrupted one throws NS_ERROR_FAILURE on localStorage. -->
+<script>
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body: String(body) });
+say("hello", "page ran");
+window.onerror = (m) => say("pageerror", m);
+localStorage.removeItem("gr.autoTier");   // start fresh: no remembered level
+const f = document.createElement("iframe"); f.style.cssText = "width:1200px;height:800px;border:0"; f.src = "/?fakefps=10";
+document.body.appendChild(f);
+const seen = [];
+const t0 = performance.now();
+const poll = setInterval(() => {
+  let tier = "?";
+  try { tier = f.contentWindow.__gr.game.tier; } catch { tier = "(loading)"; }
+  const line = `${((performance.now() - t0) / 1000).toFixed(0)}s tier=${tier} saved=${localStorage.getItem("gr.autoTier")}`;
+  if (seen[seen.length - 1] !== line.split(" ").slice(1).join(" ")) { seen.push(line.split(" ").slice(1).join(" ")); say("step", line); }
+  if (performance.now() - t0 > 45000) { clearInterval(poll); say("done", "ok"); }
+}, 1000);
+</script></body>

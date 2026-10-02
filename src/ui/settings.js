@@ -9,6 +9,7 @@ export const DEFAULTS = {
   master: 0.9,
   hits: 1.0,
   metronome: 0.5,
+  quality: "auto",         // auto | high | medium | low | lowest (graphics)
 };
 
 export function loadSettings() {
@@ -60,10 +61,18 @@ export function createSettings({ onChange, onRestart } = {}) {
       <h2>Settings</h2>
       <div class="row"><span>Difficulty</span>
         <select data-k="difficulty">
-          <option value="easy">Easy — ±80 ms, 60 bpm</option>
-          <option value="normal">Normal — ±50 ms, 80 bpm</option>
-          <option value="hard">Hard — ±30 ms, 100 bpm</option>
-          <option value="expert">Expert — ±20 ms, 112 bpm</option>
+          <option value="easy">Easy — ±120 ms, 60 bpm, 4 notes a step</option>
+          <option value="normal">Normal — ±85 ms, 80 bpm, 6 notes a step</option>
+          <option value="hard">Hard — ±50 ms, 100 bpm, 8 notes a step</option>
+          <option value="expert">Expert — ±25 ms, 112 bpm, 8 notes a step</option>
+        </select></div>
+      <div class="row"><span>Graphics</span>
+        <select data-k="quality">
+          <option value="auto">Auto — measures this device</option>
+          <option value="high">High — every effect</option>
+          <option value="medium">Medium — phones</option>
+          <option value="low">Low — no effects (tablets)</option>
+          <option value="lowest">Lowest — no effects, lower resolution</option>
         </select></div>
       <div class="row"><span>Auto-correct <span class="note">(record hits on the beat)</span></span>
         <input type="checkbox" data-k="autoCorrect"></div>
@@ -82,7 +91,7 @@ export function createSettings({ onChange, onRestart } = {}) {
     el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => {
       const v = el.type === "checkbox" ? el.checked : el.type === "range" ? +el.value : el.value;
       s[k] = v; save(s);
-      if (k === "difficulty") { onRestart && onRestart(); return; }
+      if (k === "difficulty" || k === "quality") { onRestart && onRestart(); return; }   // both rebuild the game
       onChange && onChange(k, v, s);
     });
   }
@@ -97,6 +106,8 @@ export function createSettings({ onChange, onRestart } = {}) {
   });
   return {
     get isOpen() { return root.style.display === "grid"; },
+    /** show what Auto picked: "Auto — now Medium" */
+    setAutoNote(text) { const o = root.querySelector('[data-k=quality] option[value=auto]'); if (o) o.textContent = text; },
     set(k, v) { s[k] = v; save(s); const el = root.querySelector(`[data-k=${k}]`); if (el) { if (el.type === "checkbox") el.checked = !!v; else el.value = v; } },
     get values() { return s; },
   };
