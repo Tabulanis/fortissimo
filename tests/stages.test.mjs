@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { SONG, ROUNDS, partArrows, isShown, buildUp } from "../src/game/stages.js";
+import { SONG, ROUNDS, partArrows, isShown, buildUp, EASY_STEP_NOTES } from "../src/game/stages.js";
 
 const laneIndexByName = (name) => ({
   hat: 0, snare: 1, crash: 2, kick: 3, "tom low": 4, "tom high": 5,
@@ -76,5 +76,22 @@ for (const p of ROUNDS[1].parts) {
   // modes keep their order: every drums step before bass before treble
   const order = easy.parts.map((p) => p.mode);
   assert.ok(order.lastIndexOf("drums") < order.indexOf("bass") && order.lastIndexOf("bass") < order.indexOf("treble"));
+}
+// EASY melody: no more than four notes per step, most important first
+for (const r of ROUNDS) {
+  const easy = buildUp(r);
+  for (const kind of ["bass", "treble"]) {
+    const steps = easy.parts.filter((p) => p.mode === kind);
+    assert.ok(steps.every((p) => p.part.length <= EASY_STEP_NOTES), `${r.name} ${kind}: <= 4 notes per step`);
+    const whole = r.parts.find((p) => p.mode === kind).part.map((n) => `${n.lane}@${n.beat}`).sort();
+    assert.deepStrictEqual(steps.flatMap((p) => p.part.map((n) => `${n.lane}@${n.beat}`)).sort(), whole, `${r.name} ${kind}: the steps add up to the whole line`);
+  }
+}
+{
+  // round 1's treble (8 notes on beats 0..7): bar downbeats and beat 3s first
+  const t = buildUp(ROUNDS[0]).parts.filter((p) => p.mode === "treble");
+  assert.deepStrictEqual(t.map((p) => p.part.map((n) => n.beat)), [[0, 2, 4, 6], [1, 3, 5, 7]]);
+  const r3 = buildUp(ROUNDS[2]).parts.filter((p) => p.mode === "treble");
+  assert.deepStrictEqual(r3.map((p) => p.part.length), [4, 4, 4, 3], "round 3's 15-note treble: 4 + 4 + 4 + 3");
 }
 console.log("stages: all passed");

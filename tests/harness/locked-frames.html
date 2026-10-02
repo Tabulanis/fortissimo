@@ -1,0 +1,17 @@
+<!doctype html><html><body style="margin:0;background:#2a1d18;display:grid;grid-template-columns:repeat(4,1fr);height:100vh">
+<!-- Freezes the LOCKED! slam at four moments side by side (firefox --screenshot). Copy to public/_locked.html. -->
+<script type="module">
+import { showLocked } from "/src/ui/locked.js";
+showLocked();   // installs the styles
+const src = document.getElementById("gr-locked");
+for (const [t, label] of [[0.15, "smack"], [0.32, "rattle"], [1.0, "hold"], [1.7, "smear-out"]]) {
+  const cell = document.createElement("div");
+  cell.style.cssText = "position:relative;overflow:hidden;border-right:1px solid #555;display:grid;place-items:center";
+  const clone = src.cloneNode(true); clone.removeAttribute("id"); clone.style.cssText = "position:absolute;inset:0;display:grid;place-items:center";
+  for (const el of clone.querySelectorAll(".word,.ring")) { el.style.animationDelay = `-${t}s`; el.style.animationPlayState = "paused"; }
+  clone.querySelector(".word").style.fontSize = "64px";
+  const cap = document.createElement("div"); cap.textContent = label; cap.style.cssText = "position:absolute;bottom:8px;color:#ccc;font:14px system-ui";
+  cell.append(clone, cap); document.body.appendChild(cell);
+}
+src.remove();
+</script></body></html>

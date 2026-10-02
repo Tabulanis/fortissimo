@@ -21,6 +21,7 @@ import { DIFFICULTY } from "./game/difficulty.js";
 import { ROUNDS, partArrows, isShown, buildUp } from "./game/stages.js";
 import { gradeRound } from "./game/grade.js";
 import { createResults } from "./ui/results.js";
+import { showLocked } from "./ui/locked.js";
 import { createHud } from "./ui/hud.js";
 import { createMixer } from "./audio/mixer.js";
 import { loadSettings, createSettings } from "./ui/settings.js";
@@ -178,6 +179,7 @@ function tickBell(heardNow) {
     if (wasGuided) stageIdx++;
     applyStage();
     hudUI.say(`Locked in! ✨ (${r.judge.matched}/${r.judge.total})`, "good");
+    showLocked();   // the big slam
     setTimeout(stageMessage, 2500);   // then back to the standing instruction (it used to go blank)
     if (wasGuided && songDone()) setTimeout(endRound, 1600);   // the band plays the full song a moment, then the grade
   } else {

@@ -1,5 +1,5 @@
 <!doctype html><body style="margin:0">
-<!-- Plays every round note-perfect (asks the game which song it is playing: Easy builds parts up); #r1 = round 1 only. Copy to public/_robot.html, run sink.py on :8899. Keys timed on the GAME frame clock. -->
+<!-- Plays every round note-perfect (asks the game which song it is playing); #r1 = round 1 only; reports locks + the LOCKED! slam. Copy to public/_robot.html, run sink.py on :8899. Keys timed on the GAME frame clock. -->
 <iframe id="f" style="width:1400px;height:900px;border:0"></iframe>
 <script type="module">
 import { ROUNDS } from "/src/game/stages.js";
@@ -52,7 +52,7 @@ f.onload = async () => {
       while (G.ctx.getOutputTimestamp().contextTime < rs + 4 * bars * bd + 0.3) await wait(50);
       await wait(200);
       const msg = (d.body.innerText.match(/Locked in[^\n]*|Not quite[^\n]*/) || ["(no message)"])[0];
-      log.push(`part ${idx + 1} [${P.mode}, ${bars} bar${bars > 1 ? "s" : ""}, facing ${facing}]: ${msg}`);
+      log.push(`part ${idx + 1} [${P.label}, ${P.part.length} notes, facing ${facing}]: ${msg}${d.getElementById("gr-locked") ? "  + LOCKED! slam" : ""}`);
     }
     // the results panel
     await wait(2500);

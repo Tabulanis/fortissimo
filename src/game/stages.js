@@ -74,17 +74,40 @@ export const ROUNDS = [
   },
 ];
 /**
- * EASY builds every part up (owner, 2026-10-02): first its CORE — the notes on
- * the beat — then, once that's a ghost, an ADD-ON part with the in-between
- * notes over it. Only split when the add-on would have 2+ notes (a one-note
- * step is just a chore). Drums and melody alike.
+ * EASY builds every part up (owner, 2026-10-02):
+ *  DRUMS  first the CORE (notes on the beat), then an ADD-ON with the
+ *         in-between notes over its ghost — split only if the add-on has 2+
+ *  MELODY at most FOUR notes per step: the most important first (bar
+ *         downbeats, then beat 3, the other beats, off-beats, then finer),
+ *         earlier before later; each next step fills in up to four more
+ *         over the ghosts, until the whole line is there.
  */
+export const EASY_STEP_NOTES = 4;
+/** how strong a beat position is: lower = more important */
+export function beatWeight(beat) {
+  const inBar = ((beat % 4) + 4) % 4;
+  if (Math.abs(inBar) < 1e-6) return 0;                 // a bar's downbeat
+  if (Math.abs(inBar - 2) < 1e-6) return 1;             // beat 3
+  if (Math.abs(inBar - Math.round(inBar)) < 1e-6) return 2;   // beats 2 and 4
+  if (Math.abs((inBar * 2) - Math.round(inBar * 2)) < 1e-6) return 3;   // the "and"s
+  return 4;                                             // swung / sixteenths
+}
+
 export function buildUp(round) {
   const parts = [];
   for (const p of round.parts) {
+    if (p.mode !== "drums" && p.part.length > EASY_STEP_NOTES) {
+      const order = [...p.part].sort((a, b) => beatWeight(a.beat) - beatWeight(b.beat) || a.beat - b.beat);
+      const steps = Math.ceil(order.length / EASY_STEP_NOTES);
+      for (let k = 0; k < steps; k++) {
+        const chunk = order.slice(k * EASY_STEP_NOTES, (k + 1) * EASY_STEP_NOTES).sort((a, b) => a.beat - b.beat);
+        parts.push({ ...p, label: `${p.label} ${k + 1}/${steps}`, part: chunk, addOn: k > 0 });
+      }
+      continue;
+    }
     const onBeat = (n) => Math.abs(n.beat - Math.round(n.beat)) < 1e-6;
     const core = p.part.filter(onBeat), rest = p.part.filter((n) => !onBeat(n));
-    if (core.length && rest.length >= 2) {
+    if (p.mode === "drums" && core.length && rest.length >= 2) {
       parts.push({ ...p, label: `${p.label} · core`, part: core });
       parts.push({ ...p, label: `${p.label} · add`, part: rest, addOn: true });
     } else parts.push(p);
