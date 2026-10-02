@@ -72,20 +72,52 @@ export function createStage3D(canvas, layout, colors) {
   renderer.setPixelRatio(window.devicePixelRatio || 1);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x05070d);
-  scene.fog = new THREE.FogExp2(0x05070d, 0.02);   // fire ignores fog (fog:false on sprites)
 
-  scene.add(new THREE.AmbientLight(0x404860, 0.6));
-  // the drum lantern: textured wood/leather drank the faint moonlight and read
-  // black — a warm key light just above and behind the player, plus a soft
-  // warm fill, so the drums read. (Effects stay fake-lit billboards.)
-  const lantern = new THREE.PointLight(0xffb36a, 9, 7, 1.6);
-  lantern.position.set(0.0, 2.4, 1.6);
+  // ---- TWILIGHT, just after sunset (owner's call) -------------------------
+  // Sky dome: deep indigo overhead -> dusky violet -> a warm orange-pink glow
+  // on the horizon, BEHIND the archers' wall (the -z direction). Kept dark
+  // enough overhead that the flaming arrows still pop.
+  const HORIZON_HAZE = 0x4a3a5c;
+  scene.background = new THREE.Color(0x141a38);
+  scene.fog = new THREE.FogExp2(HORIZON_HAZE, 0.011);   // fire ignores fog (fog:false on sprites)
+  {
+    const skyMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false, fog: false,
+      uniforms: {
+        zenith:  { value: new THREE.Color(0x0e1434) },
+        mid:     { value: new THREE.Color(0x3a2f62) },
+        glow:    { value: new THREE.Color(0xf08a5a) },
+        ground:  { value: new THREE.Color(0x1c1624) },
+      },
+      vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform vec3 zenith, mid, glow, ground; varying vec3 vDir;
+        void main(){
+          float h = vDir.y;
+          // the afterglow is strongest toward the archers (-z) and hugs the horizon
+          float toward = smoothstep(-0.2, 1.0, -vDir.z);
+          float band = exp(-abs(h) * 9.0) * (0.35 + 0.65 * toward);
+          vec3 c = h > 0.0 ? mix(mid, zenith, smoothstep(0.0, 0.55, h)) : ground;
+          c = mix(c, glow, clamp(band, 0.0, 1.0) * 0.85);
+          gl_FragColor = vec4(c, 1.0);
+        }`,
+    });
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(180, 32, 16), skyMat);
+    sky.renderOrder = -1;
+    scene.add(sky);
+  }
+
+  // light: cool sky from above, warm bounce below, a low warm AFTERGLOW from the
+  // horizon behind the archers that rims the drums, and the warm lantern close in
+  scene.add(new THREE.HemisphereLight(0x6a78b8, 0x3a2a24, 0.75));
+  scene.add(new THREE.AmbientLight(0x2a2440, 0.35));
+  const afterglow = new THREE.DirectionalLight(0xff9a6a, 0.9);
+  afterglow.position.set(-6, 3, -40);          // low, from the sunset side
+  scene.add(afterglow);
+  // the drum lantern: textured wood/leather needs a warm key light close in
+  const lantern = new THREE.PointLight(0xffb36a, 7, 7, 1.6);
+  lantern.position.set(0.0, 2.2, 0.15);   // over the drums, not over the hands
   scene.add(lantern);
-  scene.add(new THREE.HemisphereLight(0x8a7a6a, 0x1a1410, 0.9));
-  const dir = new THREE.DirectionalLight(0x8090c0, 0.4);
-  dir.position.set(2, 5, 6);
-  scene.add(dir);
 
   const camera = new THREE.PerspectiveCamera(
     60, canvas.clientWidth / canvas.clientHeight, 0.1, 200,
@@ -290,9 +322,9 @@ export function createStage3D(canvas, layout, colors) {
   const stickGeo = new THREE.CylinderGeometry(0.022, 0.026, STICK_LEN, 10);
   stickGeo.translate(0, STICK_LEN / 2, 0);   // fist at origin, tip at +y
   // warm and partly self-lit, like the arrows: dark-brown hands vanished in the night scene
-  const handMat = new THREE.MeshStandardMaterial({ color: 0xe0a47c, roughness: 0.8, metalness: 0.05,
+  const handMat = new THREE.MeshStandardMaterial({ color: 0xa8775c, roughness: 0.8, metalness: 0.05,
     emissive: 0x8a5034, emissiveIntensity: 0.08 });   // the lantern lights them now
-  const stickMat = new THREE.MeshStandardMaterial({ color: 0xf0cc90, roughness: 0.6, metalness: 0.05,
+  const stickMat = new THREE.MeshStandardMaterial({ color: 0xc69a64, roughness: 0.6, metalness: 0.05,
     emissive: 0x9a7040, emissiveIntensity: 0.1 });
 
   // rest poses: widened and lowered so the fists never sit on a drum on
