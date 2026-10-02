@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Round 1",
+    "title": "First Song",
+    "file": "round1.json",
+    "swing": 0
+  },
+  {
+    "name": "Round 2",
+    "title": "Shuffle (placeholder)",
+    "file": "round2.json",
+    "swing": 0.6666666666666666
+  },
+  {
+    "name": "Round 3",
+    "title": "Breakdown (placeholder)",
+    "file": "round3.json",
+    "swing": 0
+  }
+]

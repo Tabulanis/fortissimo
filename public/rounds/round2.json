@@ -1,0 +1,2120 @@
+{
+  "version": 2,
+  "kind": "tracker",
+  "bpm": 80,
+  "rowsPerBeat": 8,
+  "instruments": [
+    {
+      "path": "garden/hat.wav",
+      "name": "hat"
+    },
+    {
+      "path": "garden/snare.wav",
+      "name": "snare"
+    },
+    {
+      "path": "garden/crash.wav",
+      "name": "crash"
+    },
+    {
+      "path": "garden/kick.wav",
+      "name": "kick"
+    },
+    {
+      "path": "garden/tom_low.wav",
+      "name": "tom low"
+    },
+    {
+      "path": "garden/tom_high.wav",
+      "name": "tom high"
+    }
+  ],
+  "channels": [
+    {
+      "name": "hat",
+      "mute": false,
+      "solo": false,
+      "fx": {
+        "nudge": 0,
+        "vol": 0.85,
+        "pan": 0,
+        "eq": {
+          "low": 0,
+          "mid": 0,
+          "high": 0
+        },
+        "dist": {
+          "on": false,
+          "drive": 0.4
+        },
+        "crush": {
+          "on": false,
+          "bits": 8
+        },
+        "chorus": {
+          "on": false,
+          "rate": 1.5,
+          "depth": 0.01,
+          "mix": 0.5
+        },
+        "delay": {
+          "on": false,
+          "send": 0.3
+        },
+        "reverb": {
+          "on": false,
+          "send": 0.3
+        },
+        "filter": {
+          "on": false,
+          "type": "lowpass",
+          "freq": 2000,
+          "q": 1
+        }
+      }
+    },
+    {
+      "name": "snare",
+      "mute": false,
+      "solo": false,
+      "fx": {
+        "nudge": 0,
+        "vol": 0.85,
+        "pan": 0,
+        "eq": {
+          "low": 0,
+          "mid": 0,
+          "high": 0
+        },
+        "dist": {
+          "on": false,
+          "drive": 0.4
+        },
+        "crush": {
+          "on": false,
+          "bits": 8
+        },
+        "chorus": {
+          "on": false,
+          "rate": 1.5,
+          "depth": 0.01,
+          "mix": 0.5
+        },
+        "delay": {
+          "on": false,
+          "send": 0.3
+        },
+        "reverb": {
+          "on": false,
+          "send": 0.3
+        },
+        "filter": {
+          "on": false,
+          "type": "lowpass",
+          "freq": 2000,
+          "q": 1
+        }
+      }
+    },
+    {
+      "name": "crash",
+      "mute": false,
+      "solo": false,
+      "fx": {
+        "nudge": 0,
+        "vol": 0.85,
+        "pan": 0,
+        "eq": {
+          "low": 0,
+          "mid": 0,
+          "high": 0
+        },
+        "dist": {
+          "on": false,
+          "drive": 0.4
+        },
+        "crush": {
+          "on": false,
+          "bits": 8
+        },
+        "chorus": {
+          "on": false,
+          "rate": 1.5,
+          "depth": 0.01,
+          "mix": 0.5
+        },
+        "delay": {
+          "on": false,
+          "send": 0.3
+        },
+        "reverb": {
+          "on": false,
+          "send": 0.3
+        },
+        "filter": {
+          "on": false,
+          "type": "lowpass",
+          "freq": 2000,
+          "q": 1
+        }
+      }
+    },
+    {
+      "name": "kick",
+      "mute": false,
+      "solo": false,
+      "fx": {
+        "nudge": 0,
+        "vol": 0.85,
+        "pan": 0,
+        "eq": {
+          "low": 0,
+          "mid": 0,
+          "high": 0
+        },
+        "dist": {
+          "on": false,
+          "drive": 0.4
+        },
+        "crush": {
+          "on": false,
+          "bits": 8
+        },
+        "chorus": {
+          "on": false,
+          "rate": 1.5,
+          "depth": 0.01,
+          "mix": 0.5
+        },
+        "delay": {
+          "on": false,
+          "send": 0.3
+        },
+        "reverb": {
+          "on": false,
+          "send": 0.3
+        },
+        "filter": {
+          "on": false,
+          "type": "lowpass",
+          "freq": 2000,
+          "q": 1
+        }
+      }
+    },
+    {
+      "name": "tom low",
+      "mute": false,
+      "solo": false,
+      "fx": {
+        "nudge": 0,
+        "vol": 0.85,
+        "pan": 0,
+        "eq": {
+          "low": 0,
+          "mid": 0,
+          "high": 0
+        },
+        "dist": {
+          "on": false,
+          "drive": 0.4
+        },
+        "crush": {
+          "on": false,
+          "bits": 8
+        },
+        "chorus": {
+          "on": false,
+          "rate": 1.5,
+          "depth": 0.01,
+          "mix": 0.5
+        },
+        "delay": {
+          "on": false,
+          "send": 0.3
+        },
+        "reverb": {
+          "on": false,
+          "send": 0.3
+        },
+        "filter": {
+          "on": false,
+          "type": "lowpass",
+          "freq": 2000,
+          "q": 1
+        }
+      }
+    },
+    {
+      "name": "tom high",
+      "mute": false,
+      "solo": false,
+      "fx": {
+        "nudge": 0,
+        "vol": 0.85,
+        "pan": 0,
+        "eq": {
+          "low": 0,
+          "mid": 0,
+          "high": 0
+        },
+        "dist": {
+          "on": false,
+          "drive": 0.4
+        },
+        "crush": {
+          "on": false,
+          "bits": 8
+        },
+        "chorus": {
+          "on": false,
+          "rate": 1.5,
+          "depth": 0.01,
+          "mix": 0.5
+        },
+        "delay": {
+          "on": false,
+          "send": 0.3
+        },
+        "reverb": {
+          "on": false,
+          "send": 0.3
+        },
+        "filter": {
+          "on": false,
+          "type": "lowpass",
+          "freq": 2000,
+          "q": 1
+        }
+      }
+    },
+    {
+      "name": "melody",
+      "mute": false,
+      "solo": false,
+      "fx": {
+        "nudge": 0,
+        "vol": 0.85,
+        "pan": 0,
+        "eq": {
+          "low": 0,
+          "mid": 0,
+          "high": 0
+        },
+        "dist": {
+          "on": false,
+          "drive": 0.4
+        },
+        "crush": {
+          "on": false,
+          "bits": 8
+        },
+        "chorus": {
+          "on": false,
+          "rate": 1.5,
+          "depth": 0.01,
+          "mix": 0.5
+        },
+        "delay": {
+          "on": false,
+          "send": 0.3
+        },
+        "reverb": {
+          "on": false,
+          "send": 0.3
+        },
+        "filter": {
+          "on": false,
+          "type": "lowpass",
+          "freq": 2000,
+          "q": 1
+        }
+      }
+    },
+    {
+      "name": "bass",
+      "mute": false,
+      "solo": false,
+      "fx": {
+        "nudge": 0,
+        "vol": 0.85,
+        "pan": 0,
+        "eq": {
+          "low": 0,
+          "mid": 0,
+          "high": 0
+        },
+        "dist": {
+          "on": false,
+          "drive": 0.4
+        },
+        "crush": {
+          "on": false,
+          "bits": 8
+        },
+        "chorus": {
+          "on": false,
+          "rate": 1.5,
+          "depth": 0.01,
+          "mix": 0.5
+        },
+        "delay": {
+          "on": false,
+          "send": 0.3
+        },
+        "reverb": {
+          "on": false,
+          "send": 0.3
+        },
+        "filter": {
+          "on": false,
+          "type": "lowpass",
+          "freq": 2000,
+          "q": 1
+        }
+      }
+    },
+    {
+      "name": "pad",
+      "mute": false,
+      "solo": false,
+      "fx": {
+        "nudge": 0,
+        "vol": 0.85,
+        "pan": 0,
+        "eq": {
+          "low": 0,
+          "mid": 0,
+          "high": 0
+        },
+        "dist": {
+          "on": false,
+          "drive": 0.4
+        },
+        "crush": {
+          "on": false,
+          "bits": 8
+        },
+        "chorus": {
+          "on": false,
+          "rate": 1.5,
+          "depth": 0.01,
+          "mix": 0.5
+        },
+        "delay": {
+          "on": false,
+          "send": 0.3
+        },
+        "reverb": {
+          "on": false,
+          "send": 0.3
+        },
+        "filter": {
+          "on": false,
+          "type": "lowpass",
+          "freq": 2000,
+          "q": 1
+        }
+      }
+    },
+    {
+      "name": "extra",
+      "mute": false,
+      "solo": false,
+      "fx": {
+        "nudge": 0,
+        "vol": 0.85,
+        "pan": 0,
+        "eq": {
+          "low": 0,
+          "mid": 0,
+          "high": 0
+        },
+        "dist": {
+          "on": false,
+          "drive": 0.4
+        },
+        "crush": {
+          "on": false,
+          "bits": 8
+        },
+        "chorus": {
+          "on": false,
+          "rate": 1.5,
+          "depth": 0.01,
+          "mix": 0.5
+        },
+        "delay": {
+          "on": false,
+          "send": 0.3
+        },
+        "reverb": {
+          "on": false,
+          "send": 0.3
+        },
+        "filter": {
+          "on": false,
+          "type": "lowpass",
+          "freq": 2000,
+          "q": 1
+        }
+      }
+    }
+  ],
+  "patterns": [
+    {
+      "rows": 32,
+      "data": [
+        [
+          null,
+          null,
+          null,
+          {
+            "note": 60,
+            "inst": 3,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          {
+            "note": 60,
+            "inst": 3,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          {
+            "note": 60,
+            "inst": 3,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          {
+            "note": 60,
+            "inst": 3,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "rows": 32,
+      "data": [
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          {
+            "note": 60,
+            "inst": 1,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          {
+            "note": 60,
+            "inst": 1,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          {
+            "note": 60,
+            "inst": 1,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "rows": 32,
+      "data": [
+        [
+          {
+            "note": 60,
+            "inst": 0,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          {
+            "note": 60,
+            "inst": 0,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          {
+            "note": 60,
+            "inst": 0,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          {
+            "note": 60,
+            "inst": 0,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          {
+            "note": 60,
+            "inst": 0,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          {
+            "note": 60,
+            "inst": 0,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          {
+            "note": 60,
+            "inst": 0,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          {
+            "note": 60,
+            "inst": 0,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    },
+    {
+      "rows": 32,
+      "data": [
+        [
+          null,
+          null,
+          {
+            "note": 60,
+            "inst": 2,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          {
+            "note": 60,
+            "inst": 5,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          {
+            "note": 60,
+            "inst": 4,
+            "vol": null
+          },
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ]
+      ]
+    }
+  ],
+  "order": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "fxBus": {
+    "reverbDecay": 1.4,
+    "delayTime": 0.3,
+    "delayFb": 0.35
+  },
+  "ui": {
+    "curPattern": 0,
+    "curInstrument": 0,
+    "cursor": {
+      "row": 0,
+      "ch": 0,
+      "sub": 0,
+      "slot": 0
+    },
+    "octave": 5,
+    "masterVol": 1,
+    "showWave": true,
+    "showVU": true,
+    "zoom": 40
+  }
+}

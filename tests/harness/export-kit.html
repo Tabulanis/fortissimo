@@ -1,0 +1,24 @@
+<!doctype html><body><script type="module">
+<!-- Renders the game drum kit to 32-bit float WAVs (Hackbeat format) and posts them to sink.py. Copy to public/_kit.html. -->
+// render the game's drum kit and send each voice as a 32-bit float WAV (Hackbeat's format)
+import { makeDrums } from "/src/audio/drums.js";
+const send = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body });
+function wav(buf) {
+  const ch = buf.numberOfChannels, n = buf.length, sr = buf.sampleRate, bytes = n * ch * 4;
+  const v = new DataView(new ArrayBuffer(44 + bytes));
+  const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, "RIFF"); v.setUint32(4, 36 + bytes, true); str(8, "WAVE"); str(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 3, true); v.setUint16(22, ch, true); v.setUint32(24, sr, true);
+  v.setUint32(28, sr * ch * 4, true); v.setUint16(32, ch * 4, true); v.setUint16(34, 32, true);
+  str(36, "data"); v.setUint32(40, bytes, true);
+  const data = [...Array(ch)].map((_, c) => buf.getChannelData(c));
+  let o = 44; for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) { v.setFloat32(o, data[c][i], true); o += 4; }
+  return v.buffer;
+}
+try {
+  const d = await makeDrums(48000);
+  const names = { hat: "hat", snare: "snare", crash: "crash", kick: "kick", tomLow: "tom_low", tomHigh: "tom_high" };
+  for (const [k, file] of Object.entries(names)) await send("wav_" + file, wav(d[k]));
+  await send("done", "ok");
+} catch (e) { send("harnesserror", String(e.stack || e)); }
+</script></body>
