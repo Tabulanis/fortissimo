@@ -12,6 +12,9 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { createVrHits } from "../input/vrhits.js";
 
@@ -85,6 +88,10 @@ export function createStage3D(canvas, layout, colors) {
   renderer.setPixelRatio(window.devicePixelRatio || 1);
   // VR: the headset is the camera, the controllers hold the sticks
   renderer.xr.enabled = true;
+  // FILM LOOK: ACES filmic tone mapping (the Unreal Engine curve) — bright fire
+  // rolls off into soft highlights instead of clipping to flat white
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
   renderer.xr.setReferenceSpaceType("local-floor");   // y = 0 is the real floor
 
   const scene = new THREE.Scene();
@@ -121,12 +128,22 @@ export function createStage3D(canvas, layout, colors) {
     const sky = new THREE.Mesh(new THREE.SphereGeometry(180, 32, 16), skyMat);
     sky.renderOrder = -1;
     scene.add(sky);
+    // IMAGE-BASED LIGHTING: the twilight sky, blurred into an environment map,
+    // lights and reflects on every surface (soft sky sheen on drums and stone)
+    {
+    const envScene = new THREE.Scene();
+    envScene.add(new THREE.Mesh(new THREE.SphereGeometry(10, 32, 16), skyMat));
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(envScene, 0.02).texture;
+    scene.environmentIntensity = 0.55;
+    pmrem.dispose();
+    }
   }
 
   // light: cool sky from above, warm bounce below, a low warm AFTERGLOW from the
   // horizon behind the archers that rims the drums, and the warm lantern close in
-  scene.add(new THREE.HemisphereLight(0x6a78b8, 0x3a2a24, 0.75));
-  scene.add(new THREE.AmbientLight(0x2a2440, 0.35));
+  scene.add(new THREE.HemisphereLight(0x6a78b8, 0x3a2a24, 0.45));   // the sky map does most of the fill now
+  scene.add(new THREE.AmbientLight(0x2a2440, 0.15));
   const afterglow = new THREE.DirectionalLight(0xff9a6a, 0.9);
   afterglow.position.set(-6, 3, -40);          // low, from the sunset side
   scene.add(afterglow);
@@ -155,20 +172,47 @@ export function createStage3D(canvas, layout, colors) {
   const FX_LAYER = 1;
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const gtao = new GTAOPass(scene, camera, canvas.clientWidth || 1280, canvas.clientHeight || 720);
-  gtao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 16 });
-  gtao.blendIntensity = 1.0;
-  composer.addPass(gtao);
-  // glowing effects (sprites, additive cards) render AFTER the AO in their own
-  // pass: in the AO pass they showed as black squares (AO treated the cards as
-  // solid). They live on layer 1; the main camera sees layer 0 only.
+  // glowing effects (sprites, additive cards) live on layer 1 and render in
+  // their own pass RIGHT AFTER the scene, into the same buffer: they're
+  // depth-tested against the real scene (flames hide behind pillars) and the
+  // AO's own depth pass (main camera = layer 0) never sees them, so no black
+  // squares. (Drawn after the AO they tested against a stale depth buffer the
+  // full-screen passes had written into, and every distant flame vanished.)
   const fxCamera = camera.clone();
   fxCamera.layers.set(FX_LAYER);
   const fxPass = new RenderPass(scene, fxCamera);
   fxPass.clear = false;
   fxPass.clearDepth = false;
   composer.addPass(fxPass);
+  const gtao = new GTAOPass(scene, camera, canvas.clientWidth || 1280, canvas.clientHeight || 720);
+  gtao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 16 });
+  gtao.blendIntensity = 1.0;
+  composer.addPass(gtao);
+  // BLOOM: only what's brighter than white glows (fire, sparks, hit flashes)
+  const bloom = new UnrealBloomPass(new THREE.Vector2(canvas.clientWidth || 1280, canvas.clientHeight || 720), 0.55, 0.6, 0.85);
+  composer.addPass(bloom);
   composer.addPass(new OutputPass());
+  // LENS FINISH (display space): vignette, a touch of chromatic fringing toward
+  // the edges, fine film grain — small amounts, it should be felt not seen
+  const lens = new ShaderPass({
+    uniforms: { tDiffuse: { value: null }, time: { value: 0 } },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `uniform sampler2D tDiffuse; uniform float time; varying vec2 vUv;
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233)) + time) * 43758.5453); }
+      void main(){
+        vec2 d = vUv - 0.5;
+        float r2 = dot(d, d);
+        vec2 ca = d * r2 * 0.012;                       // fringing grows toward the corners
+        vec3 c = vec3(texture2D(tDiffuse, vUv + ca).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - ca).b);
+        c *= mix(1.0, smoothstep(0.85, 0.2, r2 * 2.2), 0.55);   // vignette
+        c += (hash(vUv * 1000.0) - 0.5) * 0.025;        // grain
+        gl_FragColor = vec4(c, 1.0);
+      }`,
+  });
+  composer.addPass(lens);
+  // anti-aliasing (the effect chain bypasses the canvas's own MSAA)
+  const smaa = new SMAAPass((canvas.clientWidth || 1280) * renderer.getPixelRatio(), (canvas.clientHeight || 720) * renderer.getPixelRatio());
+  composer.addPass(smaa);
 
   // ground: dark stone, flat at y = 0
   const ground = new THREE.Mesh(
@@ -1118,7 +1162,7 @@ export function createStage3D(canvas, layout, colors) {
     const w = canvas.clientWidth || 1;
     const h = canvas.clientHeight || 1;
     renderer.setSize(w, h, false);
-    if (composer) { composer.setSize(w, h); gtao.setSize(w, h); }
+    if (composer) { composer.setSize(w, h); gtao.setSize(w, h); bloom.setSize(w, h); }
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }
@@ -1680,7 +1724,7 @@ export function createStage3D(canvas, layout, colors) {
     if (!fxSorted) sortFx();
     // the composer's passes don't render to a headset: draw straight to it
     if (vrOn()) renderer.render(scene, camera);
-    else composer.render();
+    else { lens.uniforms.time.value = performance.now() % 1000; composer.render(); }
   }
 
   /**
@@ -1796,6 +1840,7 @@ export function createStage3D(canvas, layout, colors) {
   return { resize, update, hit, press, strike, setDrumVisible, debugDrums,
     setLoop, addVrButton, setVrHitHandler: (fn) => { onVrHit = fn; }, setVrBellHandler: (fn) => { onVrBell = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */
+    debugPasses: { bloom, lens, smaa, gtao, fxPass, renderer, scene },   // harness: toggle .enabled to compare
     debugVr: () => hands.map((h, i) => { h.group.updateWorldMatrix(true, false); const p = h.group.localToWorld(new THREE.Vector3(0, STICK_LEN, 0));
       return { hand: i, held: !!h.grip, gripVisible: h.grip ? h.grip.visible : null, tip: [p.x, p.y, p.z].map((v) => +v.toFixed(3)) }; }), get vr() { return vrOn(); } };
 }
