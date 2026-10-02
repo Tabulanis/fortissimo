@@ -1,97 +1,98 @@
 import assert from "node:assert";
 import { ROUNDS } from "../src/game/stages.js";
-import { roundFromProject, projectFromRound, cellEvents, DRUM_LANES } from "../src/game/hackbeat.js";
-import { instrumentNotes, BASS_OCTAVE, TREBLE_OCTAVE } from "../src/game/scales.js";
+import { roundFromProject, songProjectFromRound, trackRole, cellEvents, DRUM_LANES, SONG_TRACKS } from "../src/game/hackbeat.js";
 
-const samples = Object.fromEntries(DRUM_LANES.map((l) => [l, `garden/${l.replace(" ", "_")}.wav`]));
-const key = (n) => `${n.lane}@${n.beat.toFixed(4)}`;
-// placeholder melody samples are recorded at C2 (bass) and C5 (treble): Hackbeat note 60 = that pitch
-const melodyFor = (r) => ({
-  bass: { path: "garden/bass_bars.wav", notes: instrumentNotes({ key: r.key, scale: r.scale, octave: BASS_OCTAVE }).map((m) => 60 + m - 36) },
-  treble: { path: "garden/treble_bars.wav", notes: instrumentNotes({ key: r.key, scale: r.scale, octave: TREBLE_OCTAVE }).map((m) => 60 + m - 72) },
-});
+// the owner's track names are recognised (any case / spacing), and the back tracks
+assert.deepStrictEqual(trackRole("Bass drum"), { drum: "kick" });
+assert.deepStrictEqual(trackRole("  HIHAT "), { drum: "hat" });
+assert.deepStrictEqual(trackRole("Bass instrument top"), { kind: "bass", row: 1 });
+assert.deepStrictEqual(trackRole("treble instrument bottom"), { kind: "treble", row: 0 });
+assert.deepStrictEqual(trackRole("DRUM BACK"), { back: "drums" });
+assert.deepStrictEqual(trackRole("BASS BACK"), { back: "bass" });
+assert.strictEqual(trackRole("tambourine"), null);
 
-// every built-in round survives a trip into a Hackbeat project (row layout) and back
+// every built-in round -> one full-song file -> back: the same notes (toms aside: not in the owner's list)
 for (const r of ROUNDS) {
-  const swing = r.swing ? 2 / 3 : 0;
-  const melody = melodyFor(r);
-  const proj = projectFromRound({ ...r, swing }, { samples, melody });
-  assert.strictEqual(proj.kind, "tracker");
-  assert.strictEqual(proj.patterns.length, r.parts.length);
-  assert.deepStrictEqual(proj.channels.map((c) => c.name).slice(0, 10),
-    [...DRUM_LANES, "bass bottom", "bass top", "treble bottom", "treble top"]);
-  assert.ok(proj.patterns.every((p) => p.data.length === p.rows && p.data.every((row) => row.length === proj.channels.length)));
-  const back = roundFromProject(JSON.parse(JSON.stringify(proj)), { swing });
-  assert.deepStrictEqual(back.warnings, [], `${r.name}: no warnings`);
-  // what you HEAR must match: drums by lane, bars by row + pitch (a row's bars
-  // are the notes it uses, low -> high, so bar NUMBERS may compact)
-  const heard = (n, pitchOf) => {
-    const [kind, bar] = n.lane.split(" ");
-    if (DRUM_LANES.includes(n.lane)) return `${n.lane}@${n.beat.toFixed(4)}`;
-    return `${kind} ${+bar <= 4 ? "bottom" : "top"} ${pitchOf(n.lane)}@${n.beat.toFixed(4)}`;
-  };
-  r.parts.forEach((p, i) => {
-    assert.deepStrictEqual(back.parts[i].part.map((n) => heard(n, (l) => back.sounds[l].note)).sort(),
-      p.part.map((n) => heard(n, (l) => melody[l.split(" ")[0]].notes[+l.split(" ")[1] - 1])).sort(), `${r.name} part ${i + 1} notes`);
-    assert.strictEqual(back.parts[i].mode, p.mode, `${r.name} part ${i + 1} mode`);
-    assert.strictEqual(back.parts[i].bars, p.bars, `${r.name} part ${i + 1} length`);
-  });
-  // sounds: each drum its own sample at its own pitch; every bar used has a sound from its row's sample
-  for (const lane of new Set(back.parts.flatMap((p) => p.part.map((n) => n.lane)))) {
-    const s = back.sounds[lane];
-    assert.ok(s, `${r.name}: ${lane} has a sound`);
-    if (DRUM_LANES.includes(lane)) assert.deepStrictEqual(s, { path: samples[lane], note: 60 });
-    else assert.strictEqual(s.path, melody[lane.split(" ")[0]].path, `${r.name}: ${lane} uses its row's sample`);
+  const { project } = songProjectFromRound(r);
+  assert.strictEqual(project.patterns.length, 1, "one full song");
+  assert.deepStrictEqual(project.channels.map((c) => c.name),
+    ["Bass drum", "snare", "hihat", "crash", "Bass instrument top", "Bass instrument bottom", "Treble instrument top", "Treble instrument bottom", "DRUM BACK", "BASS BACK", "TREBLE BACK"]);
+  const song = roundFromProject(JSON.parse(JSON.stringify(project)), { name: r.name });
+  assert.deepStrictEqual(song.warnings, [], `${r.name}: no warnings`);
+  const bars = Math.max(...r.parts.map((p) => p.bars || 1));
+  assert.strictEqual(song.bars, bars, `${r.name}: song length`);
+  // expected: every part repeated to the song length, toms left out
+  const want = [];
+  for (const p of r.parts) for (const n of p.part) {
+    if (n.lane.startsWith("tom")) continue;
+    for (let k = 0; k < bars / (p.bars || 1); k++) want.push({ ...n, beat: n.beat + k * 4 * (p.bars || 1) });
   }
+  const drumsOf = (list) => list.filter((n) => DRUM_LANES.includes(n.lane)).map((n) => `${n.lane}@${n.beat.toFixed(4)}`).sort();
+  assert.deepStrictEqual(drumsOf(song.notes), drumsOf(want), `${r.name}: drums`);
+  for (const kind of ["bass", "treble"]) {
+    const at = (list) => list.filter((n) => n.lane.startsWith(kind)).map((n) => n.beat.toFixed(4)).sort();
+    assert.deepStrictEqual(at(song.notes), at(want), `${r.name}: ${kind} notes at the same times`);
+  }
+  for (const n of song.notes) assert.ok(song.sounds[n.lane], `${r.name}: ${n.lane} has a sound`);
+  assert.deepStrictEqual(song.sounds.kick, { path: "garden/kick.wav", note: 60 });
+  assert.deepStrictEqual(song.back, { drums: [], bass: [], treble: [] }, "blank back tracks");
 }
 
-// a row's four bars are the four notes written on it, low -> high; a fifth is warned about
+// inst counts from 1: a note on slot 2 uses the 2nd instrument
 {
-  const proj = projectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] }, { samples, melody: melodyFor(ROUNDS[0]) });
-  const ch = proj.channels.findIndex((c) => c.name === "bass top");
-  [67, 60, 64, 69, 71].forEach((note, i) => (proj.patterns[0].data[i * 4][ch] = { note, inst: 7, vol: null }));   // G C E A B: five note names (slot 07 = the bass sample)
-  const r = roundFromProject(proj);
-  // bass top = bars 5-8: C E G A (B, the fifth note name, is left out and warned about)
-  assert.deepStrictEqual(r.parts[0].part.filter((n) => n.lane.startsWith("bass")).map((n) => n.lane), ["bass 7", "bass 5", "bass 6", "bass 8"]);
-  assert.deepStrictEqual([5, 6, 7, 8].map((b) => r.sounds[`bass ${b}`].note), [60, 64, 67, 69]);
-  assert.strictEqual(r.warnings.length, 2, "one for the fifth note, one for drums+bass in one pattern");
-  assert.ok(r.warnings.some((w) => /5 different notes/.test(w)));
+  const { project } = songProjectFromRound(ROUNDS[0]);
+  project.instruments[1].path = "mine/snare2.wav";
+  assert.strictEqual(roundFromProject(project).sounds.snare.path, "mine/snare2.wav");
 }
 
-// swing written IN Hackbeat (a row split in 3) reads exactly, no manifest swing needed
+// rows: four note NAMES, low -> high; octaves fold; a fifth name is warned about
 {
-  const proj = projectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] }, { samples, melody: melodyFor(ROUNDS[0]) });
-  proj.patterns[0].data[5][0] = { split: 3, subs: [null, { note: 60, inst: 1, vol: null }, null] };   // row 5 + 1/3 = beat 0.6667
-  const r = roundFromProject(proj);
-  assert.ok(r.parts[0].part.some((n) => n.lane === "hat" && Math.abs(n.beat - 2 / 3) < 1e-4), "split-cell swing");
+  const { project } = songProjectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] });
+  const top = project.channels.findIndex((c) => c.name === "Bass instrument top");
+  [67, 60, 64, 69, 71, 72].forEach((note, i) => (project.patterns[0].data[i * 4][top] = { note, inst: 5, vol: null }));
+  const s = roundFromProject(project);
+  // G C E A B C' -> names C E G A (B left out; the high C folds onto C)
+  assert.deepStrictEqual(s.notes.filter((n) => n.lane.startsWith("bass")).map((n) => n.lane), ["bass 7", "bass 5", "bass 6", "bass 8", "bass 5"]);
+  assert.deepStrictEqual([5, 6, 7, 8].map((b) => s.sounds[`bass ${b}`].note), [60, 64, 67, 69]);
+  assert.ok(s.warnings.some((w) => /5 different notes/.test(w)));
 }
 
-// volume column -> velocity; channels with other names -> backing music
+// back tracks: their notes and samples, per section
 {
-  const proj = projectFromRound({ parts: [{ part: [{ lane: "snare", beat: 1, vel: 0.5 }] }] }, { samples, melody: melodyFor(ROUNDS[0]) });
-  const backing = proj.channels.findIndex((c) => c.name === "backing 1");
-  proj.patterns[0].data[0][backing] = { note: 67, inst: 1, vol: null };
-  const r = roundFromProject(proj);
-  assert.strictEqual(r.parts[0].part[0].vel, 0.5);
-  assert.deepStrictEqual(r.parts[0].music, [{ ch: backing, beat: 0, note: 67, inst: 1, vel: 1 }]);
+  const { project } = songProjectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] });
+  project.instruments.push({ path: "amb/wind.wav", name: "wind" });
+  const db = project.channels.findIndex((c) => c.name === "DRUM BACK");
+  project.patterns[0].data[0][db] = { note: 60, inst: project.instruments.length, vol: 32 };
+  const s = roundFromProject(project);
+  assert.deepStrictEqual(s.back.drums, [{ beat: 0, note: 60, path: "amb/wind.wav", vel: 0.5 }]);
+  assert.ok(!s.notes.some((n) => n.lane === "DRUM BACK"), "back music is not something you play");
 }
 
-// channels are matched by NAME, any order, any case
+// the song is the patterns in ORDER, end to end
 {
-  const proj = projectFromRound({ parts: [{ part: [{ lane: "kick", beat: 0 }] }] }, { samples, melody: melodyFor(ROUNDS[0]) });
-  proj.channels[3].name = "  KICK ";
-  assert.strictEqual(roundFromProject(proj).parts[0].part[0].lane, "kick");
+  const { project } = songProjectFromRound({ parts: [{ part: [{ lane: "kick", beat: 0 }] }] });
+  project.patterns.push(JSON.parse(JSON.stringify(project.patterns[0])));
+  project.order = [0, 1];
+  const s = roundFromProject(project);
+  assert.strictEqual(s.bars, 2);
+  assert.deepStrictEqual(s.notes.filter((n) => n.lane === "kick").map((n) => n.beat), [0, 4]);
 }
 
-// OCTAVES FOLD: the same note name in another octave is the same bar, sounding in the row's most-used octave
+// swing written IN Hackbeat (a row split in 3) reads exactly
 {
-  const proj = projectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] }, { samples, melody: melodyFor(ROUNDS[0]) });
-  const ch = proj.channels.findIndex((c) => c.name === "treble top");
-  [60, 72, 60, 64].forEach((note, i) => (proj.patterns[0].data[i * 8][ch] = { note, inst: 8, vol: null }));   // C, C an octave up, C, E
-  const r = roundFromProject(proj);
-  assert.deepStrictEqual(r.parts[0].part.filter((n) => n.lane.startsWith("treble")).map((n) => n.lane), ["treble 5", "treble 5", "treble 5", "treble 6"], "both Cs are bar 5");
-  assert.strictEqual(r.sounds["treble 5"].note, 60, "it sounds in the octave used most");
-  assert.strictEqual(r.sounds["treble 6"].note, 64);
+  const { project } = songProjectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] });
+  const hh = SONG_TRACKS.findIndex((t) => t.lane === "hat");
+  project.patterns[0].data[5][hh] = { split: 3, subs: [null, { note: 60, inst: hh + 1, vol: null }, null] };
+  assert.ok(roundFromProject(project).notes.some((n) => n.lane === "hat" && Math.abs(n.beat - 2 / 3) < 1e-4));
 }
+
+// an unknown track is ignored, with a warning
+{
+  const { project } = songProjectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] });
+  project.channels.push({ name: "tambourine", fx: {} });
+  project.patterns[0].data.forEach((row) => row.push(null));
+  assert.ok(roundFromProject(project).warnings.some((w) => /tambourine/.test(w)));
+}
+
 assert.deepStrictEqual(cellEvents(null), []);
 console.log("hackbeat ok");

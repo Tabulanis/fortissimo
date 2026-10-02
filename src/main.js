@@ -20,6 +20,7 @@ import { Loops } from "./game/loops.js";
 import { DIFFICULTY } from "./game/difficulty.js";
 import { ROUNDS, partArrows, isShown, buildUp } from "./game/stages.js";
 import { loadRoundFiles } from "./game/roundfiles.js";
+import { lessonParts, NOTES_PER_STEP, sectionProgress, backLevel } from "./game/lesson.js";
 import { gradeRound } from "./game/grade.js";
 import { createResults } from "./ui/results.js";
 import { showLocked } from "./ui/locked.js";
@@ -81,16 +82,20 @@ let roundIdx = 0;
 // Easy teaches every part in steps (on-beat core first, then the add-on over its ghost)
 // the songs: Hackbeat projects (public/rounds, or Hackbeat's own copies while
 // developing); the built-in ROUNDS only if those can't be read
-let BASE_ROUNDS = ROUNDS;
-let EASY_ROUNDS = ROUNDS.map(buildUp);
-const song = () => (difficulty === DIFFICULTY.easy ? EASY_ROUNDS : BASE_ROUNDS)[roundIdx];
-const lastRound = () => roundIdx >= BASE_ROUNDS.length - 1;
-const roundsReady = loadRoundFiles().then((rounds) => {
-  if (!rounds.length) return;
-  BASE_ROUNDS = rounds;
-  EASY_ROUNDS = rounds.map(buildUp);
+// the round's SONG is a Hackbeat file; the game TEACHES it by the difficulty's
+// rule (lesson.js: drums one instrument at a time, then bass, then treble, at
+// most 4 / 6 / 8 notes a step). The built-in ROUNDS only if the files can't be read.
+const BASE_ROUNDS = ROUNDS;
+const EASY_ROUNDS = ROUNDS.map(buildUp);
+let LESSONS = null;
+const difficultyKey = () => Object.keys(DIFFICULTY).find((k) => DIFFICULTY[k] === difficulty) || "easy";
+const song = () => (LESSONS ? LESSONS[roundIdx] : (difficulty === DIFFICULTY.easy ? EASY_ROUNDS : BASE_ROUNDS)[roundIdx]);
+const lastRound = () => roundIdx >= (LESSONS || BASE_ROUNDS).length - 1;
+const roundsReady = loadRoundFiles().then((songs) => {
+  if (!songs.length) return;
+  LESSONS = songs.map((s) => ({ ...s, parts: lessonParts(s, NOTES_PER_STEP[difficultyKey()] || 4) }));
   if (typeof applyStage === "function") applyStage();
-  bootlog("rounds from files", { n: rounds.length, warnings: rounds.flatMap((r) => r.warnings) });
+  bootlog("rounds from files", { n: songs.length, steps: LESSONS.map((l) => l.parts.length), warnings: songs.flatMap((r) => r.warnings) });
 }).catch((e) => { console.warn("round files unavailable — playing the built-in songs", e); bootlog("rounds: built-in", { why: String(e) }); });
 const songDone = () => stageIdx >= song().parts.length;
 const currentPart = () => (songDone() ? [] : song().parts[stageIdx].part);
@@ -99,6 +104,7 @@ const partBars = () => (partObj() && partObj().bars) || 1;            // melody 
 const partMode = () => (partObj() && partObj().mode) || "drums";       // "drums" | "bass" | "treble"
 const isMelody = () => partMode() !== "drums";
 let padConnected = false;   // a game controller is plugged in (the bars then show its buttons)
+let audioStarted = false;   // Start pressed and the audio graph exists (the page lays out its HUD before that)
 let roundOffsets = [];          // every guided hit this round: seconds off its note, null = off-chart
 const results = createResults();
 const hudUI = createHud({ onBell: ringBell, onHint: () => playHint() });
@@ -130,6 +136,7 @@ hudUI.setLives(3);
 function applyStage() {
   for (let i = 0; i < 6; i++) stage3d.setDrumVisible(i, isShown(song(), stageIdx, i));
   stage3d.setStation(isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left
+  if (audioStarted) updateBackLevels();                      // the sections' background music follows progress
   stageMessage();
 }
 
@@ -272,7 +279,8 @@ async function buildMelodyVoices() {
 const sampleCache = new Map();   // sample path -> AudioBuffer (null = failed to load)
 async function loadRoundSamples() {
   if (!ctx) return;
-  const paths = [...new Set(Object.values(song().sounds || {}).map((x) => x.path))].filter((p) => !sampleCache.has(p));
+  const paths = [...new Set([...Object.values(song().sounds || {}).map((x) => x.path),
+    ...Object.values(song().back || {}).flat().map((e) => e.path)])].filter((p) => !sampleCache.has(p));
   await Promise.all(paths.map(async (p) => {
     try {
       const r = await fetch("/rounds/samples/" + p);
@@ -380,12 +388,54 @@ function makeStartButton() {
     });
     scheduledUntil = clock.first;
     setInterval(scheduleGhosts, 25);
+    makeBackBus();
+    setInterval(scheduleBack, 25);
+    audioStarted = true;
 
     btn.remove();
     hud.textContent = modeStr();
   });
   document.body.appendChild(btn);
   return btn;
+}
+
+// --- BACKGROUND MUSIC --------------------------------------------------------
+// Each section's BACK track (Hackbeat: DRUM BACK / BASS BACK / TREBLE BACK)
+// loops with the song, in time, on its own fader into the backing bus: it fades
+// in as the section's steps lock and comes in fully when the section is done;
+// a new round starts silent.
+const backGain = {};
+let backUntil = 0, backCh = 0;
+function makeBackBus() {
+  for (const m of ["drums", "bass", "treble"]) {
+    const g = ctx.createGain();
+    g.gain.value = 0;
+    g.connect(mixer.backing);
+    backGain[m] = g;
+  }
+}
+function scheduleBack() {
+  if (!ctx || !clock || !pool || !backGain.drums || !song().back) return;
+  const period = song().bars * 4 * clock.beatDur;
+  const from = Math.max(backUntil, ctx.currentTime), until = ctx.currentTime + 0.15;
+  for (const m of ["drums", "bass", "treble"]) {
+    for (const e of song().back[m]) {
+      const buf = sampleCache.get(e.path);
+      if (!buf) continue;
+      for (let k = Math.ceil((from - clock.first - e.beat * clock.beatDur) / period); ; k++) {
+        const t = clock.first + k * period + e.beat * clock.beatDur;
+        if (t >= until) break;
+        if (t >= from) pool.noteOn({ channel: 120 + (backCh++ % 24), midi: e.note, baseNote: 60, buffer: buf, velocity: e.vel,
+          when: t, destination: backGain[m], settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
+      }
+    }
+  }
+  backUntil = until;
+}
+function updateBackLevels() {
+  if (!ctx || !backGain.drums) return;
+  const prog = sectionProgress(song().parts, stageIdx);
+  for (const m of ["drums", "bass", "treble"]) backGain[m].gain.setTargetAtTime(backLevel(prog[m]), ctx.currentTime, 1.2);
 }
 
 // --- LISTEN (hint) ---------------------------------------------------------
@@ -395,7 +445,7 @@ function makeStartButton() {
 // through its instrument, its drum/bar flashes and the ghost hands play it.
 let hint = null;   // { notes: [{laneIdx, time, velocity, flashed}], end }
 function sectionNotes(mode) {
-  const parts = BASE_ROUNDS[roundIdx].parts.filter((p) => p.mode === mode);
+  const parts = song().parts.filter((p) => p.mode === mode);   // a section's steps add up to the whole section
   return { notes: parts.flatMap((p) => p.part), bars: Math.max(1, ...parts.map((p) => p.bars || 1)) };
 }
 function playHint() {
@@ -894,6 +944,7 @@ if (window.__gr) window.__gr.game = {
   part: () => currentPart(),
   song: () => song(),
   get hint() { return hint; },
-  source: () => (BASE_ROUNDS === ROUNDS ? "built-in" : "files"),
+  source: () => (LESSONS ? "files" : "built-in"),
+  backLevels: () => Object.fromEntries(Object.entries(backGain).map(([m, g]) => [m, +g.gain.value.toFixed(2)])),
   samples: () => [...sampleCache].map(([p, b]) => `${p}: ${b ? b.duration.toFixed(2) + " s" : "FAILED"}`), get calibration() { return calibration; }, get loops() { return loops; },
 };   // screen or headset: the renderer drives the frames

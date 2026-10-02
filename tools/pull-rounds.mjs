@@ -18,13 +18,13 @@ for (const m of manifest) {
   fs.writeFileSync(path.join(OUT, m.file), JSON.stringify(project, null, 2));
   const round = roundFromProject(project, m);
   for (const w of round.warnings) console.log(`  ! ${m.name}: ${w}`);
-  // every sample the round's drums and bars use
-  for (const p of new Set(Object.values(round.sounds).map((s) => s.path))) {
+  // every sample the round's drums, bars and back tracks use
+  for (const p of new Set([...Object.values(round.sounds).map((s) => s.path), ...Object.values(round.back).flat().map((e) => e.path)])) {
     const from = path.resolve(HACKBEAT, "samples", p), to = path.resolve(OUT, "samples", p);
     if (!from.startsWith(path.resolve(HACKBEAT, "samples") + path.sep) || !fs.existsSync(from)) { console.log(`  ! missing sample ${p}`); continue; }
     fs.mkdirSync(path.dirname(to), { recursive: true });
     fs.copyFileSync(from, to); copied++;
   }
-  console.log(`${m.name}: pulled ${m.file} (${round.parts.length} parts)`);
+  console.log(`${m.name}: pulled ${m.file} (${round.bars} bar song, ${round.notes.length} notes)`);
 }
 console.log(`${copied} sample file(s) copied`);
