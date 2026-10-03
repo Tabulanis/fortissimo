@@ -1008,7 +1008,7 @@ stage3d.setLoop(frame);
 if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; }, get bell() { return bell; },
   get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; },
-  get mixer() { return mixer; }, laneSound: (ln) => laneSound(ln),
+  get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln) => laneSound(ln),
   upcoming: () => (ctx ? buildUpcoming(ctx.getOutputTimestamp().contextTime) : []),
   part: () => currentPart(),
   song: () => song(),
