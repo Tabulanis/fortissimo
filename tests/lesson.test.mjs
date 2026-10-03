@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { ROUNDS } from "../src/game/stages.js";
 import { roundFromProject, songProjectFromRound } from "../src/game/hackbeat.js";
-import { lessonParts, periodBars, figures, sectionProgress, backLevel, NOTES_PER_STEP } from "../src/game/lesson.js";
+import { lessonParts, periodBars, figures, finishedLanes, sectionProgress, backLevel, NOTES_PER_STEP } from "../src/game/lesson.js";
 
 const song = roundFromProject(songProjectFromRound(ROUNDS[0]).project);
 
@@ -90,8 +90,16 @@ assert.deepStrictEqual(figures([0, 0.25, 0.5, 2, 2.25, 2.5].map((beat) => ({ lan
   assert.strictEqual(sectionProgress(parts, firstBass).drums, 1, "drums done when the bass starts");
   assert.ok(sectionProgress(parts, 1).drums > 0 && sectionProgress(parts, 1).drums < 1);
   assert.deepStrictEqual(sectionProgress(parts, parts.length), { drums: 1, bass: 1, treble: 1 });
-  assert.ok(backLevel(0) > 0.2 && backLevel(0) < 0.5, "quiet but audible from the start");
+  assert.strictEqual(backLevel(0), 0, "silent at the start");
   assert.ok(backLevel(0.5) > backLevel(0) && backLevel(0.5) < 1, "grows while the section is learned");
   assert.strictEqual(backLevel(1), 1, "fully in when the section is done");
+}
+// nothing plays that you haven't played: an instrument's left-out notes wait until it's finished
+{
+  const parts = [{ mode: "drums", part: [{ lane: "kick", beat: 0 }] }, { mode: "drums", part: [{ lane: "snare", beat: 1 }] }, { mode: "bass", part: [{ lane: "bass 1", beat: 0 }] }];
+  assert.deepStrictEqual([...finishedLanes(parts, 0)], [], "nothing at the start");
+  assert.ok(finishedLanes(parts, 1).has("kick") && !finishedLanes(parts, 1).has("snare"), "the kick once its steps are locked");
+  assert.ok(finishedLanes(parts, 2).has("hat"), "a drum with nothing taught joins when the drums are done");
+  assert.ok(!finishedLanes(parts, 2).has("bass 2"), "but not the bass, still to come");
 }
 console.log("lesson ok");

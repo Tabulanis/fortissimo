@@ -136,6 +136,24 @@ export function lessonParts(song, perStep = 4, { barByBar = false } = {}) {
 }
 
 /**
+ * The lanes of every instrument you've FINISHED (owner, 2026-10-03: nothing
+ * plays that you haven't played): an instrument is finished when none of its
+ * steps are left — or, if none of its notes were taught at all, when its
+ * section is. Only then do its left-out notes (the backing) join in.
+ * @returns {Set<string>} lane names
+ */
+export function finishedLanes(parts, stageIdx) {
+  const done = new Set();
+  const prog = sectionProgress(parts, stageIdx);
+  for (const inst of INSTRUMENTS) {
+    const taught = parts.some((p) => p.part.some((n) => inst.lanes.includes(n.lane)));
+    const left = parts.slice(stageIdx).some((p) => p.part.some((n) => inst.lanes.includes(n.lane)));
+    if (taught ? !left : prog[inst.mode] >= 1) for (const l of inst.lanes) done.add(l);
+  }
+  return done;
+}
+
+/**
  * How far each section is: 0 nothing locked .. 1 done. `stageIdx` = the step
  * being learned (every step before it is locked); past the end = all done.
  * @returns {{drums:number, bass:number, treble:number}}
@@ -150,11 +168,11 @@ export function sectionProgress(parts, stageIdx) {
 }
 
 /**
- * Background level for a section's BACK track (owner, 2026-10-03): quiet but
- * audible from the start (30%), growing as the section's steps lock (to 60%),
- * and FULL — as set in Hackbeat — once the section is unlocked.
+ * Background level for a section's BACK track (owner, 2026-10-03): silent at
+ * the start, coming in slowly as the section's steps lock (to 50%), and FULL —
+ * as set in Hackbeat — once the section is unlocked.
  */
-export const BACK_START = 0.3, BACK_LEARNING = 0.6;
+export const BACK_START = 0, BACK_LEARNING = 0.5;
 export function backLevel(progress) {
   return progress >= 1 ? 1 : BACK_START + (BACK_LEARNING - BACK_START) * progress;
 }

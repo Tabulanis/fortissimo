@@ -1,0 +1,24 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" src="/?quality=low" style="width:1000px;height:700px;border:0"></iframe>
+<script type="module">
+const out = [], wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const f = document.getElementById("f");
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  w.addEventListener("error", (e) => out.push("JSERROR " + e.message));
+  try {
+    await wait(3000);
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(1500);
+    const G = w.__gr.game, m = G.mixer, ctx = G.ctx;
+    const an = ctx.createAnalyser(); an.fftSize = 2048;
+    m.hackbeat.connect(an);
+    for (const k of ["kick", "snare", "hat", "crash", "bass", "treble"]) m.lane(k).connect(an);   // the game's own lanes too
+    const buf = new Float32Array(2048); let peak = 0; const t0 = performance.now();
+    while (performance.now() - t0 < 8000) { an.getFloatTimeDomainData(buf); for (const v of buf) peak = Math.max(peak, Math.abs(v)); await wait(20); }
+    out.push(`8 s after Start, nobody playing — instruments + backgrounds peak: ${peak.toFixed(4)}`);
+    out.push(`back levels: ${JSON.stringify(G.backLevels())} | loop layers: ${G.loops._layers.length}`);
+  } catch (e) { out.push("ERROR " + e.message); }
+  fetch("http://127.0.0.1:8899/silent", { method: "POST", body: out.join("\n") });
+};
+</script>

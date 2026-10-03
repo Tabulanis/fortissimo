@@ -1,9 +1,11 @@
 <!doctype html><body style="margin:0">
-<iframe id="f" src="/" style="width:1200px;height:800px;border:0"></iframe>
+<iframe id="f" style="width:1200px;height:800px;border:0"></iframe>
 <script type="module">
 const out = [], wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const KEY = { hat: "q", snare: "w", crash: "e", kick: "z", "tom low": "x", "tom high": "c" };
+localStorage.removeItem("gr.run");   // the default run: Easy
 const f = document.getElementById("f");
+f.src = "/";
 f.onload = async () => {
   const w = f.contentWindow, d = w.document;
   w.addEventListener("error", (e) => out.push("JSERROR " + e.message));

@@ -22,7 +22,7 @@ import { Bell } from "./game/bell.js";
 import { Loops } from "./game/loops.js";
 import { ROUNDS, partArrows, isShown, buildUp } from "./game/stages.js";
 import { loadRoundFiles } from "./game/roundfiles.js";
-import { lessonParts, sectionProgress, backLevel } from "./game/lesson.js";
+import { lessonParts, sectionProgress, backLevel, finishedLanes } from "./game/lesson.js";
 import { normalize, judgeFor, simplifyNotes, scoreMultiplier, presetOf, PRESET_NAMES } from "./game/run.js";
 import { createMenu } from "./ui/menu.js";
 import { gradeRound } from "./game/grade.js";
@@ -138,15 +138,22 @@ const partBars = () => (partObj() && partObj().bars) || 1;            // melody 
 const partMode = () => (partObj() && partObj().mode) || "drums";       // "drums" | "bass" | "treble"
 const isMelody = () => partMode() !== "drums";
 let padConnected = false;   // a game controller is plugged in (the bars then show its buttons)
-let previewedStep = null;
-// the notes this run's pattern difficulty leaves out: they play anyway, like a
-// locked loop, so the song is always whole (you just don't have to hit them)
-function addBacking() {
+// the notes this run's pattern difficulty leaves out. NOTHING plays that you
+// haven't played (owner, 2026-10-03: "random horns"): an instrument's left-out
+// notes join only once that instrument is finished, as a locked loop.
+let backingJoined = new Set();   // lanes whose left-out notes are already playing
+function addBacking() { backingJoined = new Set(); joinBacking(); }   // a fresh round: nothing joined yet
+function joinBacking() {
   const b = song().backingNotes;
   if (!loops || !clock || !b || !b.length) return;
-  loops.add({ bars: song().bars, startBar: 0, backing: true,
-    hits: b.map((n) => ({ lane: n.lane, pos: n.beat * clock.beatDur, velocity: (n.vel ?? 1) * 0.85 })) });
-}   // Easy: the step already played once as a preview
+  const done = finishedLanes(song().parts, stageIdx);
+  const lanes = [...done].filter((l) => !backingJoined.has(l) && b.some((n) => n.lane === l));
+  if (!lanes.length) return;
+  for (const l of lanes) backingJoined.add(l);
+  const hits = b.filter((n) => lanes.includes(n.lane)).map((n) => ({ lane: n.lane, pos: n.beat * clock.beatDur, velocity: (n.vel ?? 1) * 0.85 }));
+  const startBar = Math.ceil((ctx.currentTime - clock.first) / (4 * clock.beatDur * song().bars)) * song().bars;   // from the next pass of the song
+  loops.add({ bars: song().bars, startBar, backing: true, hits });
+}
 let audioStarted = false;   // Start pressed and the audio graph exists (the page lays out its HUD before that)
 let roundOffsets = [];          // every guided hit this round: seconds off its note, null = off-chart
 const results = createResults();
@@ -210,11 +217,7 @@ function applyStage() {
   stage3d.setStation(isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left
   if (audioStarted) updateBackLevels();                      // the sections' background music follows progress
   stageMessage();
-  // Easy: a new step plays once by itself, lit up, before you're asked to play it
-  if (RUN.patterns !== "full" && audioStarted && !songDone() && previewedStep !== song().parts[stageIdx]) {   // Easy / Medium patterns
-    previewedStep = song().parts[stageIdx];
-    playHint([previewedStep], "👂 Here's the next one — listen, then play it");
-  }
+  if (audioStarted) joinBacking();   // a finished instrument's left-out notes join in
 }
 
 // the standing instruction for where you are in the song
