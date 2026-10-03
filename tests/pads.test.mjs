@@ -21,3 +21,12 @@ for (const l of lanes) {
   assert.ok(Object.values(PAD_BUTTONS).includes(l), `controller reaches ${l}`);
 }
 console.log("pads: all passed");
+
+// every controller button does ONE thing (owner, 2026-10-03): LT only switches rows, B is never the bell
+{
+  const { MELODY_BUTTONS, ROW_SHIFT, MELODY_BELL } = await import("../src/input/pads.js");
+  assert.ok(!(ROW_SHIFT in PAD_BUTTONS) && !(ROW_SHIFT in MELODY_BUTTONS), "LT is only the row switch");
+  assert.ok(PAD_BUTTONS[1] === undefined && !MELODY_BELL.includes(1), "B is not the bell");
+  assert.deepStrictEqual(Object.entries(PAD_BUTTONS).filter(([, v]) => v === "bell").map(([k]) => +k), [9], "the bell is Menu only");
+}
+console.log("pads one-job ok");

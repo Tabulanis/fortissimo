@@ -3,16 +3,15 @@
    MIDI (e-kits, pad controllers, anything sending General MIDI drum notes):
      the pad's velocity becomes how hard the drum is hit; each event carries
      its own timestamp, so timing is as exact as the keyboard's.
-   Game controllers (standard mapping), polled once per frame:
-     upper row  LB = hat    Y = snare      RB = crash
-     lower row  LT = kick   A = tom low    RT = tom high
-     B = ring the ghost bell        (Menu also rings it, in every mode)
-     either thumbstick = look around a little (screen mode)
-   MELODY parts (bass / treble), the 8 bars:
-     D-pad  left down right up = notes 1-4 (bottom row)
-     X A B Y (left bottom right top) = notes 5-8 (top row)
-     Menu = ring the ghost bell
-   View (every mode) = LISTEN: play the whole section, lit up
+   Game controllers (standard mapping), polled once per frame — every button
+   does ONE thing (owner, 2026-10-03: no doubled-up buttons):
+   DRUMS   upper row  LB = hat    Y = snare      RB = crash
+           lower row  A = kick    X = tom low    RT = tom high
+   BARS    (bass / treble, two rows of 8)
+           D-pad left down right up + X A B Y = the 8 bars of the BOTTOM row;
+           hold LT = the same 8 buttons play the TOP row (LT does nothing else)
+   every mode: Menu = ring the ghost bell, View = LISTEN (the whole section),
+           either thumbstick = look around a little (screen mode)
 
    Calls back with (laneName, force 0..1, timeStamp in performance.now() ms). */
 
@@ -28,10 +27,11 @@ export const GM_DRUMS = {
 export const MIDI_BELL_NOTE = 56;   // cowbell rings the ghost bell
 
 // standard-mapping gamepad button -> lane (or "bell")
-export const PAD_BUTTONS = { 4: "hat", 3: "snare", 5: "crash", 6: "kick", 0: "tom low", 7: "tom high", 1: "bell", 9: "bell", 8: "hint" };
-// melody: standard-mapping button -> bar slot 0..7 (same left/bottom/right/top order both sides)
+export const PAD_BUTTONS = { 4: "hat", 3: "snare", 5: "crash", 0: "kick", 2: "tom low", 7: "tom high", 9: "bell", 8: "hint" };
+// melody: standard-mapping button -> bar 0..7 of the bottom row (+8 with LT held = the top row)
 export const MELODY_BUTTONS = { 14: 0, 13: 1, 15: 2, 12: 3, 2: 4, 0: 5, 1: 6, 3: 7 };
 export const MELODY_BELL = [9];
+export const ROW_SHIFT = 6;   // LT: hold for the top row
 export const HINT_BUTTON = 8;   // View: LISTEN to the whole section, every mode
 
 /** Pure: one MIDI message -> {lane, force} | {bell: true} | null */
@@ -82,9 +82,10 @@ export function createPads({ onHit, onBell, onStatus, onMelody, onHint, melodyMo
         const prev = was.get(gp.index) || [];
         const now = gp.buttons.map((b) => b.pressed || b.value > 0.5);
         if (melodyMode()) {
-          // the 8 bars: D-pad + face buttons; Menu / View ring the bell
+          // the bars: D-pad + face buttons (bottom row, LT = top row); Menu rings the bell, View listens
+          const top = now[ROW_SHIFT] ? 8 : 0;   // LT held: the top row
           for (const [i, slot] of Object.entries(MELODY_BUTTONS)) {
-            if (now[i] && !prev[i]) onMelody && onMelody(slot, 1, performance.now());
+            if (now[i] && !prev[i]) onMelody && onMelody(slot + top, 1, performance.now());
           }
           for (const i of MELODY_BELL) if (now[i] && !prev[i]) onBell && onBell();
           if (now[HINT_BUTTON] && !prev[HINT_BUTTON]) onHint && onHint();

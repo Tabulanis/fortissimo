@@ -7,10 +7,10 @@
  *             (+ optional "tom low", "tom high")
  *   bars      "Bass instrument top" / "Bass instrument bottom",
  *             "Treble instrument top" / "Treble instrument bottom"
- *             (also "bass top" etc.) — each row is its own instrument with FOUR
- *             bars: the four note NAMES written on it, low -> high; OCTAVES FOLD
+ *             (also "bass top" etc.) — each row is its own instrument with EIGHT
+ *             bars: the eight note NAMES written on it, low -> high; OCTAVES FOLD
  *             (same name, other octave = same bar, sounding in the row's
- *             most-used octave). Bottom row = bars 1-4, top row = bars 5-8.
+ *             most-used octave). Bottom row = bars 1-8, top row = bars 9-16.
  *   back      "DRUM BACK", "BASS BACK", "TREBLE BACK" — background music that
  *             fades in as that section's steps lock, full when it's done
  *   anything else is ignored (with a warning).
@@ -24,6 +24,7 @@ import { instrumentNotes, BASS_OCTAVE, TREBLE_OCTAVE } from "./scales.js";
 
 export const DRUM_LANES = ["hat", "snare", "crash", "kick", "tom low", "tom high"];   // = lane index 0..5
 export const BASE_NOTE = 60;
+export const PER_ROW = 8;   // bars per row: a station is two rows of 8 (owner, 2026-10-03)
 const DRUM_ALIASES = {
   kick: ["bass drum", "kick", "kick drum", "bd"], snare: ["snare", "snare drum", "sd"],
   hat: ["hihat", "hi hat", "hi-hat", "hat", "hh"], crash: ["crash", "crash cymbal", "cymbal"],
@@ -102,7 +103,7 @@ export function roundFromProject(project, meta = {}) {
       });
     }
   }
-  // each row's four bars: note NAMES (octaves fold), sounding in the most-used octave
+  // each row's EIGHT bars (owner, 2026-10-03): note NAMES (octaves fold), sounding in the most-used octave
   const rowUse = {};
   for (const { c, ev } of events) {
     const role = roles[c];
@@ -110,12 +111,12 @@ export function roundFromProject(project, meta = {}) {
     const key = `${role.kind} ${role.row}`, pc = pcOf(ev.note);
     ((rowUse[key] ||= {})[pc] ||= {})[ev.note] = (rowUse[key][pc][ev.note] || 0) + 1;
   }
-  const rowBars = {};   // "bass 0" -> [{pc, note}] low -> high, max 4
+  const rowBars = {};   // "bass 0" -> [{pc, note}] low -> high, max PER_ROW
   for (const [key, byPc] of Object.entries(rowUse)) {
     const list = Object.entries(byPc).map(([pc, n]) => ({ pc: +pc, note: +mostUsed(n) })).sort((a, b) => a.note - b.note);
     const [kind, row] = key.split(" ");
-    if (list.length > 4) warnings.push(`${kind} ${+row ? "top" : "bottom"}: ${list.length} different notes — a row has 4 bars, so the highest ${list.length - 4} are left out`);
-    rowBars[key] = list.slice(0, 4);
+    if (list.length > PER_ROW) warnings.push(`${kind} ${+row ? "top" : "bottom"}: ${list.length} different notes — a row has ${PER_ROW} bars, so the highest ${list.length - PER_ROW} are left out`);
+    rowBars[key] = list.slice(0, PER_ROW);
   }
   const notes = [], back = { drums: [], bass: [], treble: [] };
   const instCount = {}, noteCount = {}, trackCount = {};
@@ -129,7 +130,7 @@ export function roundFromProject(project, meta = {}) {
     } else {
       const slot = rowBars[`${role.kind} ${role.row}`].findIndex((b) => b.pc === pcOf(ev.note));
       if (slot < 0) continue;   // a left-out fifth note name
-      lane = `${role.kind} ${role.row * 4 + slot + 1}`;
+      lane = `${role.kind} ${role.row * PER_ROW + slot + 1}`;
     }
     (instCount[lane] ||= {})[instOf(ev)] = (instCount[lane][instOf(ev)] || 0) + 1;
     (trackCount[lane] ||= {})[c] = (trackCount[lane][c] || 0) + 1;
@@ -145,7 +146,7 @@ export function roundFromProject(project, meta = {}) {
     if (DRUM_LANES.includes(lane)) sounds[lane] = { path, note: +mostUsed(noteCount[lane]) + shiftOf(inst), ...extra };
     else {
       const [kind, bar] = lane.split(" ");
-      sounds[lane] = { path, note: rowBars[`${kind} ${+bar > 4 ? 1 : 0}`][(+bar - 1) % 4].note + shiftOf(inst), ...extra };
+      sounds[lane] = { path, note: rowBars[`${kind} ${+bar > PER_ROW ? 1 : 0}`][(+bar - 1) % PER_ROW].note + shiftOf(inst), ...extra };
     }
   }
   // every track's effects (EQ, pan, drive, crush, chorus, sends, volume) + the song's shared delay/reverb
@@ -184,8 +185,8 @@ export const BACK_TRACKS = ["DRUM BACK", "BASS BACK", "TREBLE BACK"];
 export function songProjectFromRound(round, { rowsPerBeat = 8, bpm = 80 } = {}) {
   // placeholder bar samples are recorded at C2 (bass) / C5 (treble): note 60 = that pitch
   const melodyNote = {
-    bass: instrumentNotes({ key: round.key || "C", scale: round.scale || "major", octave: BASS_OCTAVE }).map((m) => 60 + m - 36),
-    treble: instrumentNotes({ key: round.key || "C", scale: round.scale || "major", octave: TREBLE_OCTAVE }).map((m) => 60 + m - 72),
+    bass: instrumentNotes({ key: round.key || "C", scale: round.scale || "major", octave: BASS_OCTAVE, count: 2 * PER_ROW }).map((m) => 60 + m - 36),
+    treble: instrumentNotes({ key: round.key || "C", scale: round.scale || "major", octave: TREBLE_OCTAVE, count: 2 * PER_ROW }).map((m) => 60 + m - 72),
   };
   const T = SONG_TRACKS;
   const bars = Math.max(...round.parts.map((p) => p.bars || 1));
@@ -205,9 +206,9 @@ export function songProjectFromRound(round, { rowsPerBeat = 8, bpm = 80 } = {}) 
     for (const n of p.part) {
       const [kind, slotTxt] = n.lane.split(" ");
       let c, note;
-      if ((kind === "bass" || kind === "treble") && /^\d$/.test(slotTxt || "")) {
+      if ((kind === "bass" || kind === "treble") && /^\d+$/.test(slotTxt || "")) {
         const bar = +slotTxt;
-        c = T.findIndex((t) => t.kind === kind && t.row === (bar <= 4 ? 0 : 1));
+        c = T.findIndex((t) => t.kind === kind && t.row === (bar <= PER_ROW ? 0 : 1));
         note = melodyNote[kind][bar - 1];
       } else { c = T.findIndex((t) => t.lane === n.lane); note = BASE_NOTE; }
       if (c < 0) { dropped++; continue; }

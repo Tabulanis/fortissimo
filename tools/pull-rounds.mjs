@@ -12,7 +12,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(OUT, "rounds.json"), "utf8
 let copied = 0;
 for (const m of manifest) {
   const n = m.file.match(/^round(\d+)\.json$/)?.[1];
-  const src = n && path.join(HACKBEAT, "projects", `garden-round${n}.json`);
+  const src = n && path.join(HACKBEAT, "projects", `${m.project || `garden-round${n}`}.json`);   // "project": the Hackbeat project it plays
   if (!src || !fs.existsSync(src)) { console.log(`${m.name}: no Hackbeat copy (keeping ${m.file})`); continue; }
   const project = JSON.parse(fs.readFileSync(src, "utf8"));
   // the game loads the sample files themselves; the copies embedded in the project would only be dead weight

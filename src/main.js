@@ -84,10 +84,11 @@ if (IS_TOUCH) document.documentElement.classList.add("touch");   // touch layout
 window.__gr = { stage3d };   // debug handle for the browser harness
 
 // --- the song: parts unlock two drums at a time; the ghost bell locks them ---
-const LANE_INDEX = {};                    // lane name -> target 0..21
+const BARS = 16;                          // per station: bottom row 1-8, top row 9-16 (owner, 2026-10-03)
+const LANE_INDEX = {};                    // lane name -> target 0..37
 [...LAYOUT.top, ...LAYOUT.bottom].forEach((ln, i) => { LANE_INDEX[ln.name] = i; });
-// melody bars: "bass 1".."bass 8" -> 6..13, "treble 1".."treble 8" -> 14..21
-for (let k = 0; k < 8; k++) { LANE_INDEX[`bass ${k + 1}`] = 6 + k; LANE_INDEX[`treble ${k + 1}`] = 14 + k; }
+// melody bars: "bass 1".."bass 16" -> 6..21, "treble 1".."treble 16" -> 22..37
+for (let k = 0; k < BARS; k++) { LANE_INDEX[`bass ${k + 1}`] = 6 + k; LANE_INDEX[`treble ${k + 1}`] = 6 + BARS + k; }
 let stageIdx = 0;
 let bell = null;                          // created when the clock starts
 let loops = null;                         // locked measures, replayed exactly as played
@@ -197,7 +198,7 @@ function stageMessage() {
     const take = bars > 1 ? ` (${bars}-bar take)` : "";
     if (m !== "drums") {
       const where = m === "bass" ? "Bass — turned right" : "Treble — turned left";
-      const how = IS_TOUCH ? "tap the bars" : padConnected ? "D-pad + X A B Y" : "keys A S D F · H J K L";
+      const how = IS_TOUCH ? "tap the bars" : padConnected ? "D-pad + X A B Y · hold LT for the top row" : "keys A S D F G H J K · top row Q W E R T Y U I";
       hudUI.say(`${where}: ${how}${take}. Got it? Ring the bell 🔔 ${padConnected ? "(Menu)" : IS_TOUCH ? "" : "(Space)"}`);
     } else {
       hudUI.say(IS_TOUCH ? "Follow the arrows — tap the drums. Got it? Tap the bell 🔔"
@@ -292,14 +293,17 @@ const KEYMAP = {};
 const KEYMAP_BY_LANE = {};
 for (const e of Object.values(KEYMAP)) KEYMAP_BY_LANE[e.ln.name] = e;
 // the 16 melody bars as lanes: "bass 1".."bass 8", "treble 1".."treble 8"
-const MELODY_KEYS = { a: 0, s: 1, d: 2, f: 3, h: 4, j: 5, k: 6, l: 7 };
-const MELODY_LETTERS = ["A", "S", "D", "F", "H", "J", "K", "L"];
-const PAD_LABELS = ["dL", "dD", "dR", "dU", "X", "A", "B", "Y"];   // drawn as D-pad arrows / face letters
+// bottom row A S D F G H J K = bars 1-8, top row Q W E R T Y U I = bars 9-16
+const MELODY_LETTERS = [..."ASDFGHJK", ..."QWERTYUI"];
+const MELODY_KEYS = Object.fromEntries(MELODY_LETTERS.map((c, i) => [c.toLowerCase(), i]));
+// the pad: the same 8 buttons for both rows (hold LT = top row); drawn as D-pad arrows / face letters
+const PAD_ROW = ["dL", "dD", "dR", "dU", "X", "A", "B", "Y"];
+const PAD_LABELS = [...PAD_ROW, ...PAD_ROW.map((b) => "LT:" + b)];   // top row: "LT" over the button
 const MELODY_ENTRY = { bass: [], treble: [] };
 for (const kind of ["bass", "treble"]) {
-  for (let slot = 0; slot < 8; slot++) {
+  for (let slot = 0; slot < BARS; slot++) {
     const name = `${kind} ${slot + 1}`;
-    const e = { idx: 6 + (kind === "treble" ? 8 : 0) + slot, ln: { name, key: MELODY_LETTERS[slot].toLowerCase(), kind, slot } };
+    const e = { idx: 6 + (kind === "treble" ? BARS : 0) + slot, ln: { name, key: MELODY_LETTERS[slot].toLowerCase(), kind, slot } };
     KEYMAP_BY_LANE[name] = e;
     MELODY_ENTRY[kind][slot] = e;
   }
@@ -310,8 +314,8 @@ async function buildMelodyVoices() {
   if (!ctx) return;
   const { key = "C", scale = "major" } = song();
   const [b, t] = await Promise.all([
-    makeMelodyVoices(ctx.sampleRate, instrumentNotes({ key, scale, octave: BASS_OCTAVE }), "bass"),
-    makeMelodyVoices(ctx.sampleRate, instrumentNotes({ key, scale, octave: TREBLE_OCTAVE }), "treble"),
+    makeMelodyVoices(ctx.sampleRate, instrumentNotes({ key, scale, octave: BASS_OCTAVE, count: BARS }), "bass"),
+    makeMelodyVoices(ctx.sampleRate, instrumentNotes({ key, scale, octave: TREBLE_OCTAVE, count: BARS }), "treble"),
   ]);
   melodyVoices = { bass: b, treble: t };
 }
@@ -517,8 +521,14 @@ function updateBackLevels() {
 // through its instrument, its drum/bar flashes and the ghost hands play it.
 let hint = null;   // { notes: [{laneIdx, time, velocity, flashed}], end }
 function sectionNotes(mode) {
-  const parts = song().parts.filter((p) => p.mode === mode);   // a section's steps add up to the whole section
-  return { notes: parts.flatMap((p) => p.part), bars: Math.max(1, ...parts.map((p) => p.bars || 1)) };
+  const parts = song().parts.filter((p) => p.mode === mode);
+  // a song from a file: the section's notes as written, the whole song long (steps
+  // only teach its repeating patterns, so they don't add up to it any more)
+  if (song().notes) {
+    const lanes = new Set(parts.flatMap((p) => p.part.map((n) => n.lane)));
+    return { notes: song().notes.filter((n) => lanes.has(n.lane)), bars: song().bars || 1 };
+  }
+  return { notes: parts.flatMap((p) => p.part), bars: Math.max(1, ...parts.map((p) => p.bars || 1)) };   // built-in: steps add up
 }
 function playHint() {
   if (!ctx || !clock || !pool || !drums) { hudUI.say("Press Start first", "bad", 1500); return; }
@@ -582,8 +592,8 @@ function onKey(e) {
 
   if (e.key === "Tab") { e.preventDefault(); playHint(); return; }   // LISTEN to the whole section
 
-  // at the bars: A S D F / H J K L play notes 1-8 (the A/F/H shortcuts are drums-only)
-  if (isMelody()) {
+  // at the bars: A S D F G H J K = bottom row (bars 1-8), Q W E R T Y U I = top row (9-16); Shift+letter = the shortcuts
+  if (isMelody() && !e.shiftKey) {
     const slot = MELODY_KEYS[e.key.toLowerCase()];
     if (slot != null) {
       e.preventDefault();
@@ -593,20 +603,20 @@ function onKey(e) {
     }
   }
 
-  if (e.key === "g" || e.key === "G") {
+  if (e.shiftKey && e.key.toLowerCase() === "g") {
     e.preventDefault();
     ghostsOn = !ghostsOn;
     return;
   }
 
-  if (e.key === "m" || e.key === "M") {
+  if (e.shiftKey && e.key.toLowerCase() === "m") {
     e.preventDefault();
     mode = mode === "drum" ? "free" : "drum";
     if (clock) hud.textContent = modeStr();
     return;
   }
 
-  if (e.key === "p" || e.key === "P") {
+  if (e.shiftKey && e.key.toLowerCase() === "p") {
     e.preventDefault();
     saveSession();
     return;
@@ -618,7 +628,7 @@ function onKey(e) {
     return;
   }
 
-  if (e.key === "a" || e.key === "A") {   // auto-correct on/off
+  if (e.shiftKey && e.key.toLowerCase() === "a") {   // auto-correct on/off
     e.preventDefault();
     autoCorrect = !autoCorrect;
     settingsUI.set("autoCorrect", autoCorrect);
@@ -627,14 +637,14 @@ function onKey(e) {
     return;
   }
 
-  if (e.key === "h" || e.key === "H") {   // developer timing chart
+  if (e.shiftKey && e.key.toLowerCase() === "h") {   // developer timing chart
     e.preventDefault();
     chart.style.display = chart.style.display === "block" ? "none" : "block";
     resize();
     return;
   }
 
-  if (e.key === "f" || e.key === "F") {
+  if (e.shiftKey && e.key.toLowerCase() === "f") {
     e.preventDefault();
     const j = nearestOnGrid(clock.first, clock.beatDur, press);
     const vel = velocityFor(j.offset);

@@ -1,0 +1,83 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" style="width:1400px;height:900px;border:0"></iframe>
+<script type="module">
+import { ROUNDS } from "/src/game/stages.js";
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, {method: "POST", body: String(body)});
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const KEY = { hat: "q", snare: "w", crash: "e", kick: "z", "tom low": "x", "tom high": "c" };
+for (const k of ["bass", "treble"]) "asdfghjkqwertyui".split("").forEach((c, i) => (KEY[`${k} ${i + 1}`] = c));
+const f = document.getElementById("f");
+if (location.hash === "#p4m") { f.style.width = "384px"; f.style.height = "673px"; f.src = "/?quality=mobile"; } else f.src = "/";
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  w.addEventListener("error", e => say("jserror", e.message));
+  try {
+    await wait(3000);
+    [...d.querySelectorAll("button")].find(b => b.textContent.trim() === "Start").click();
+    await wait(3000);
+    const G = w.__gr.game, s = w.__gr.stage3d;
+    const press = (k) => { w.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true })); w.dispatchEvent(new w.KeyboardEvent("keyup", { key: k, bubbles: true })); };
+    // press key k when the HEARD clock reaches T (same mapping the game uses)
+    const at = (T, k) => {
+      const o = G.ctx.getOutputTimestamp();
+      const P = o.performanceTime + (T + G.calibration - o.contextTime) * 1000;
+      setTimeout(() => press(k), Math.max(0, P - w.performance.now()));   // the GAME frame's clock (its time origin differs from this page's)
+    };
+    const log = [`songs from: ${G.source()}`, `samples: ${G.samples().join(" | ")}`];
+    const variant = location.hash.slice(1) || "perfect";
+    const nRounds = location.hash === "#r1" || location.hash.startsWith("#p4") ? 1 : ROUNDS.length;
+    for (let round = 0; round < nRounds; round++) {
+    const SONG = G.song();   // what the game is actually playing (Easy builds parts up)
+    log.push(`== ${SONG.name}: ${SONG.title}`);
+    for (let p = 0; p < SONG.parts.length; p++) {
+      const idx = G.stageIdx;
+      if (location.hash.startsWith("#p4") && idx === 3) {
+        // stop at the last part and look: what's the game asking for, what flies?
+        const samples = [];
+        for (let k = 0; k < 8; k++) { await wait(500); samples.push(JSON.stringify({ up: G.upcoming().map((u) => u.laneIdx), ...s.debugArrows() })); }
+        say("shot_p4", await new Promise(r => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png")))));
+        say("p4", "part: " + JSON.stringify(G.part()) + "\n" + samples.join("\n"));
+        say("done", "ok"); return;
+      }
+      press(" ");
+      await wait(50);
+      const rs = G.bell.recordStart, bd = G.clock.beatDur, P = SONG.parts[idx], bars = P.bars || 1;
+      const facing = s.station;
+      for (const n of P.part) at(rs + n.beat * bd, KEY[n.lane]);
+      if (P.mode !== "drums") {   // a look mid-take at the station
+        while (G.ctx.getOutputTimestamp().contextTime < rs + 1.5 * bd) await wait(30);
+        say("shot_" + P.mode, await new Promise(r => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png")))));
+      }
+      while (G.ctx.getOutputTimestamp().contextTime < rs + 4 * bars * bd + 0.3) await wait(50);
+      await wait(200);
+      const msg = (d.body.innerText.match(/Locked in[^\n]*|Not quite[^\n]*/) || ["(no message)"])[0];
+      log.push(`part ${idx + 1} [${P.label}, ${P.part.length} notes, facing ${facing}]: ${msg}${d.getElementById("gr-locked") ? "  + LOCKED!" : ""}  back ${JSON.stringify(G.backLevels())}`);
+    }
+    // the results panel
+    await wait(2500);
+    const panel = d.getElementById("gr-results");
+    log.push("results: " + (panel && panel.style.display !== "none" ? panel.innerText.replace(/\s+/g, " ").trim() : "(no panel)"));
+    if (round === ROUNDS.length - 1) {
+      const shot = await new Promise(r => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png"))));
+      say("shot_results_canvas", shot);
+    }
+    w.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await wait(500);
+    log.push(`-> now round ${G.roundIdx + 1}, part ${G.stageIdx + 1}, loops ${G.loops.count}`);
+    }
+    say("locks", log.join("\n"));
+    // ghosts: sample which ghost hands show over two bars
+    const seen = [0, 0, 0, 0, 0, 0];
+    const t0 = performance.now();
+    while (performance.now() - t0 < 8 * G.clock.beatDur * 1000) {
+      const vis = s.debugGhosts(); vis.forEach((v, i) => { if (v) seen[i]++; });
+      if (!s._shot && vis.filter(Boolean).length >= 3) { s._shot = 1;
+        const shot = await new Promise(r => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png"))));
+        say("shot_ghosts", shot); say("ghostsvisible", JSON.stringify(vis)); }
+      await wait(16);
+    }
+    say("ghosts", "frames visible per lane [hat, snare, crash, kick, tom low, tom high]: " + JSON.stringify(seen) + "\nloop layers: " + JSON.stringify((G.loops.layers || G.loops._layers || []).map(l => [...new Set(l.hits.map(h => h.lane))])));
+    say("done", "ok");
+  } catch (e) { say("harnesserror", e && e.stack || e); }
+};
+</script>

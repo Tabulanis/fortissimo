@@ -51,16 +51,24 @@ for (const r of ROUNDS) {
   assert.strictEqual(roundFromProject(project).sounds.kick.note, 60 - 2 + 0.25);
 }
 
-// rows: four note NAMES, low -> high; octaves fold; a fifth name is warned about
+// rows: EIGHT note NAMES per row, low -> high; octaves fold; a ninth name is warned about
 {
   const { project } = songProjectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] });
   const top = project.channels.findIndex((c) => c.name === "Bass instrument top");
   [67, 60, 64, 69, 71, 72].forEach((note, i) => (project.patterns[0].data[i * 4][top] = { note, inst: 5, vol: null }));
   const s = roundFromProject(project);
-  // G C E A B C' -> names C E G A (B left out; the high C folds onto C)
-  assert.deepStrictEqual(s.notes.filter((n) => n.lane.startsWith("bass")).map((n) => n.lane), ["bass 7", "bass 5", "bass 6", "bass 8", "bass 5"]);
-  assert.deepStrictEqual([5, 6, 7, 8].map((b) => s.sounds[`bass ${b}`].note), [60, 64, 67, 69]);
-  assert.ok(s.warnings.some((w) => /5 different notes/.test(w)));
+  // G C E A B C' -> names C E G A B on the top row = bars 9..13 (the high C folds onto C)
+  assert.deepStrictEqual(s.notes.filter((n) => n.lane.startsWith("bass")).map((n) => n.lane), ["bass 11", "bass 9", "bass 10", "bass 12", "bass 13", "bass 9"]);
+  assert.deepStrictEqual([9, 10, 11, 12, 13].map((b) => s.sounds[`bass ${b}`].note), [60, 64, 67, 69, 71]);
+  assert.deepStrictEqual(s.warnings, []);
+}
+{
+  const { project } = songProjectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] });
+  const bot = project.channels.findIndex((c) => c.name === "Bass instrument bottom");
+  [48, 49, 50, 51, 52, 53, 54, 55, 56].forEach((note, i) => (project.patterns[0].data[i * 2][bot] = { note, inst: 5, vol: null }));
+  const s = roundFromProject(project);
+  assert.ok(s.warnings.some((w) => /9 different notes/.test(w)), "a ninth name is too many for a row of 8");
+  assert.ok(s.sounds["bass 8"] && !s.notes.some((n) => n.lane === "bass 9"), "bottom row only, highest left out");
 }
 
 // back tracks: their notes and samples, per section

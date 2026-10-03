@@ -33,11 +33,12 @@ export function degree(intervals, root, d) {
  * @param {{key?:string, scale?:string, octave:number, expert?:boolean}} o
  * @returns {number[]} 8 MIDI notes low -> high (10 with expert: one below + the 8 + one above)
  */
-export function instrumentNotes({ key = "C", scale = "major", octave, expert = false }) {
+export function instrumentNotes({ key = "C", scale = "major", octave, expert = false, count = 8 }) {
   const iv = SCALES[scale];
   if (!iv) throw new Error(`unknown scale "${scale}"`);
   const root = keyRoot(key, octave);
-  const first = expert ? -1 : 0, last = expert ? 8 : 7;
+  // count: how many scale notes upward (16 = both rows of a station: the top row continues the scale)
+  const first = expert ? -1 : 0, last = expert ? 8 : count - 1;
   const out = [];
   for (let d = first; d <= last; d++) out.push(degree(iv, root, d));
   return out;

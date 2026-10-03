@@ -1,35 +1,45 @@
 import assert from "node:assert";
 import { ROUNDS } from "../src/game/stages.js";
 import { roundFromProject, songProjectFromRound } from "../src/game/hackbeat.js";
-import { lessonParts, sectionProgress, backLevel, NOTES_PER_STEP } from "../src/game/lesson.js";
+import { lessonParts, periodBars, sectionProgress, backLevel, NOTES_PER_STEP } from "../src/game/lesson.js";
 
 const song = roundFromProject(songProjectFromRound(ROUNDS[0]).project);
 
-// EASY: 4 notes a step at most; drums one instrument at a time, then bass, then treble
+// the repeat length of a part
+assert.strictEqual(periodBars([{ lane: "kick", beat: 0 }, { lane: "kick", beat: 4 }], 2), 1, "same bar twice = a 1-bar loop");
+assert.strictEqual(periodBars([{ lane: "kick", beat: 0 }, { lane: "kick", beat: 5 }], 2), 2, "different bars = the whole 2 bars");
+assert.strictEqual(periodBars([{ lane: "kick", beat: 0 }], 2), 2, "only in bar 1 = doesn't repeat");
+
+// every step's pattern, looped to the song's length, rebuilds the song exactly
+function rebuilt(parts, bars) {
+  const out = [];
+  for (const p of parts) for (const n of p.part) for (let k = 0; k < bars / p.bars; k++) out.push(`${n.lane}@${(n.beat + 4 * p.bars * k).toFixed(4)}`);
+  return out.sort();
+}
+const songKeys = song.notes.map((n) => `${n.lane}@${n.beat.toFixed(4)}`).sort();
+
+// EASY: 4 notes a step at most, each step a short loop; drums, then bass, then treble
 {
   const parts = lessonParts(song, NOTES_PER_STEP.easy);
   assert.ok(parts.every((p) => p.part.length <= 4), "<= 4 notes per step");
+  assert.ok(parts.every((p) => song.bars % p.bars === 0 && p.part.every((n) => n.beat < 4 * p.bars)), "each step is a loop that divides the song");
   const modes = parts.map((p) => p.mode);
   assert.ok(modes.lastIndexOf("drums") < modes.indexOf("bass") && modes.lastIndexOf("bass") < modes.indexOf("treble"), "drums, bass, treble");
-  const instruments = [...new Set(parts.map((p) => p.instrument))];
-  assert.deepStrictEqual(instruments, ["Bass drum", "Snare", "Hihat", "Crash", "Low tom", "High tom", "Bass top", "Bass bottom", "Treble top", "Treble bottom"].filter((i) => instruments.includes(i)).sort((a, b) => instruments.indexOf(a) - instruments.indexOf(b)));
-  assert.deepStrictEqual(instruments.slice(0, 4), ["Bass drum", "Snare", "Hihat", "Crash"], "drums one at a time, in the owner's order");
-  // each step is an instrument's notes only, as long as the song
-  for (const p of parts) assert.ok(p.part.every((n) => p.part[0].lane.split(" ")[0] === n.lane.split(" ")[0]) && p.bars === song.bars);
-  // nothing lost, nothing added
-  const all = (ps) => ps.flatMap((p) => p.part).map((n) => `${n.lane}@${n.beat}`).sort();
-  assert.deepStrictEqual(all(parts), song.notes.map((n) => `${n.lane}@${n.beat}`).sort());
-  // the most important first: the kick's first step holds both bars' downbeats
-  const kick1 = parts.find((p) => p.instrument === "Bass drum").part.map((n) => n.beat);
-  assert.ok(kick1.includes(0) && kick1.includes(4), `kick step 1 has the downbeats (${kick1})`);
+  const order = [...new Set(parts.flatMap((p) => p.instrument.split(" + ")))];
+  assert.deepStrictEqual(order.slice(0, 4), ["Bass drum", "Snare", "Hihat", "Crash"], "drums in the owner's order");
+  assert.deepStrictEqual(rebuilt(parts, song.bars), songKeys, "nothing lost, nothing added");
+  assert.ok(parts.some((p) => p.bars < song.bars), "repeating parts are taught as short loops");
+  const kick1 = parts.find((p) => p.instrument.includes("Bass drum")).part.map((n) => n.beat);
+  assert.ok(kick1.includes(0), `the kick's first step has the downbeat (${kick1})`);
 }
 
-// HARD plays more at once: 8 a step -> fewer steps, still all the notes
+// HARD plays more at once: fewer steps, drums together, still the whole song
 {
   const easy = lessonParts(song, NOTES_PER_STEP.easy), hard = lessonParts(song, NOTES_PER_STEP.hard);
   assert.ok(hard.every((p) => p.part.length <= 8));
   assert.ok(hard.length < easy.length, `hard: ${hard.length} steps vs easy ${easy.length}`);
-  assert.ok(hard.some((p) => p.part.length > 4), "hard really plays more than 4 in one go");
+  assert.ok(hard.some((p) => p.mode === "drums" && p.instrument.includes(" + ")), "more than one drum in a step");
+  assert.deepStrictEqual(rebuilt(hard, song.bars), songKeys);
 }
 
 // section progress + the back tracks' level

@@ -18,7 +18,7 @@ import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { createVrHits } from "../input/vrhits.js";
 import { createFire } from "./fire.js";
-import { createStation, BAR_MID_Z } from "./stations.js";
+import { createStation, BAR_MID_Z, BARS, PER_ROW } from "./stations.js";
 import { createPool, poolContains, POOL, SURFACE_Y } from "./pool.js";
 import { bootlog } from "../bootlog.js";
 
@@ -443,12 +443,12 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     }
   }
 
-  // ---- TARGETS 6..21: the melody bars (bass 6-13, treble 14-21) ride the same
+  // ---- TARGETS 6..37: the melody bars (bass 6-21, treble 22-37) ride the same
   // per-lane systems as the drums — face, size, colour, arc, archers, visibility
-  const N_T = 22;
+  const N_T = 6 + 2 * BARS;
   const BAR_HEX = { bass: "#e8963c", treble: "#9fd4ff" };
   const BAR_TARGET = { radius: 0.07, depth: 0.04, upright: false, bar: true };
-  const stationOf = (i) => (i < 6 ? "drums" : i < 14 ? "bass" : "treble");
+  const stationOf = (i) => (i < 6 ? "drums" : i < 6 + BARS ? "bass" : "treble");
   const TARGET = (i) => (i < 6 ? LANES3D[i] : BAR_TARGET);
   function laneHex(i) { return i < 6 ? (colors[drumOf(i)] || "#888888") : BAR_HEX[stationOf(i)]; }
   for (const kind of ["bass", "treble"]) {
@@ -456,8 +456,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   }
   // the bars' archers: fixed spots along their own court's roofs, alternating sides
   for (let i = 6; i < N_T; i++) {
-    const k = (i - 6) % 8, side = k % 2 ? 1 : -1;
-    SPAWNS[i] = armToWorld(stationOf(i), side * ARCHER_ROOF_X, ARCHER_ROOF_Y, -8 - (k >> 1) * 4.5);
+    const k = (i - 6) % BARS, side = k % 2 ? 1 : -1;
+    SPAWNS[i] = armToWorld(stationOf(i), side * ARCHER_ROOF_X, ARCHER_ROOF_Y, -8 - ((k >> 1) % 4) * 4.5 - (k >= PER_ROW ? 2.2 : 0));
     ARC_LIFT[i] = 4;
   }
 
@@ -679,7 +679,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // which hand plays a lane: outer lanes fixed, middle lanes alternate
   // like a drummer (whichever hand struck LESS recently)
   function handFor(laneIdx) {
-    if (laneIdx >= 6) return ((laneIdx - 6) % 8) < 4 ? 0 : 1;   // bars: low half left hand, high half right
+    if (laneIdx >= 6) return ((laneIdx - 6) % PER_ROW) < PER_ROW / 2 ? 0 : 1;   // bars: a row's left half left hand, right half right
     if (laneIdx === 0 || laneIdx === 3) return 0;
     if (laneIdx === 2 || laneIdx === 5) return 1;
     return hands[0].last <= hands[1].last ? 0 : 1;
@@ -1398,7 +1398,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
    */
   // ---- DECOY VOLLEYS: more fire in the sky, not all of it for you -----------
   // Arrows that never target a drum: they lob in from all across the far wall
-  // and thud into the courtyard ground around the player, then burn out. They
+  // and thud into the far courtyard ground (beyond the pool), then burn out. They
   // carry NO lane halo, no charge light, no timing — only playable arrows do,
   // so the player can always tell which arrows are theirs.
   const DECOY_N = 36;
@@ -1441,12 +1441,14 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     d.inWater = false;
     if (Math.random() < 0.25) {
       // into the pool: it'll hiss out and float
+      // the FAR half of the pool (owner, 2026-10-03: decoys keep well back)
+      const zMid = (POOL.z0 + POOL.z1) / 2;
       d.to.set(POOL.x0 + 0.4 + Math.random() * (POOL.x1 - POOL.x0 - 0.8), SURFACE_Y,
-        POOL.z0 + 0.4 + Math.random() * (POOL.z1 - POOL.z0 - 0.8));
+        POOL.z0 + 0.4 + Math.random() * (zMid - POOL.z0 - 0.4));
     } else {
-      // a ground spot around the player — never the drum area, the player, or the pool
+      // a ground spot well back, beyond the pool (owner, 2026-10-03) — never near the player
       for (let tries = 0; tries < 20; tries++) {
-        d.to.set(-5 + Math.random() * 10, 0, -30 + Math.random() * 32.5);   // the courtyard paving
+        d.to.set(-5 + Math.random() * 10, 0, -34 + Math.random() * 15);   // the far courtyard paving
         const nearDrums = Math.abs(d.to.x) < 1.6 && d.to.z > -2.4 && d.to.z < 2.6;
         if (!nearDrums && !poolContains(d.to.x, d.to.z, -0.5)) break;
       }
@@ -1798,17 +1800,18 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
             recycle(e);
             continue;
           }
-          // NEAR: glance-off, flying away while fading over 0.4 s
+          // NEAR: the arrow sticks in the target it was aimed at and burns out
+          // over its life (owner, 2026-10-03: arrows flying off elsewhere confused)
           fireSim.forget(e.id);
           const g = (heardNow - e.hitAt) / e.life;
           if (g >= 1) {
             recycle(e);
             continue;
           }
-          _ePos.copy(e.face).addScaledVector(e.vel, heardNow - e.hitAt);
-          e.group.position.copy(_ePos);
-          _eQ.setFromAxisAngle(_eAxis.set(Math.random() - 0.5, 1, Math.random() - 0.5), e.spin * (heardNow - e.hitAt));
-          e.group.quaternion.copy(_eQ);
+          e.group.position.copy(e.face);
+          pathPoint(e, 1, _pA);
+          pathPoint(e, 0.99, _pB);
+          e.group.quaternion.setFromUnitVectors(UP, _tan.copy(_pA).sub(_pB).normalize());
           const fade = 1 - g;
           e.flame.material.opacity = fade;
           e.glow.material.opacity = 0.35 * fade;

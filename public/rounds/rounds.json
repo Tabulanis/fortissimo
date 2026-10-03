@@ -3,7 +3,8 @@
     "name": "Round 1",
     "title": "Dope",
     "file": "round1.json",
-    "swing": 0
+    "swing": 0,
+    "project": "Dope"
   },
   {
     "name": "Round 2",

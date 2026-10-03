@@ -3,10 +3,15 @@ import path from "node:path";
 
 // DEV ONLY: rounds are written in Hackbeat (its own folders). While developing,
 // the game reads them from there, so a save in Hackbeat is a reload away:
-//   /rounds/roundN.json      <- Hackbeat/projects/garden-roundN.json (if it exists)
+//   /rounds/roundN.json      <- the Hackbeat project named by its "project" in rounds.json, else garden-roundN
 //   /rounds/samples/<path>   <- Hackbeat/samples/<path> (else the pulled copy in public/)
 // `node tools/pull-rounds.mjs` snapshots both into public/rounds for the repo/shipping.
 const HACKBEAT = path.resolve(process.env.HACKBEAT_DIR || "../Hackbeat");
+// which Hackbeat project a round plays: its "project" in rounds.json (round 1 = "Dope"), else garden-roundN
+const roundProject = (file, n) => {
+  try { return JSON.parse(fs.readFileSync("public/rounds/rounds.json", "utf8")).find((r) => r.file === file)?.project || `garden-round${n}`; }
+  catch { return `garden-round${n}`; }
+};
 const inside = (root, rel) => { const p = path.resolve(root, rel); return p.startsWith(root + path.sep) ? p : null; };
 const hackbeatRounds = {
   name: "hackbeat-rounds",
@@ -15,7 +20,7 @@ const hackbeatRounds = {
       const rel = decodeURIComponent((req.url || "").split("?")[0]).replace(/^\/+/, "");
       let file = null;
       const m = rel.match(/^round(\d+)\.json$/);
-      if (m) file = inside(path.join(HACKBEAT, "projects"), `garden-round${m[1]}.json`);
+      if (m) file = inside(path.join(HACKBEAT, "projects"), `${roundProject(rel, m[1])}.json`);
       // Hackbeat's own copy first (edit there, reload here); the pulled copy in public/ is the fallback
       else if (rel.startsWith("samples/")) file = inside(path.join(HACKBEAT, "samples"), rel.slice(8));
       if (!file || !fs.existsSync(file)) return next();
