@@ -37,7 +37,7 @@ bootlog("page", { ua: navigator.userAgent, screen: `${screen.width}x${screen.hei
 window.addEventListener("error", (e) => bootlog("error", { msg: String(e.message), at: `${e.filename}:${e.lineno}` }));
 window.addEventListener("unhandledrejection", (e) => bootlog("rejection", { msg: String(e.reason && (e.reason.stack || e.reason)).slice(0, 600) }));
 
-const { VoicePool, VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
+const { VoicePool, VOICE_PRESETS, voiceSettings, voiceShaped } = window.HB_VOICES;
 
 const hud = document.querySelector("#hud");
 const stage = document.querySelector("#stage");
@@ -232,8 +232,7 @@ function tickBell(heardNow) {
         const entry = KEYMAP_BY_LANE[e.lane];
         if (!entry) continue;
         pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...laneSound(entry.ln),
-          velocity: e.velocity * 0.85, when: e.time,
-          settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
+          velocity: e.velocity * 0.85, when: e.time });
       }
     }
     const wasGuided = !songDone();
@@ -338,8 +337,12 @@ async function loadRoundSamples() {
 function laneSound(ln) {
   const s = song().sounds && song().sounds[ln.name];
   const buf = s && sampleCache.get(s.path);
-  if (buf) return { buffer: buf, midi: s.note, baseNote: 60, destination: hbTrack(s.track, mixer.hackbeat, "hits") || laneDest(ln) };
-  return { buffer: ln.kind ? melodyVoices[ln.kind][ln.slot] : drums[ln.drum], midi: 60, baseNote: 60, destination: laneDest(ln) };
+  if (buf) return { buffer: buf, midi: s.note, baseNote: 60, destination: hbTrack(s.track, mixer.hackbeat, "hits") || laneDest(ln), settings: hbVoice(s.voice) };
+  return { buffer: ln.kind ? melodyVoices[ln.kind][ln.slot] : drums[ln.drum], midi: 60, baseNote: 60, destination: laneDest(ln), settings: hbVoice(null) };
+}
+/* a slot's shaped INSTRUMENT VOICE from Hackbeat, else a plain one-shot */
+function hbVoice(voice) {
+  return voiceSettings({ voice: voice && voiceShaped({ voice }) ? voice : VOICE_PRESETS["One shot"] });
 }
 const laneDest = (ln) => mixer.lane(ln.kind || ln.name);
 
@@ -495,7 +498,7 @@ function scheduleBack() {
         const t = clock.first + k * period + e.beat * clock.beatDur;
         if (t >= until) break;
         if (t >= from) pool.noteOn({ channel: 120 + (backCh++ % 24), midi: e.note, baseNote: 60, buffer: buf, velocity: e.vel,
-          when: t, destination: hbTrack(e.track, backGain[m], "back " + m) || backGain[m], settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
+          when: t, destination: hbTrack(e.track, backGain[m], "back " + m) || backGain[m], settings: hbVoice(e.voice) });
       }
     }
   }
@@ -530,7 +533,7 @@ function playHint() {
     if (!entry) continue;
     const time = start + n.beat * clock.beatDur;
     pool.noteOn({ channel: entry.idx + 70, midi: 60, baseNote: 60, ...laneSound(entry.ln), velocity: 0.8,
-      when: time, settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
+      when: time });
     hint.notes.push({ laneIdx: entry.idx, time, velocity: 0.9, flashed: false });
   }
   const what = mode === "drums" ? "the full beat" : mode === "bass" ? "the bass line" : "the melody";
@@ -559,7 +562,6 @@ function scheduleGhosts() {
       ...laneSound(entry.ln),
       velocity: e.velocity * 0.85,   // exactly as played, a touch under live play
       when: e.time,
-      settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
     });
   }
   scheduledUntil = until;
@@ -741,7 +743,6 @@ function hitLane(idx, lane, press, padVel = 1) {
     ...laneSound(lane),
     velocity: vel,
     when: ctx.currentTime,
-    settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
   });
 
   // every press, both modes, lands in the session log

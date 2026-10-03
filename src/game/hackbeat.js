@@ -76,6 +76,8 @@ export function roundFromProject(project, meta = {}) {
   const defaultInst = ((project.ui && project.ui.curInstrument) || 0) + 1;
   const instOf = (ev) => (ev.inst == null ? defaultInst : +ev.inst);
   const pathOf = (inst) => (project.instruments[inst - 1] || {}).path;   // slots count from 1
+  // the slot's INSTRUMENT VOICE as saved; the game plays it only if it's been shaped (voiceShaped)
+  const voiceOf = (inst) => (project.instruments[inst - 1] || {}).voice || null;
   // the slot's Pitch (semitones) + Tune (cents) from Hackbeat's voice panel
   const shiftOf = (inst) => { const i = project.instruments[inst - 1] || {}; return (+i.transpose || 0) + (+i.tune || 0) / 100; };
   // the song: patterns in play order, end to end
@@ -119,7 +121,7 @@ export function roundFromProject(project, meta = {}) {
   const instCount = {}, noteCount = {}, trackCount = {};
   for (const { c, beat, ev } of events) {
     const role = roles[c], vel = ev.vol == null ? 1 : ev.vol / 64;
-    if (role.back) { const path = pathOf(instOf(ev)); if (path) back[role.back].push({ beat, note: ev.note + shiftOf(instOf(ev)), path, vel, track: c }); continue; }
+    if (role.back) { const path = pathOf(instOf(ev)); if (path) back[role.back].push({ beat, note: ev.note + shiftOf(instOf(ev)), path, vel, track: c, voice: voiceOf(instOf(ev)) }); continue; }
     let lane;
     if (role.drum) {
       lane = role.drum;
@@ -139,7 +141,7 @@ export function roundFromProject(project, meta = {}) {
     const inst = +mostUsed(counts), path = pathOf(inst);
     if (!path) continue;
     // + the track it's written on: its effects play in the game too
-    const extra = { track: +mostUsed(trackCount[lane]) };
+    const extra = { track: +mostUsed(trackCount[lane]), voice: voiceOf(inst) };
     if (DRUM_LANES.includes(lane)) sounds[lane] = { path, note: +mostUsed(noteCount[lane]) + shiftOf(inst), ...extra };
     else {
       const [kind, bar] = lane.split(" ");
