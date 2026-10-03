@@ -154,11 +154,25 @@ export function createMixer(ctx) {
   backing.connect(master);
   backing.connect(backingSend).connect(reverb);
 
+  // --- Hackbeat tracks (2026-10-02): a round written in Hackbeat plays through
+  // its OWN track chains (hbchain.js — EQ, pan, drive, crush, chorus, sends,
+  // volume), which land here instead of the lane strips. A track at Hackbeat's
+  // default volume (0.85) comes out level with a built-in lane; the courtyard
+  // still answers it lightly so it sits in the arena.
+  const hackbeat = ctx.createGain();
+  hackbeat.gain.value = HEADROOM / 0.85;
+  const hackbeatSend = ctx.createGain();
+  hackbeatSend.gain.value = 0.15;
+  hackbeat.connect(drumBus);
+  hackbeat.connect(hackbeatSend).connect(reverb);
+
   return {
     /** Where a drum's notes go: mixer.lane("snare") */
     lane(name) { return (strips[name] || strips.snare).input; },
     /** debug/tuning: a lane's strip nodes */
     strip(name) { return strips[name]; },
+    /** where Hackbeat track chains play into */
+    get hackbeat() { return hackbeat; },
     get metronome() { return metronome; },
     get backing() { return backing; },
     get master() { return master; },

@@ -34,7 +34,7 @@ for (const r of ROUNDS) {
     assert.deepStrictEqual(at(song.notes), at(want), `${r.name}: ${kind} notes at the same times`);
   }
   for (const n of song.notes) assert.ok(song.sounds[n.lane], `${r.name}: ${n.lane} has a sound`);
-  assert.deepStrictEqual(song.sounds.kick, { path: "garden/kick.wav", note: 60 });
+  assert.deepStrictEqual(song.sounds.kick, { path: "garden/kick.wav", note: 60, track: 0 });
   assert.deepStrictEqual(song.back, { drums: [], bass: [], treble: [] }, "blank back tracks");
 }
 
@@ -71,7 +71,7 @@ for (const r of ROUNDS) {
   const db = project.channels.findIndex((c) => c.name === "DRUM BACK");
   project.patterns[0].data[0][db] = { note: 60, inst: project.instruments.length, vol: 32 };
   const s = roundFromProject(project);
-  assert.deepStrictEqual(s.back.drums, [{ beat: 0, note: 60, path: "amb/wind.wav", vel: 0.5 }]);
+  assert.deepStrictEqual(s.back.drums, [{ beat: 0, note: 60, path: "amb/wind.wav", vel: 0.5, track: db }]);
   assert.ok(!s.notes.some((n) => n.lane === "DRUM BACK"), "back music is not something you play");
 }
 
@@ -101,5 +101,24 @@ for (const r of ROUNDS) {
   assert.ok(roundFromProject(project).warnings.some((w) => /tambourine/.test(w)));
 }
 
+// track effects and the track nudge come through to the game
+{
+  const { project } = songProjectFromRound(ROUNDS[0]);
+  project.channels[1].fx.dist = { on: true, drive: 0.7 };
+  project.channels[1].fx.vol = 0.5;
+  project.channels[0].fx.nudge = 250;   // ms; at 120 bpm = half a beat later
+  project.bpm = 120;
+  project.fxBus = { reverbDecay: 4 };
+  const s = roundFromProject(project);
+  assert.deepStrictEqual(s.tracks[1].fx.dist, { on: true, drive: 0.7 });
+  assert.strictEqual(s.tracks[1].fx.vol, 0.5);
+  assert.strictEqual(s.sounds.snare.track, 1);
+  assert.strictEqual(s.fxBus.reverbDecay, 4);
+  assert.strictEqual(s.fxBus.delayTime, 0.3);
+  assert.ok(s.notes.some((n) => n.lane === "kick" && n.beat === 0.5), "kick nudged half a beat");
+}
+
 assert.deepStrictEqual(cellEvents(null), []);
+// a note dragged a little off the grid in Hackbeat keeps its exact time
+assert.deepStrictEqual(cellEvents({ note: 60, inst: 1, vol: null, off: 0.25 }), [{ frac: 0.25, note: 60, inst: 1, vol: null }]);
 console.log("hackbeat ok");

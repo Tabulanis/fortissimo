@@ -8,6 +8,7 @@
    offset. */
 
 import "./audio/voices.js";
+import "./audio/hbchain.js";   // Hackbeat's own track chain, word for word (tools/sync-hackbeat-audio.mjs)
 import { makeDrums } from "./audio/drums.js";
 import { startClock } from "./audio/clock.js";
 import { nearestOnGrid, nearestInLoop, velocityFor, label, OFF_CHART, OFF_VEL } from "./game/judge.js";
@@ -231,7 +232,7 @@ function tickBell(heardNow) {
         const entry = KEYMAP_BY_LANE[e.lane];
         if (!entry) continue;
         pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...laneSound(entry.ln),
-          velocity: e.velocity * 0.85, when: e.time, destination: laneDest(entry.ln),
+          velocity: e.velocity * 0.85, when: e.time,
           settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
       }
     }
@@ -331,13 +332,39 @@ async function loadRoundSamples() {
     } catch (e) { sampleCache.set(p, null); console.warn(`sample ${p} failed: ${e}`); }
   }));
 }
+/* What a lane plays and where it goes. A round's own sample plays through
+   its Hackbeat track's chain (the effects set on that track in Hackbeat);
+   the built-in sounds go through the game's lane strips. */
 function laneSound(ln) {
   const s = song().sounds && song().sounds[ln.name];
   const buf = s && sampleCache.get(s.path);
-  if (buf) return { buffer: buf, midi: s.note, baseNote: 60 };
-  return { buffer: ln.kind ? melodyVoices[ln.kind][ln.slot] : drums[ln.drum], midi: 60, baseNote: 60 };
+  if (buf) return { buffer: buf, midi: s.note, baseNote: 60, destination: hbTrack(s.track, mixer.hackbeat, "hits") || laneDest(ln) };
+  return { buffer: ln.kind ? melodyVoices[ln.kind][ln.slot] : drums[ln.drum], midi: 60, baseNote: 60, destination: laneDest(ln) };
 }
 const laneDest = (ln) => mixer.lane(ln.kind || ln.name);
+
+/* Hackbeat track chains for the current round, built on first use: one per
+   (track, destination) — the back tracks have their own section faders. */
+let hbChains = null;
+function hbTrack(track, dest, destKey) {
+  const s = song();
+  if (track == null || !s.tracks || !s.tracks[track] || !ctx) return null;
+  if (!hbChains || hbChains.song !== s) hbChains = { song: s, chains: new Map(), buses: new Map() };
+  const key = track + "|" + destKey;
+  if (!hbChains.chains.has(key)) {
+    let buses = hbChains.buses.get(destKey);
+    if (!buses) {
+      buses = HB_CHAIN.buildSendBuses(ctx, dest);
+      buses.setReverb(s.fxBus.reverbDecay);
+      buses.setDelay(s.fxBus.delayTime, s.fxBus.delayFb);
+      hbChains.buses.set(destKey, buses);
+    }
+    const chain = HB_CHAIN.buildChain(ctx, dest, buses);
+    chain.update(s.tracks[track].fx, true);
+    hbChains.chains.set(key, chain);
+  }
+  return hbChains.chains.get(key).input;
+}
 
 // --- calibration ----------------------------------------------------------
 let calibration = loadCalib();   // seconds, subtracted from every press time
@@ -468,7 +495,7 @@ function scheduleBack() {
         const t = clock.first + k * period + e.beat * clock.beatDur;
         if (t >= until) break;
         if (t >= from) pool.noteOn({ channel: 120 + (backCh++ % 24), midi: e.note, baseNote: 60, buffer: buf, velocity: e.vel,
-          when: t, destination: backGain[m], settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
+          when: t, destination: hbTrack(e.track, backGain[m], "back " + m) || backGain[m], settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
       }
     }
   }
@@ -503,7 +530,7 @@ function playHint() {
     if (!entry) continue;
     const time = start + n.beat * clock.beatDur;
     pool.noteOn({ channel: entry.idx + 70, midi: 60, baseNote: 60, ...laneSound(entry.ln), velocity: 0.8,
-      when: time, destination: laneDest(entry.ln), settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
+      when: time, settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
     hint.notes.push({ laneIdx: entry.idx, time, velocity: 0.9, flashed: false });
   }
   const what = mode === "drums" ? "the full beat" : mode === "bass" ? "the bass line" : "the melody";
@@ -532,7 +559,6 @@ function scheduleGhosts() {
       ...laneSound(entry.ln),
       velocity: e.velocity * 0.85,   // exactly as played, a touch under live play
       when: e.time,
-      destination: laneDest(entry.ln),
       settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
     });
   }
@@ -715,7 +741,6 @@ function hitLane(idx, lane, press, padVel = 1) {
     ...laneSound(lane),
     velocity: vel,
     when: ctx.currentTime,
-    destination: laneDest(lane),
     settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
   });
 
@@ -982,6 +1007,7 @@ stage3d.setLoop(frame);
 if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; }, get bell() { return bell; },
   get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; },
+  get mixer() { return mixer; }, laneSound: (ln) => laneSound(ln),
   upcoming: () => (ctx ? buildUpcoming(ctx.getOutputTimestamp().contextTime) : []),
   part: () => currentPart(),
   song: () => song(),

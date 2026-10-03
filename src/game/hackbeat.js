@@ -46,12 +46,13 @@ export function trackRole(name) {
 /** one Hackbeat cell -> [{frac, note, inst, vol}] (split cells = sub-row timing) */
 export function cellEvents(cell) {
   if (!cell) return [];
+  const off = +cell.off || 0;   // a note dragged off the grid in Hackbeat, in rows
   if (cell.split && cell.subs) {
     const out = [];
-    cell.subs.forEach((sub, i) => { if (sub && sub.note != null) out.push({ frac: i / cell.split, note: sub.note, inst: sub.inst, vol: sub.vol }); });
+    cell.subs.forEach((sub, i) => { if (sub && sub.note != null) out.push({ frac: i / cell.split + off, note: sub.note, inst: sub.inst, vol: sub.vol }); });
     return out;
   }
-  return cell.note != null ? [{ frac: 0, note: cell.note, inst: cell.inst, vol: cell.vol }] : [];
+  return cell.note != null ? [{ frac: off, note: cell.note, inst: cell.inst, vol: cell.vol }] : [];
 }
 
 const swingBeat = (b, swing) => (swing && Math.abs((b % 1) - 0.5) < 1e-6 ? Math.floor(b) + swing : b);
@@ -93,7 +94,9 @@ export function roundFromProject(project, meta = {}) {
     for (let r = 0; r < Math.min(pat.rows, pb * barRows); r++) {
       (pat.data[r] || []).forEach((cell, c) => {
         if (!roles[c]) return;
-        for (const ev of cellEvents(cell)) events.push({ c, beat: round6(off + swingBeat((r + ev.frac) / rpb, meta.swing)), ev });
+        // the track's Nudge (ms, Hackbeat's per-track timing slide) in beats at the song's tempo
+        const nudge = ((project.channels[c].fx && +project.channels[c].fx.nudge) || 0) / 1000 * (project.bpm || 120) / 60;
+        for (const ev of cellEvents(cell)) events.push({ c, beat: round6(off + swingBeat((r + ev.frac) / rpb, meta.swing) + nudge), ev });
       });
     }
   }
@@ -113,10 +116,10 @@ export function roundFromProject(project, meta = {}) {
     rowBars[key] = list.slice(0, 4);
   }
   const notes = [], back = { drums: [], bass: [], treble: [] };
-  const instCount = {}, noteCount = {};
+  const instCount = {}, noteCount = {}, trackCount = {};
   for (const { c, beat, ev } of events) {
     const role = roles[c], vel = ev.vol == null ? 1 : ev.vol / 64;
-    if (role.back) { const path = pathOf(instOf(ev)); if (path) back[role.back].push({ beat, note: ev.note + shiftOf(instOf(ev)), path, vel }); continue; }
+    if (role.back) { const path = pathOf(instOf(ev)); if (path) back[role.back].push({ beat, note: ev.note + shiftOf(instOf(ev)), path, vel, track: c }); continue; }
     let lane;
     if (role.drum) {
       lane = role.drum;
@@ -127,6 +130,7 @@ export function roundFromProject(project, meta = {}) {
       lane = `${role.kind} ${role.row * 4 + slot + 1}`;
     }
     (instCount[lane] ||= {})[instOf(ev)] = (instCount[lane][instOf(ev)] || 0) + 1;
+    (trackCount[lane] ||= {})[c] = (trackCount[lane][c] || 0) + 1;
     notes.push({ lane, beat, vel });
   }
   notes.sort((a, b) => a.beat - b.beat || a.lane.localeCompare(b.lane));
@@ -134,13 +138,18 @@ export function roundFromProject(project, meta = {}) {
   for (const [lane, counts] of Object.entries(instCount)) {
     const inst = +mostUsed(counts), path = pathOf(inst);
     if (!path) continue;
-    if (DRUM_LANES.includes(lane)) sounds[lane] = { path, note: +mostUsed(noteCount[lane]) + shiftOf(inst) };
+    // + the track it's written on: its effects play in the game too
+    const extra = { track: +mostUsed(trackCount[lane]) };
+    if (DRUM_LANES.includes(lane)) sounds[lane] = { path, note: +mostUsed(noteCount[lane]) + shiftOf(inst), ...extra };
     else {
       const [kind, bar] = lane.split(" ");
-      sounds[lane] = { path, note: rowBars[`${kind} ${+bar > 4 ? 1 : 0}`][(+bar - 1) % 4].note + shiftOf(inst) };
+      sounds[lane] = { path, note: rowBars[`${kind} ${+bar > 4 ? 1 : 0}`][(+bar - 1) % 4].note + shiftOf(inst), ...extra };
     }
   }
-  return { name: meta.name || "Round", title: meta.title || "Untitled", bpm: project.bpm, bars, notes, sounds, back, warnings };
+  // every track's effects (EQ, pan, drive, crush, chorus, sends, volume) + the song's shared delay/reverb
+  const tracks = project.channels.map((ch) => ({ name: ch.name, fx: { ...defaultFx(), ...(ch.fx || {}) } }));
+  const fxBus = { reverbDecay: 2.0, delayTime: 0.3, delayFb: 0.35, ...(project.fxBus || {}) };
+  return { name: meta.name || "Round", title: meta.title || "Untitled", bpm: project.bpm, bars, notes, sounds, back, tracks, fxBus, warnings };
 }
 
 function defaultFx() {
