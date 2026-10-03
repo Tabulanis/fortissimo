@@ -82,7 +82,7 @@ export class Bell {
     const judge = free
       ? { pass: true, matched: measure.length, total: measure.length, extras: 0 }
       : judgeMeasure(measure, part, this._recordStart, this.beatDur, diff, diff.keep ? new Set(this._kept.keys()) : null);
-    if (diff.keep && judge.pairs) for (const [i, h] of judge.pairs) this._kept.set(i, { lane: h.lane, pos: h.t - this._recordStart, velocity: h.velocity });
+    if (diff.keep && judge.pairs) for (const [i, h] of judge.pairs) this._kept.set(i, { lane: h.lane, pos: h.t - this._recordStart, velocity: h.velocity, midi: h.midi });
     if (!judge.pass) {
       this._hits = this._hits.filter((h) => h.t >= hi);   // keep the next bar's early hits
       this._recordStart += this._phraseDur();
@@ -91,7 +91,7 @@ export class Bell {
     // the locked loop: this pass as played, plus a kept hit for every note this pass missed
     if (diff.keep && judge.pairs) {
       const hitNow = new Set(judge.pairs.map(([i]) => i));
-      for (const [i, k] of this._kept) if (!hitNow.has(i)) measure.push({ lane: k.lane, t: this._recordStart + k.pos, velocity: k.velocity });
+      for (const [i, k] of this._kept) if (!hitNow.has(i)) measure.push({ lane: k.lane, t: this._recordStart + k.pos, velocity: k.velocity, midi: k.midi });
     }
     this._kept = new Map(); this._keptPart = null;
     this._hits = measure;
@@ -99,7 +99,7 @@ export class Bell {
     const layer = {
       bars,                                                                       // replays every `bars` bars
       startBar: Math.round((this._recordStart - this.first) / this.barDur) + bars,   // from the NEXT pass
-      hits: this._hits.map((h) => ({ lane: h.lane, pos: h.t - this._recordStart, velocity: h.velocity })),
+      hits: this._hits.map((h) => ({ lane: h.lane, pos: h.t - this._recordStart, velocity: h.velocity, midi: h.midi })),   // midi: the note as written, if the hit found one
     };
     this._hits = [];
     this._mode = "idle";

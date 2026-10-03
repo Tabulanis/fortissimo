@@ -156,17 +156,26 @@ export function createMixer(ctx, { light = false } = {}) {
   backing.connect(master);
   backing.connect(backingSend).connect(reverb);
 
-  // --- Hackbeat tracks (2026-10-02): a round written in Hackbeat plays through
-  // its OWN track chains (hbchain.js — EQ, pan, drive, crush, chorus, sends,
-  // volume), which land here instead of the lane strips. A track at Hackbeat's
-  // default volume (0.85) comes out level with a built-in lane; the courtyard
-  // still answers it lightly so it sits in the arena.
+  // --- Hackbeat tracks: a round written in Hackbeat plays through its OWN track
+  // chains (hbchain.js), and mixes EXACTLY as Hackbeat mixes (owner, 2026-10-03:
+  // "the sound is so much better in Hackbeat"): its master fader x 1/sqrt(tracks)
+  // headroom -> its limiter (-6 dB) -> out, trimmed against this desk's master
+  // boost so the game's own soft clipper never has to touch it. Only a light
+  // touch of the courtyard on top — the tracks bring their own reverb.
   const hackbeat = ctx.createGain();
-  hackbeat.gain.value = HEADROOM / 0.85;
+  hackbeat.gain.value = 0.9 / Math.sqrt(11);
+  const hbLimiter = ctx.createDynamicsCompressor();
+  hbLimiter.threshold.value = -6; hbLimiter.knee.value = 10; hbLimiter.ratio.value = 12;
+  hbLimiter.attack.value = 0.003; hbLimiter.release.value = 0.15;
+  const hbTrim = ctx.createGain();
+  // undo the master's x1.6, and 30% under Hackbeat's level: the limiter lets a hit's
+  // first few ms through, and those must not reach the soft clipper (measured
+  // 2026-10-03: the whole song at once peaked 0.885 into it at full level, 0.7 is its knee)
+  hbTrim.gain.value = 0.7 / 1.6;
   const hackbeatSend = ctx.createGain();
-  hackbeatSend.gain.value = 0.15;
-  hackbeat.connect(drumBus);
-  hackbeat.connect(hackbeatSend).connect(reverb);
+  hackbeatSend.gain.value = 0.05;
+  hackbeat.connect(hbLimiter).connect(hbTrim).connect(drumFader);
+  hbTrim.connect(hackbeatSend).connect(reverb);
 
   return {
     /** Where a drum's notes go: mixer.lane("snare") */
@@ -175,6 +184,8 @@ export function createMixer(ctx, { light = false } = {}) {
     strip(name) { return strips[name]; },
     /** where Hackbeat track chains play into */
     get hackbeat() { return hackbeat; },
+    /** Hackbeat's mix: its master fader and how many tracks the song has (1/sqrt(n) headroom) */
+    setHackbeatMix(masterVol, tracks) { hackbeat.gain.value = (masterVol ?? 0.9) / Math.sqrt(Math.max(1, tracks || 1)); },
     get metronome() { return metronome; },
     get backing() { return backing; },
     get master() { return master; },

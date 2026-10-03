@@ -20,7 +20,7 @@ export class Loops {
         for (;;) {
           const t = first + k * period + h.pos;
           if (t >= toT) break;
-          if (t >= fromT) out.push({ lane: h.lane, time: t, velocity: h.velocity });
+          if (t >= fromT) out.push({ lane: h.lane, time: t, velocity: h.velocity, midi: h.midi });
           k++;
         }
       }

@@ -150,7 +150,7 @@ function joinBacking() {
   const lanes = [...done].filter((l) => !backingJoined.has(l) && b.some((n) => n.lane === l));
   if (!lanes.length) return;
   for (const l of lanes) backingJoined.add(l);
-  const hits = b.filter((n) => lanes.includes(n.lane)).map((n) => ({ lane: n.lane, pos: n.beat * clock.beatDur, velocity: (n.vel ?? 1) * 0.85 }));
+  const hits = b.filter((n) => lanes.includes(n.lane)).map((n) => ({ lane: n.lane, pos: n.beat * clock.beatDur, velocity: (n.vel ?? 1) * 0.85, midi: n.midi }));
   const startBar = Math.ceil((ctx.currentTime - clock.first) / (4 * clock.beatDur * song().bars)) * song().bars;   // from the next pass of the song
   loops.add({ bars: song().bars, startBar, backing: true, hits });
 }
@@ -275,7 +275,7 @@ function tickBell(heardNow) {
       for (const e of one.events(ctx.currentTime, scheduledUntil, clock.first)) {
         const entry = KEYMAP_BY_LANE[e.lane];
         if (!entry) continue;
-        pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...laneSound(entry.ln),
+        pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...laneSound(entry.ln, e.midi),
           velocity: e.velocity * 0.85, when: e.time });
       }
     }
@@ -376,6 +376,7 @@ async function loadRoundSamples() {
     } catch (e) { sampleCache.set(p, null); console.warn(`sample ${p} failed: ${e}`); }
   }));
   if (BAKE) await bakeRound();   // phones: each track's sound through its effects, once
+  if (mixer && song().tracks) mixer.setHackbeatMix(song().masterVol, song().tracks.length);   // Hackbeat's own master + headroom
   prepareBackBuffers();   // stretch the background recordings to the game's tempo now, not mid-song
 }
 
@@ -451,19 +452,26 @@ function prepareBackBuffers() {
 /* What a lane plays and where it goes. A round's own sample plays through
    its Hackbeat track's chain (the effects set on that track in Hackbeat);
    the built-in sounds go through the game's lane strips. */
-function laneSound(ln) {
+//   midi: the note to sound — the chart note's pitch AS WRITTEN (octave and all);
+//   without one (a hit with no note near it), the bar's own note.
+// A Hackbeat track is ONE voice, like in Hackbeat: its channel is the track's,
+// and a new note cuts the last (mono). Timing sets the volume, never the tone.
+function laneSound(ln, midi) {
   const s = song().sounds && song().sounds[ln.name];
   const buf = s && sampleCache.get(s.path);
+  const hb = buf ? { midi: midi ?? s.note, baseNote: 60, channel: 200 + (s.track ?? 0), mono: true, settings: hbVoice(s.voice) } : null;
   if (buf && BAKE) {   // phones: the baked sound, through a lite track (shared reverb / echo)
-    return { buffer: baked(s.path, s.track) || buf, midi: s.note, baseNote: 60,
-      destination: phoneTrack(s.track, mixer.hackbeat, "hits", null) || laneDest(ln), settings: hbVoice(s.voice) };
+    return { ...hb, buffer: baked(s.path, s.track) || buf, destination: phoneTrack(s.track, mixer.hackbeat, "hits", null) || laneDest(ln) };
   }
-  if (buf) return { buffer: buf, midi: s.note, baseNote: 60, destination: hbTrack(s.track, mixer.hackbeat, "hits") || laneDest(ln), settings: hbVoice(s.voice) };
+  if (buf) return { ...hb, buffer: buf, destination: hbTrack(s.track, mixer.hackbeat, "hits") || laneDest(ln) };
   return { buffer: ln.kind ? melodyVoices[ln.kind][ln.slot] : drums[ln.drum], midi: 60, baseNote: 60, destination: laneDest(ln), settings: hbVoice(null) };
 }
 /* a slot's shaped INSTRUMENT VOICE from Hackbeat, else a plain one-shot */
+// PLAIN: Hackbeat's own playback — the sample as recorded, no tone filter,
+// a 12 ms fade when the next note cuts it (Hackbeat's DECLICK)
+const PLAIN_VOICE = { attack: 0.001, hold: 0, decay: 0, sustain: 1, release: 0.012, cutoff: 1, reso: 0, velToCutoff: 0, glide: 0, pan: 0, gain: 1, loop: false };
 function hbVoice(voice) {
-  return voiceSettings({ voice: voice && voiceShaped({ voice }) ? voice : VOICE_PRESETS["One shot"] });
+  return voiceSettings({ voice: voice && voiceShaped({ voice }) ? voice : PLAIN_VOICE });
 }
 const laneDest = (ln) => mixer.lane(ln.kind || ln.name);
 
@@ -631,7 +639,7 @@ function scheduleBack() {
       for (let k = Math.ceil((from - clock.first - e.beat * clock.beatDur) / period); ; k++) {
         const t = clock.first + k * period + e.beat * clock.beatDur;
         if (t >= until) break;
-        if (t >= from) pool.noteOn({ channel: 120 + (backCh++ % 24), midi: e.note, baseNote: 60, buffer: buf, velocity: e.vel, keep: true,
+        if (t >= from) pool.noteOn({ channel: 300 + (e.track ?? (backCh++ % 24)), mono: true, midi: e.note, baseNote: 60, buffer: buf, velocity: e.vel, keep: true,
           when: t, destination: (BAKE ? phoneTrack(e.track, backGain[m], "back " + m, m) : hbTrack(e.track, backGain[m], "back " + m)) || backGain[m],
           settings: hbVoice(e.voice) });
       }
@@ -675,7 +683,7 @@ function playHint(only = null, label = null) {
       const entry = KEYMAP_BY_LANE[n.lane];
       if (!entry) continue;
       const time = start + (n.beat + (p.atBar != null ? 4 * p.atBar : 4 * pb * k)) * clock.beatDur;
-      pool.noteOn({ channel: entry.idx + 70, midi: 60, baseNote: 60, ...laneSound(entry.ln), velocity: 0.8,
+      pool.noteOn({ channel: entry.idx + 70, midi: 60, baseNote: 60, ...laneSound(entry.ln, n.midi), velocity: 0.8,
         when: time });
       hint.notes.push({ laneIdx: entry.idx, time, velocity: 0.9, flashed: false });
     }
@@ -703,7 +711,7 @@ function scheduleGhosts() {
       channel: entry.idx + 40,   // ghosts on their own channels: live play never cuts them
       midi: 60,
       baseNote: 60,
-      ...laneSound(entry.ln),
+      ...laneSound(entry.ln, e.midi),
       velocity: e.velocity * 0.85,   // exactly as played, a touch under live play
       when: e.time,
     });
@@ -870,6 +878,9 @@ function hitLane(idx, lane, press, padVel = 1) {
     roundOffsets.push(off ? null : j.offset);
   }
   vel *= padVel;   // a soft pad hit / a slow VR swing plays softer
+  // the note it found sounds AS WRITTEN (octave and all); no note near it: the bar's own note
+  const found = j && !off && !free ? currentPart().find((n) => n.lane === lane.name && Math.abs(n.beat - j.beat) < 1e-6) : null;
+  const midi = found ? found.midi : undefined;
   if (window.__gr) (window.__gr.hits ||= []).push({ lane: lane.name, lab, force: +padVel.toFixed(2), vel: +vel.toFixed(3) });   // harness readout
 
   // record exactly as played (real timing, real velocity, mistakes and OFF
@@ -877,14 +888,14 @@ function hitLane(idx, lane, press, padVel = 1) {
   // AUTO-CORRECT (quantize): a hit inside the scoring box for its note is
   // RECORDED on the exact beat at full strength; the live sound still fired
   // the instant you hit. Outside the box it's recorded exactly as played.
-  if (bell) bell.add({ lane: lane.name, ...autoCorrectHit(press, vel, j, free) });
+  if (bell) bell.add({ lane: lane.name, midi, ...autoCorrectHit(press, vel, j, free) });
 
   // the player IS the instrument: play immediately, on this lane's channel
   pool.noteOn({
     channel: idx,
     midi: 60,
     baseNote: 60,
-    ...laneSound(lane),
+    ...laneSound(lane, midi),
     velocity: vel,
     when: ctx.currentTime,
   });
@@ -1176,7 +1187,8 @@ stage3d.setLoop(frame);
 if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; }, get bell() { return bell; },
   get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; },
-  get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln) => laneSound(ln),
+  setBackLevel: (v) => { for (const g of Object.values(backGain)) g.gain.value = v; },   // harness: backgrounds at full
+  get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln, midi) => laneSound(ln, midi),
   backInfo: () => ({ bpm: BPM, songBpm: song().bpm, loopSeconds: +(song().bars * 4 * clock.beatDur).toFixed(3),
     stretched: [...backCache].map(([k, b]) => [k, +b.duration.toFixed(3)]) }),
   upcoming: () => (ctx ? buildUpcoming(ctx.getOutputTimestamp().contextTime) : []),

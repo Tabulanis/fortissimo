@@ -134,7 +134,7 @@ export function roundFromProject(project, meta = {}) {
     }
     (instCount[lane] ||= {})[instOf(ev)] = (instCount[lane][instOf(ev)] || 0) + 1;
     (trackCount[lane] ||= {})[c] = (trackCount[lane][c] || 0) + 1;
-    notes.push({ lane, beat, vel });
+    notes.push({ lane, beat, vel, midi: ev.note + shiftOf(instOf(ev)) });   // midi: the pitch AS WRITTEN (octave and all) — what a hit plays
   }
   notes.sort((a, b) => a.beat - b.beat || a.lane.localeCompare(b.lane));
   const sounds = {};
@@ -152,7 +152,8 @@ export function roundFromProject(project, meta = {}) {
   // every track's effects (EQ, pan, drive, crush, chorus, sends, volume) + the song's shared delay/reverb
   const tracks = project.channels.map((ch) => ({ name: ch.name, fx: { ...defaultFx(), ...(ch.fx || {}) } }));
   const fxBus = { reverbDecay: 2.0, delayTime: 0.3, delayFb: 0.35, ...(project.fxBus || {}) };
-  return { name: meta.name || "Round", title: meta.title || "Untitled", bpm: project.bpm, bars, notes, sounds, back, tracks, fxBus, warnings };
+  const masterVol = project.ui && project.ui.masterVol != null ? +project.ui.masterVol : 0.9;   // Hackbeat's master fader
+  return { name: meta.name || "Round", title: meta.title || "Untitled", bpm: project.bpm, bars, notes, sounds, back, tracks, fxBus, masterVol, warnings };
 }
 
 function defaultFx() {
