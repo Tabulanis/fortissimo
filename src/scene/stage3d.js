@@ -1694,7 +1694,17 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     const rad = Math.abs(_pr.x - _pc.x) * 0.5 * r.width;
     return { x, y, rad };
   }
-  function pickDrum(cx, cy) {
+  /** opts.prefer: target indices to snap to from up to opts.reach px away (phone Easy) */
+  function pickDrum(cx, cy, { prefer = null, reach = 0 } = {}) {
+    if (prefer && prefer.length) {
+      let best = -1, bestD = Infinity;
+      for (const i of new Set(prefer)) {
+        if (i == null || !drumVisible[i] || stationOf(i) !== station) continue;
+        const p = drumScreen(i), d = Math.hypot(cx - p.x, cy - p.y);
+        if (d <= Math.max(reach, p.rad * 1.35) && d < bestD) { best = i; bestD = d; }
+      }
+      if (best >= 0) return best;
+    }
     let best = -1, bestD = Infinity;
     for (let i = 0; i < N_T; i++) {
       if (!drumVisible[i] || stationOf(i) !== station) continue;   // only what you're facing

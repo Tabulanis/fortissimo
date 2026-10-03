@@ -105,6 +105,11 @@ let roundIdx = 0;
 const BASE_ROUNDS = ROUNDS;
 const EASY_ROUNDS = ROUNDS.map(buildUp);
 let LESSONS = null;
+// TEMPORARY (owner, 2026-10-03): phones on Easy get a ridiculous hitbox, in
+// time (here) and in space (taps snap to a wanted target, see the tap handler)
+const PHONE_EASY = { window: 0.22, ratio: 0.5, extras: 6 };
+const phoneEasy = () => IS_TOUCH && difficulty === DIFFICULTY.easy;
+const judgeDiff = () => (phoneEasy() ? { ...difficulty, ...PHONE_EASY } : difficulty);
 const difficultyKey = () => Object.keys(DIFFICULTY).find((k) => DIFFICULTY[k] === difficulty) || "easy";
 const song = () => (LESSONS ? LESSONS[roundIdx] : (difficulty === DIFFICULTY.easy ? EASY_ROUNDS : BASE_ROUNDS)[roundIdx]);
 const lastRound = () => roundIdx >= (LESSONS || BASE_ROUNDS).length - 1;
@@ -169,7 +174,7 @@ function judgeGraphics(measured) {
 // the nearest eighth) when auto-correct is on and it landed inside the box
 function autoCorrectHit(press, vel, j, free) {
   if (!autoCorrect || !clock) return { t: press, velocity: vel };
-  const box = difficulty.window;
+  const box = judgeDiff().window;
   if (!free && j && Math.abs(j.offset) <= box) return { t: j.time, velocity: Math.max(vel, 0.95) };
   if (free) {
     const g = nearestOnGrid(clock.first, clock.beatDur / 2, press);   // eighth notes
@@ -221,7 +226,7 @@ function ringBell() {
 function tickBell(heardNow) {
   if (!bell) return;
   const free = mode === "free" || songDone();
-  const r = bell.tick(heardNow, { part: currentPart(), diff: difficulty, free });
+  const r = bell.tick(heardNow, { part: currentPart(), diff: judgeDiff(), free });
   hudUI.setBellState(bell.state);
   if (bell.state === "recording" && !r) hudUI.say("● Recording this measure…");
   if (!r) return;
@@ -261,7 +266,7 @@ applyStage();
 // end of a round: the grade, then the next round in the same arena (fresh song,
 // fresh loops); after the last round, free play
 function endRound() {
-  const stats = gradeRound(roundOffsets, difficulty.window);
+  const stats = gradeRound(roundOffsets, judgeDiff().window);
   results.show({
     round: song().name, title: song().title, stats, last: lastRound(),
     onNext: async () => {
@@ -1064,7 +1069,9 @@ const recentTaps = [];     // dev log: where taps landed and which drum they pic
 stage.style.touchAction = "none";
 stage.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "touch") lastTouch = performance.now();
-  const lane = stage3d.pickDrum(e.clientX, e.clientY);
+  // phone Easy: a tap snaps to the nearest target this step wants, from well off it
+  const wanted = phoneEasy() && !songDone() ? currentPart().map((n) => LANE_INDEX[n.lane]) : null;
+  const lane = stage3d.pickDrum(e.clientX, e.clientY, wanted ? { prefer: wanted, reach: 220 } : undefined);
   recentTaps.push(`${Math.round(e.clientX)},${Math.round(e.clientY)}->${lane}`);
   if (recentTaps.length > 12) recentTaps.shift();
   if (lane < 0 || !ctx || !drums || !pool || !clock) {

@@ -1,0 +1,39 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" src="/?quality=mobile" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+const out = [], wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const KEY = { hat: "q", snare: "w", crash: "e", kick: "z", "tom low": "x", "tom high": "c" };
+const f = document.getElementById("f");
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  w.addEventListener("error", (e) => out.push("JSERROR " + e.message));
+  try {
+    await wait(3000);
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(3500);
+    const G = w.__gr.game, s = w.__gr.stage3d;
+    // SPACE: tap 150 px to the right of a wanted target
+    const want = G.part()[0], idx = { hat: 0, snare: 1, crash: 2, kick: 3, "tom low": 4, "tom high": 5 }[want.lane];
+    const p = s.drumScreen(idx), r = d.querySelector("canvas").getBoundingClientRect();
+    const tx = r.left + p.x + 150, ty = r.top + p.y;
+    d.querySelector("canvas").dispatchEvent(new w.PointerEvent("pointerdown", { clientX: tx, clientY: ty, pointerType: "touch", bubbles: true }));
+    await wait(200);
+    const hits = w.__gr.hits || [];
+    out.push(`tap 150 px off ${want.lane}: registered as ${hits.length ? hits[hits.length - 1].lane : "nothing"}`);
+    // TIME: play the step 0.18 s late on every note
+    const press = (k) => { w.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true })); w.dispatchEvent(new w.KeyboardEvent("keyup", { key: k, bubbles: true })); };
+    const at = (T, k) => { const o = G.ctx.getOutputTimestamp(); setTimeout(() => press(k), Math.max(0, o.performanceTime + (T + G.calibration - o.contextTime) * 1000 - w.performance.now())); };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const idx0 = G.stageIdx;
+      press(" "); await wait(50);
+      const rs = G.bell.recordStart, bd = G.clock.beatDur, P = G.song().parts[idx0];
+      for (const n of P.part) at(rs + n.beat * bd + 0.18, KEY[n.lane]);
+      while (G.ctx.getOutputTimestamp().contextTime < rs + 4 * (P.bars || 1) * bd + 0.5) await wait(50);
+      await wait(300);
+      const msg = (d.body.innerText.match(/Locked in[^\n]*|Not quite[^\n]*/) || ["(no message)"])[0];
+      out.push(`step ${idx0 + 1} played 0.18 s late: ${msg}`);
+    }
+  } catch (e) { out.push("ERROR " + e.message + " " + e.stack); }
+  fetch("http://127.0.0.1:8899/pe", { method: "POST", body: out.join("\n") });
+};
+</script>
