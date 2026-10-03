@@ -1,0 +1,142 @@
+/* defend.js — the core loop (owner, 2026-10-03): play the song, build the shield.
+ *
+ * No bell, no turns: the song runs, arrows come in on the notes you still
+ * need, and hitting them LOCKS them — locked notes keep playing (ghosts) and
+ * build things you can see. One dial sets the difficulty, the LOCK SIZE:
+ *   1    Easy — the song's most important unlocked notes are offered, spaced
+ *        out (at least MIN_GAP_S apart); any one you hit locks on the spot
+ *   N    the next N notes of the song, in order: hit them all, in order, on
+ *        one pass and they lock together; a miss or a wrong note and that
+ *        group simply comes round again on the next pass
+ *   Infinity  the whole section in one go
+ * Sections in order: drums, bass, treble (you turn to face each).
+ * The SHIELD has three sections — the drums done, the bass bottom row done,
+ * the treble bottom row done — each cutting the town's damage by a third.
+ * The top rows are the cannons.
+ *
+ * Pure: the engine is told hits and the time; it reports what happened.
+ * Times are song-relative: a note's time in pass k = k * loopBeats + beat (beats).
+ */
+import { beatWeight } from "./stages.js";
+
+export const SECTIONS = ["drums", "bass", "treble"];
+export const MIN_GAP_S = 1.0;      // lock size 1: offered notes at least this far apart
+export const MAX_OFFER = 4;        // lock size 1: at most this many offered at once
+export const LIFE = {              // per run damage: a miss hurts you and the town, a hit heals both
+  gentle: { miss: 3, heal: 3 }, normal: { miss: 5, heal: 2 }, harsh: { miss: 8, heal: 1 },
+};
+const sectionOf = (lane) => (lane.startsWith("bass") ? "bass" : lane.startsWith("treble") ? "treble" : "drums");
+const rowOf = (lane) => { const n = +lane.split(" ")[1]; return n >= 9 ? "top" : "bottom"; };
+export const shieldPartOf = (lane) => (sectionOf(lane) === "drums" ? "drums" : rowOf(lane) === "bottom" ? sectionOf(lane) + " bottom" : null);
+export const SHIELD_PARTS = ["drums", "bass bottom", "treble bottom"];
+
+export class Defend {
+  /**
+   * @param {{notes: {lane, beat, midi?, vel?}[], bars: number}} song  (beats; the song loops every 4*bars beats)
+   * @param {{lockSize: number, beatDur: number}} opts
+   */
+  constructor(song, { lockSize = 1, beatDur = 0.75 } = {}) {
+    this.loopBeats = 4 * song.bars;
+    this.beatDur = beatDur;
+    this.lockSize = lockSize;
+    this.notes = song.notes.map((n, id) => ({ ...n, id, section: sectionOf(n.lane) }));
+    this.locked = new Set();          // note ids
+    this.sectionIdx = 0;
+    this._chunk = null;               // lock size > 1: { ids: [...], next: 0, hits: [] }
+    this.events = [];                 // what happened since the last drain()
+    this._skipEmpty();
+  }
+
+  get section() { return SECTIONS[this.sectionIdx] || null; }
+  get done() { return this.sectionIdx >= SECTIONS.length; }
+  sectionNotes(s = this.section) { return this.notes.filter((n) => n.section === s).sort((a, b) => a.beat - b.beat); }
+  unlocked(s = this.section) { return this.sectionNotes(s).filter((n) => !this.locked.has(n.id)); }
+  progress(s) { const all = this.sectionNotes(s); return all.length ? all.filter((n) => this.locked.has(n.id)).length / all.length : 1; }
+
+  /** which shield parts are up (each = a third off the town's damage) */
+  shield() {
+    return SHIELD_PARTS.filter((p) => { const ns = this.notes.filter((n) => shieldPartOf(n.lane) === p); return ns.length > 0 && ns.every((n) => this.locked.has(n.id)); });
+  }
+
+  /** the notes arrows fly for right now (the song's own beats) */
+  offered() {
+    if (this.done) return [];
+    const open = this.unlocked();
+    if (this.lockSize === 1) {
+      // the most important first, spaced out; earlier in the bar breaks ties
+      const order = [...open].sort((a, b) => beatWeight(a.beat) - beatWeight(b.beat) || a.beat - b.beat);
+      const gap = MIN_GAP_S / this.beatDur, picked = [];
+      for (const n of order) {
+        if (picked.length >= MAX_OFFER) break;
+        if (picked.every((p) => this._dist(p.beat, n.beat) >= gap - 1e-6)) picked.push(n);
+      }
+      return picked.sort((a, b) => a.beat - b.beat);
+    }
+    if (!this._chunk) {
+      const size = this.lockSize === Infinity ? open.length : this.lockSize;
+      this._chunk = { ids: open.slice(0, size).map((n) => n.id), next: 0, hits: [] };
+    }
+    const ids = new Set(this._chunk.ids);
+    return this.notes.filter((n) => ids.has(n.id)).sort((a, b) => a.beat - b.beat);
+  }
+
+  /** the chunk's progress (lock size > 1): how many of its notes are hit so far, in order */
+  get chunkProgress() { return this._chunk ? { hit: this._chunk.next, of: this._chunk.ids.length } : null; }
+
+  /**
+   * A correct hit on an offered note (the caller judged the timing).
+   * @returns {"lock"|"progress"|"wrong"|"ignored"}
+   */
+  hit(noteId, hitInfo = {}) {
+    if (this.done || this.locked.has(noteId)) return "ignored";
+    const offered = this.offered();
+    if (!offered.some((n) => n.id === noteId)) return "ignored";
+    if (this.lockSize === 1) { this._lock([noteId], [{ id: noteId, ...hitInfo }]); return "lock"; }
+    const c = this._chunk;
+    if (c.ids[c.next] !== noteId) { this._fail("out of order"); return "wrong"; }
+    c.hits.push({ id: noteId, ...hitInfo });
+    c.next++;
+    this.events.push({ type: "progress", hit: c.next, of: c.ids.length });
+    if (c.next === c.ids.length) { this._lock(c.ids, c.hits); return "lock"; }
+    return "progress";
+  }
+
+  /** an offered note went by unhit (the caller saw it pass the hitbox) */
+  miss(noteId) {
+    if (this.done || this.locked.has(noteId)) return;
+    const n = this.notes[noteId];
+    this.events.push({ type: "miss", note: n });
+    if (this.lockSize !== 1 && this._chunk && this._chunk.ids.includes(noteId)) this._fail("missed");
+  }
+
+  /** a wrong note — a hit with no offered note there (only matters while a chunk is under way) */
+  stray() { if (this.lockSize !== 1 && this._chunk && this._chunk.next > 0) this._fail("wrong note"); }
+
+  drain() { const e = this.events; this.events = []; return e; }
+
+  _fail(why) {
+    if (this._chunk && this._chunk.next > 0) this.events.push({ type: "chunkFail", why });
+    if (this._chunk) { this._chunk.next = 0; this._chunk.hits = []; }
+  }
+
+  _lock(ids, hits) {
+    const before = this.shield();
+    for (const id of ids) this.locked.add(id);
+    this._chunk = null;
+    this.events.push({ type: "lock", notes: ids.map((id) => this.notes[id]), hits });
+    for (const p of this.shield()) if (!before.includes(p)) this.events.push({ type: "shield", part: p, up: this.shield().length });
+    this._skipEmpty();
+  }
+
+  _skipEmpty() {
+    while (!this.done && this.unlocked().length === 0) {
+      this.events.push({ type: "sectionDone", section: this.section });
+      this.sectionIdx++;
+    }
+  }
+
+  _dist(a, b) { const d = Math.abs(a - b) % this.loopBeats; return Math.min(d, this.loopBeats - d); }
+}
+
+/** damage to the town from a miss, after the shield: each part up takes a third off */
+export const townDamage = (miss, shieldUp) => miss * Math.max(0, 1 - shieldUp / 3);
