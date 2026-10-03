@@ -19,6 +19,7 @@ import { VRButton } from "three/examples/jsm/webxr/VRButton.js";
 import { createVrHits } from "../input/vrhits.js";
 import { createFire } from "./fire.js";
 import { createStation, BAR_MID_Z, BARS, PER_ROW } from "./stations.js";
+import { createDefense } from "./defense.js";
 import { createPool, poolContains, POOL, SURFACE_Y } from "./pool.js";
 import { bootlog } from "../bootlog.js";
 
@@ -508,6 +509,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     g.fillRect(0, 0, 128, 128);
     return new THREE.CanvasTexture(c);
   })();
+  // THE DEFENSE you build by playing: the shield dome and the cannons (defense.js)
+  const defense = createDefense(scene, { fireTexture, layer: FX_LAYER });
   const _fireA = new THREE.Color(1.0, 0.95, 0.75), _fireB = new THREE.Color(1.0, 0.5, 0.12),
         _fireC = new THREE.Color(0.55, 0.06, 0.02), _fc = new THREE.Color();
   // fire colour along a 0..1 "cooling" value: white-yellow -> orange -> deep red
@@ -1733,6 +1736,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
 
   function update(heardNow, upcoming, ghosts = []) {
     { const t = performance.now(); fireDt = Math.min(0.05, (t - fireT) / 1000); fireT = t; }
+    defense.update(heardNow, fireDt);
     // clouds drift; the sunlight follows how much cloud is over the sun (eased over ~1.5 s)
     cloudRot += fireDt * CLOUD_SPEED;
     if (skyMatRef) skyMatRef.uniforms.cloudRot.value = cloudRot;
@@ -2228,6 +2232,13 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     /** debug: where each stick tip is (world), and whether a controller holds it */
     /** debug: arrows in flight per lane, and which drums are shown */
     // per lane: how much of an arrow's flight the camera sees right now (0..1), and whether its launch is on screen
+    /** the shield's three parts: { drums|bass|treble: { progress 0..1, up } } */
+    setShield: (state) => defense.setShield(state),
+    debugDefense: (heard) => ({ heard: +heard.toFixed(2), ...defense.debug() }),
+    /** a missed arrow reached the shield: flash the part in front of that target */
+    shieldHit: (section, laneIdx) => defense.shieldHit(section, drumFace[laneIdx]),
+    /** a top-row note fires that bar's cannon at its archer, at heard time `at` */
+    fireCannon: (laneIdx, at) => { if (laneIdx >= 6 && laneIdx < N_T) defense.fire(drumFace[laneIdx], SPAWNS[laneIdx], at); },
     debugArrowView: () => {
       camera.updateMatrixWorld();
       const P = new THREE.Vector3(), out = [];

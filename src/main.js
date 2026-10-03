@@ -294,10 +294,19 @@ function tickDefend(heardNow) {
   }
   defendEvents();
 }
+// the dome: each section's part shimmers as it's built and stands once it's up
+function showShield() {
+  const part = (name) => ({ progress: defend.partProgress(name === "drums" ? "drums" : name + " bottom"), up: defend.shield().includes(name === "drums" ? "drums" : name + " bottom") });
+  stage3d.setShield({ drums: part("drums"), bass: part("bass"), treble: part("treble") });
+}
+const isTopRow = (lane) => /^(bass|treble) (9|1[0-6])$/.test(lane);   // the cannons
 function defendEvents() {
   const L = LIFE[RUN.damage] || LIFE.normal;
   for (const e of defend.drain()) {
     if (e.type === "miss") {
+      // a part that's up catches the arrow (the town takes less, see townDamage)
+      const sec = e.note.lane.startsWith("bass") ? "bass" : e.note.lane.startsWith("treble") ? "treble" : "drums";
+      if (LANE_INDEX[e.note.lane] != null) stage3d.shieldHit(sec, LANE_INDEX[e.note.lane]);
       life.you -= L.miss;
       life.town -= townDamage(L.miss, defend.shield().length);
       const idx = LANE_INDEX[e.note.lane], p = idx != null && stage3d.drumScreen(idx);
@@ -309,6 +318,7 @@ function defendEvents() {
         hits: e.notes.map((n) => { const h = e.hits.find((x) => x.id === n.id) || {}; return { lane: n.lane, pos: n.beat * clock.beatDur + (autoCorrect ? 0 : h.offset || 0), velocity: h.velocity ?? 0.9, midi: n.midi }; }) });
       const last = e.notes[e.notes.length - 1], idx = LANE_INDEX[last.lane], p = idx != null && stage3d.drumScreen(idx);
       if (p) showStamp("LOCKED!", p.x, p.y - 30, { size: e.notes.length > 1 ? 56 : 40, ms: 1600 });
+      showShield();
       stageMessage();
     } else if (e.type === "progress") {
       hudUI.say(`${e.hit} / ${e.of} — keep going, in order`, "good", 1200);
@@ -807,6 +817,7 @@ function scheduleGhosts() {
       velocity: e.velocity * 0.85,   // exactly as played, a touch under live play
       when: e.time,
     });
+    if (defend && isTopRow(e.lane)) stage3d.fireCannon(entry.idx, e.time);   // the band's cannons fire on their notes
   }
   scheduledUntil = until;
 }
@@ -980,6 +991,7 @@ function hitLane(idx, lane, press, padVel = 1) {
       const loop = 4 * song().bars * clock.beatDur;
       occDone.add(found.id + "@" + Math.round((j.time - clock.first - found.beat * clock.beatDur) / loop));   // this occurrence is hit, not a miss
       const r = defend.hit(found.id, { offset: j.offset, velocity: vel });
+      if (isTopRow(lane.name)) stage3d.fireCannon(idx, ctx.getOutputTimestamp().contextTime);   // your cannon
       if (r !== "wrong") { const L = LIFE[RUN.damage] || LIFE.normal; life.you += L.heal; life.town += L.heal; }
       if (p) showStamp(Math.round(Math.max(0, 1 - Math.abs(j.offset) / box) * 100) + "%", p.x, p.y - 4, { size: 30, ms: 900 });
     } else {

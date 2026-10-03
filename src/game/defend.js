@@ -53,6 +53,9 @@ export class Defend {
   unlocked(s = this.section) { return this.sectionNotes(s).filter((n) => !this.locked.has(n.id)); }
   progress(s) { const all = this.sectionNotes(s); return all.length ? all.filter((n) => this.locked.has(n.id)).length / all.length : 1; }
 
+  /** how far a shield part is built: 0..1 (1 = up) */
+  partProgress(part) { const ns = this.notes.filter((n) => shieldPartOf(n.lane) === part); return ns.length ? ns.filter((n) => this.locked.has(n.id)).length / ns.length : 0; }
+
   /** which shield parts are up (each = a third off the town's damage) */
   shield() {
     return SHIELD_PARTS.filter((p) => { const ns = this.notes.filter((n) => shieldPartOf(n.lane) === p); return ns.length > 0 && ns.every((n) => this.locked.has(n.id)); });
