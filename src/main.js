@@ -466,7 +466,7 @@ function makeStartButton() {
     await roundsReady;
     await buildMelodyVoices();   // fallback bar voices
     await loadRoundSamples();    // the round's own sounds (from Hackbeat)
-    pool = new VoicePool(ctx);
+    pool = new VoicePool(ctx, { max: IS_TOUCH ? 12 : 24 });   // phones: fewer voices at once (crackle when busy)
 
     clock = startClock(ctx, {
       bpm: BPM,
@@ -535,7 +535,7 @@ function scheduleBack() {
       for (let k = Math.ceil((from - clock.first - e.beat * clock.beatDur) / period); ; k++) {
         const t = clock.first + k * period + e.beat * clock.beatDur;
         if (t >= until) break;
-        if (t >= from) pool.noteOn({ channel: 120 + (backCh++ % 24), midi: e.note, baseNote: 60, buffer: buf, velocity: e.vel,
+        if (t >= from) pool.noteOn({ channel: 120 + (backCh++ % 24), midi: e.note, baseNote: 60, buffer: buf, velocity: e.vel, keep: true,
           when: t, destination: hbTrack(e.track, backGain[m], "back " + m) || backGain[m], settings: hbVoice(e.voice) });
       }
     }
