@@ -1,0 +1,27 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" style="width:1200px;height:800px;border:0"></iframe>
+<script type="module">
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+localStorage.removeItem("gr.run");
+const f = document.getElementById("f"); f.src = "/?quality=high";
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  try {
+    await wait(3500);
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(800);
+    const G = w.__gr.game, D = G.defend;
+    const n = D.offered()[0], loop = 4 * G.song().bars * G.clock.beatDur;
+    const now0 = G.ctx.getOutputTimestamp().contextTime;
+    let T = G.clock.first + Math.ceil((now0 + 3 - G.clock.first - n.beat * G.clock.beatDur) / loop) * loop + n.beat * G.clock.beatDur;
+    say("target", n.lane + " at " + T.toFixed(2) + " (now " + now0.toFixed(2) + ")");
+    const grab = () => new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png"))));
+    for (const [tag, before] of [["a", 1.6], ["b", 0.8], ["c", 0.1]]) {
+      while (G.ctx.getOutputTimestamp().contextTime < T - before) await wait(10);
+      say("shot_" + tag, await grab());
+    }
+    say("done", "ok");
+  } catch (e) { say("err", e.message); }
+};
+</script>

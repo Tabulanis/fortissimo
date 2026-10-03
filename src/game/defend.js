@@ -76,6 +76,7 @@ export class Defend {
       let best = null, bestScore = Infinity;
       const target = this.nowBeat + this.leadBeats;
       for (const n of open) {
+        if (n.id === this._avoid && open.length > 1) continue;   // just missed: something else first
         const wait = (((n.beat - target) % this.loopBeats) + this.loopBeats) % this.loopBeats;
         const score = wait + beatWeight(n.beat);
         if (score < bestScore - 1e-9) { bestScore = score; best = n; }
@@ -117,6 +118,9 @@ export class Defend {
     if (this.done || this.locked.has(noteId)) return;
     const n = this.notes[noteId];
     this.events.push({ type: "miss", note: n });
+    // lock size 1: a miss moves on to another note (owner, 2026-10-03: keep the pace steady) —
+    // the missed one stays unlocked and comes back later
+    if (this.lockSize === 1 && this._single === noteId) { this._single = null; this._avoid = noteId; }
     if (this.lockSize !== 1 && this._chunk && this._chunk.ids.includes(noteId)) this._fail("missed");
   }
 

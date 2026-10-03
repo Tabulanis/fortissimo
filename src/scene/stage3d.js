@@ -1952,6 +1952,19 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       const mat = drumMat[lane];
       if (mat && mat.color && !mat.userData.base) mat.userData.base = mat.color.clone();
       let tint = 0;
+      if (pending[lane] > 0.01 && drumVisible[lane]) {
+        // ONE FLASH (owner, 2026-10-03): a single glow building over the last ~2 s,
+        // ramping hardest at the end — cyan, then white-hot right at the hit
+        const pl = pending[lane], ramp = pl * pl * pl;
+        fl.glow.visible = true;
+        fl.glow.material.opacity = Math.min(1, 0.2 + 0.8 * pl * pl);
+        fl.glow.scale.setScalar(fl.radius * (2.6 + 2.2 * ramp));
+        _mc.copy(_cyan).lerp(_white, Math.max(0, (pl - 0.65) / 0.35) * 0.9);
+        fl.glow.material.color.copy(_mc);
+        if (frame) { frame.visible = true; frame.material.opacity = Math.min(1, 0.3 + 0.9 * pl); frame.material.color.copy(_mc); }
+        if (mat && mat.userData.base) { mat.color.copy(mat.userData.base).lerp(_mc, 0.35 + 0.55 * ramp); }
+        continue;
+      }
       if (next && drumVisible[lane]) {
         const dt = next.dt;
         // charge 0..1: cubic so the brightening is fastest right before the beat
@@ -1968,16 +1981,6 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
           frame.material.opacity = Math.min(1, 0.15 + 0.85 * c + 0.3 * peak);
           frame.material.color.copy(hexToColor(BAR_HEX[stationOf(lane)])).lerp(_white, 0.5 * c * c + 0.4 * peak);
         }
-      } else if (pending[lane] > 0.01 && drumVisible[lane]) {
-        // COMING UP (owner, 2026-10-03: more lead, better clues): the next target
-        // glows a soft cyan, fading in over its lead time, pulsing gently
-        const pl = pending[lane] * (0.7 + 0.3 * Math.sin(heardNow * 4.2));
-        fl.glow.visible = true;
-        fl.glow.material.opacity = Math.min(1, 1.0 * pl);
-        fl.glow.scale.setScalar(fl.radius * (3.2 + 0.6 * pl));   // a big halo you can't miss
-        fl.glow.material.color.copy(_cyan);
-        if (frame) { frame.visible = true; frame.material.opacity = Math.min(1, 1.2 * pl); frame.material.color.copy(_cyan); }
-        if (mat && mat.userData.base) { mat.color.copy(mat.userData.base).lerp(_cyan, 0.85 * pl); continue; }
       } else {
         fl.glow.visible = false;
         fl.glow.material.opacity = 0;

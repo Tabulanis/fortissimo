@@ -24,6 +24,16 @@ const song = { bars: 1, notes: [n("kick", 0), n("snare", 1), n("kick", 2), n("sn
   assert.ok(ev.some((e) => e.type === "shield" && e.part === "drums") && ev.some((e) => e.type === "sectionDone" && e.section === "drums"));
 }
 
+// lock size 1: a miss moves on to a different note (the pace stays steady); the missed one comes back later
+{
+  const d = new Defend(song, { lockSize: 1, beatDur: 0.75 });
+  const first = d.offered()[0];
+  d.miss(first.id);
+  const next = d.offered()[0];
+  assert.notStrictEqual(next.id, first.id, "a different note after a miss");
+  assert.ok(!d.locked.has(first.id) && d.unlocked().some((n) => n.id === first.id), "the missed one is still to do");
+}
+
 // lock size 3: the next three in order — all three on one pass, in order, lock together
 {
   const d = new Defend(song, { lockSize: 3, beatDur: 0.5 });

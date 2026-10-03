@@ -303,6 +303,7 @@ function tickDefend(heardNow) {
     if (occDone.has(key)) continue;
     occDone.add(key);
     defend.miss(n.id);
+    offeredAt.delete(n.id);   // if it's offered again later, it gets a fresh lead
   }
   // the targets of what's offered glow "coming up"
   // ...over the last 2 s before its note (owner: ~2 s of warning), then the arrow's red charge takes over
