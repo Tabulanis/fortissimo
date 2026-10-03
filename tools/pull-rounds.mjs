@@ -24,6 +24,8 @@ for (const m of manifest) {
     if (!from.startsWith(path.resolve(HACKBEAT, "samples") + path.sep) || !fs.existsSync(from)) { console.log(`  ! missing sample ${p}`); continue; }
     fs.mkdirSync(path.dirname(to), { recursive: true });
     fs.copyFileSync(from, to); copied++;
+    // NSynth (CC BY 4.0) sounds need a credit when the game ships (Hackbeat/LIBRARY-CREDITS.md)
+    if (/nsynth/i.test(p)) console.log(`  ! ${p} is from NSynth: ship the credit "Contains sounds from the NSynth dataset by Google Magenta, CC BY 4.0"`);
   }
   console.log(`${m.name}: pulled ${m.file} (${round.bars} bar song, ${round.notes.length} notes)`);
 }
