@@ -25,9 +25,10 @@ import { loadRoundFiles } from "./game/roundfiles.js";
 import { lessonParts, sectionProgress, backLevel, finishedLanes } from "./game/lesson.js";
 import { normalize, judgeFor, simplifyNotes, scoreMultiplier, presetOf, PRESET_NAMES } from "./game/run.js";
 import { createMenu } from "./ui/menu.js";
+import { Defend, townDamage, LIFE } from "./game/defend.js";
 import { gradeRound } from "./game/grade.js";
 import { createResults } from "./ui/results.js";
-import { showLocked } from "./ui/locked.js";
+import { showLocked, showStamp } from "./ui/locked.js";
 import { createHud } from "./ui/hud.js";
 import { createMixer } from "./audio/mixer.js";
 import { loadSettings, createSettings } from "./ui/settings.js";
@@ -121,7 +122,7 @@ function buildLessons() {
   if (!SONGS) return;
   LESSONS = SONGS.map((s) => {
     const { play, backing } = simplifyNotes(s.notes, RUN.patterns);
-    return { ...s, backingNotes: backing, parts: lessonParts({ ...s, notes: play }, RUN.step, { barByBar: RUN.step !== Infinity }) };
+    return { ...s, playNotes: play, backingNotes: backing, parts: lessonParts({ ...s, notes: play }, 8, { barByBar: true }) };
   });
 }
 const roundsReady = loadRoundFiles().then((songs) => {
@@ -131,10 +132,17 @@ const roundsReady = loadRoundFiles().then((songs) => {
   if (typeof applyStage === "function") applyStage();
   bootlog("rounds from files", { n: songs.length, steps: LESSONS.map((l) => l.parts.length), warnings: songs.flatMap((r) => r.warnings) });
 }).catch((e) => { console.warn("round files unavailable — playing the built-in songs", e); bootlog("rounds: built-in", { why: String(e) }); });
-const songDone = () => stageIdx >= song().parts.length;
-const currentPart = () => (songDone() ? [] : song().parts[stageIdx].part);
-const partObj = () => (songDone() ? null : song().parts[stageIdx]);
-const partBars = () => (partObj() && partObj().bars) || 1;            // melody takes can be long
+// THE CORE LOOP (defend.js, owner 2026-10-03): no bell — the song runs, arrows
+// come for the notes you still need (song time: the "part" is the whole song),
+// a correct hit locks by the run's lock size. Before Start: the old step view.
+let defend = null;
+let defendFrom = 0;              // misses count from here (a breath after Start)
+const occDone = new Set();       // "noteId@pass": that occurrence was hit or counted as a miss
+const offeredAt = new Map();     // noteId -> when it was first offered (its arrow can only come after that)
+const songDone = () => (defend ? defend.done : stageIdx >= song().parts.length);
+const currentPart = () => (defend ? defend.offered() : songDone() ? [] : song().parts[stageIdx].part);
+const partObj = () => (defend ? (defend.done ? null : { mode: defend.section, bars: song().bars, part: defend.offered() }) : songDone() ? null : song().parts[stageIdx]);
+const partBars = () => (defend ? song().bars : (partObj() && partObj().bars) || 1);   // the engine: the whole song is the loop
 const partMode = () => (partObj() && partObj().mode) || "drums";       // "drums" | "bass" | "treble"
 const isMelody = () => partMode() !== "drums";
 let padConnected = false;   // a game controller is plugged in (the bars then show its buttons)
@@ -146,7 +154,8 @@ function addBacking() { backingJoined = new Set(); joinBacking(); }   // a fresh
 function joinBacking() {
   const b = song().backingNotes;
   if (!loops || !clock || !b || !b.length) return;
-  const done = finishedLanes(song().parts, stageIdx);
+  const done = defend ? new Set(b.filter((n) => defend.progress(n.lane.startsWith("bass") ? "bass" : n.lane.startsWith("treble") ? "treble" : "drums") >= 1).map((n) => n.lane))
+    : finishedLanes(song().parts, stageIdx);
   const lanes = [...done].filter((l) => !backingJoined.has(l) && b.some((n) => n.lane === l));
   if (!lanes.length) return;
   for (const l of lanes) backingJoined.add(l);
@@ -210,10 +219,14 @@ function autoCorrectHit(press, vel, j, free) {
   }
   return { t: press, velocity: vel };
 }
-hudUI.setLives(3);
+// LIFE: you and the town, 100 each; a miss hurts both (the town less with the shield up), a hit heals both
+const life = { you: 100, town: 100, over: false };
+hudUI.setLife(100, 100);
+hudUI.setShield(0);
 
 function applyStage() {
-  for (let i = 0; i < 6; i++) stage3d.setDrumVisible(i, isShown(song(), stageIdx, i));
+  if (defend) { const lanes = new Set(song().notes.map((n) => n.lane)); for (let i = 0; i < 6; i++) stage3d.setDrumVisible(i, lanes.has(KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name)); }
+  else for (let i = 0; i < 6; i++) stage3d.setDrumVisible(i, isShown(song(), stageIdx, i));
   stage3d.setStation(isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left
   if (audioStarted) updateBackLevels();                      // the sections' background music follows progress
   stageMessage();
@@ -222,6 +235,16 @@ function applyStage() {
 
 // the standing instruction for where you are in the song
 function stageMessage() {
+  if (defend) {
+    if (defend.done) { hudUI.setPart(`${song().name} done`); return; }
+    const sec = defend.section, pct = Math.round(defend.progress(sec) * 100);
+    hudUI.setPart(`${song().name} · ${sec} ${pct}%`);
+    const how = sec === "drums" ? (IS_TOUCH ? "tap the drums" : "the drum keys") : IS_TOUCH ? "tap the bars"
+      : padConnected ? "D-pad + X A B Y · hold LT for the top row" : "A S D F G H J K · top row Q W E R T Y U I";
+    const rule = RUN.lock === 1 ? "every arrow you hit locks" : RUN.lock === Infinity ? "hit them ALL, in order, to lock the section" : `hit the next ${RUN.lock}, in order, to lock them`;
+    hudUI.say(`${sec === "drums" ? "Drums" : sec === "bass" ? "Bass — turned right" : "Treble — turned left"}: ${how} — ${rule}`);
+    return;
+  }
   if (bell && bell.state !== "idle") return;   // the bell's own messages win while it works
   hudUI.setPart(songDone() ? (lastRound() ? "Free play" : `${song().name} done`)
     : `${song().name} · ${song().parts[stageIdx].label} of ${song().parts.length}`);
@@ -244,11 +267,75 @@ function stageMessage() {
 }
 
 function ringBell() {
+  if (defend) return;   // no bell in the core loop: the game is always listening
   if (!bell || !ctx) { hudUI.say("Press Start first", "bad", 1500); return; }
   if (bell.state !== "idle") return;
   bell.ring(ctx.getOutputTimestamp().contextTime, partBars());
   hudUI.setBellState("armed");
   hudUI.say("Get ready — recording starts on the next bar…");
+}
+
+// THE CORE LOOP, every frame: an offered note whose moment went by unhit is a
+// miss (hurts you and the town); then whatever the engine reports happens
+function tickDefend(heardNow) {
+  if (!defend || life.over) return;
+  const loop = 4 * song().bars * clock.beatDur, box = judgeDiff().window;
+  if (!defend.done) for (const n of defend.offered()) {
+    if (!offeredAt.has(n.id)) offeredAt.set(n.id, heardNow);
+    const k = Math.floor((heardNow - box - clock.first - n.beat * clock.beatDur) / loop);
+    const t = clock.first + k * loop + n.beat * clock.beatDur;
+    if (t < defendFrom || heardNow < t + box) continue;
+    // only a note whose arrow had time to fly in can be missed (fair: newly offered notes aren't)
+    if (t < offeredAt.get(n.id) + 1.5) continue;
+    const key = n.id + "@" + k;
+    if (occDone.has(key)) continue;
+    occDone.add(key);
+    defend.miss(n.id);
+  }
+  defendEvents();
+}
+function defendEvents() {
+  const L = LIFE[RUN.damage] || LIFE.normal;
+  for (const e of defend.drain()) {
+    if (e.type === "miss") {
+      life.you -= L.miss;
+      life.town -= townDamage(L.miss, defend.shield().length);
+      const idx = LANE_INDEX[e.note.lane], p = idx != null && stage3d.drumScreen(idx);
+      if (p) showStamp("MISS", p.x, p.y, { size: 26, color: "#ff7a5a", ms: 800 });
+    } else if (e.type === "lock") {
+      // locked notes join the band: they play every pass from the next one on
+      const loop = 4 * song().bars * clock.beatDur, k = Math.floor((ctx.currentTime - clock.first) / loop);
+      loops.add({ bars: song().bars, startBar: (k + 1) * song().bars,
+        hits: e.notes.map((n) => { const h = e.hits.find((x) => x.id === n.id) || {}; return { lane: n.lane, pos: n.beat * clock.beatDur + (autoCorrect ? 0 : h.offset || 0), velocity: h.velocity ?? 0.9, midi: n.midi }; }) });
+      const last = e.notes[e.notes.length - 1], idx = LANE_INDEX[last.lane], p = idx != null && stage3d.drumScreen(idx);
+      if (p) showStamp("LOCKED!", p.x, p.y - 30, { size: e.notes.length > 1 ? 56 : 40, ms: 1600 });
+      stageMessage();
+    } else if (e.type === "progress") {
+      hudUI.say(`${e.hit} / ${e.of} — keep going, in order`, "good", 1200);
+    } else if (e.type === "chunkFail") {
+      hudUI.say(`Broke the run (${e.why}) — those come round again`, "bad", 1600);
+    } else if (e.type === "shield") {
+      hudUI.setShield(e.up);
+      hudUI.say(`🛡 Shield ${e.up}/3 up — the town takes ${Math.round((e.up / 3) * 100)}% less`, "good", 2600);
+    } else if (e.type === "sectionDone") {
+      applyStage();   // turn to the next station
+      updateBackLevels();
+    }
+  }
+  life.you = Math.max(0, Math.min(100, life.you)); life.town = Math.max(0, Math.min(100, life.town));
+  hudUI.setLife(life.you, life.town);
+  if (!life.over && (life.you <= 0 || life.town <= 0)) failRun(life.you <= 0 ? "You fell" : "The town fell");
+  else if (!life.over && defend.done) { life.over = true; setTimeout(endRound, 1600); }
+}
+function failRun(why) {
+  life.over = true;
+  hudUI.say(`${why}…`, "bad", 4000);
+  setTimeout(() => results.show({
+    round: song().name, title: why, stats: gradeRound(roundOffsets, judgeDiff().window), last: false, failed: true,
+    run: { name: PRESET_NAMES[presetOf(RUN)], mult: scoreMultiplier(RUN).total },
+    onNext: () => { try { sessionStorage.setItem("gr.menuAt", "setup"); } catch { /* menu from the top */ } location.reload(); },
+    onMenu: () => { try { sessionStorage.setItem("gr.menuAt", "levels"); } catch { /* fine */ } location.reload(); },
+  }), 1400);
 }
 
 // called every frame: has a recorded measure finished?
@@ -565,7 +652,7 @@ function makeStartButton() {
     drums = await makeDrums(ctx.sampleRate);
     await roundsReady;
     BPM = Math.round((song().bpm || 80) * RUN.tempo * 10) / 10;   // the song's own tempo x the run's tempo
-    bootlog("run", { hitbox: RUN.hitbox, tempo: RUN.tempo, patterns: RUN.patterns, perStep: RUN.step === Infinity ? "all" : RUN.step, keep: RUN.keep, bpm: BPM, mult: scoreMultiplier(RUN).total });
+    bootlog("run", { hitbox: RUN.hitbox, tempo: RUN.tempo, patterns: RUN.patterns, lockSize: RUN.lock === Infinity ? "all" : RUN.lock, damage: RUN.damage, bpm: BPM, mult: scoreMultiplier(RUN).total });
     await buildMelodyVoices();   // fallback bar voices
     await loadRoundSamples();    // the round's own sounds (from Hackbeat)
     pool = new VoicePool(ctx, { max: IS_TOUCH ? 12 : 24 });   // phones: fewer voices at once (crackle when busy)
@@ -592,6 +679,10 @@ function makeStartButton() {
     loops = new Loops(4 * clock.beatDur);
     ghosts = loops;   // the scheduler below replays loop layers
     addBacking();
+    defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, beatDur: clock.beatDur });
+    defendFrom = clock.first + Math.ceil((ctx.currentTime + 1.5 - clock.first) / (4 * clock.beatDur)) * 4 * clock.beatDur;   // misses count from the next bar after a breath
+    hudUI.hideBell();
+    defend.drain();
     session = new SessionLog({
       bpm: BPM,
       loopBeats: CHART.loopBeats,
@@ -649,7 +740,7 @@ function scheduleBack() {
 }
 function updateBackLevels() {
   if (!ctx || !backGain.drums) return;
-  const prog = sectionProgress(song().parts, stageIdx);
+  const prog = defend ? { drums: defend.progress("drums"), bass: defend.progress("bass"), treble: defend.progress("treble") } : sectionProgress(song().parts, stageIdx);
   for (const m of ["drums", "bass", "treble"]) {
     backGain[m].gain.setTargetAtTime(backLevel(prog[m]), ctx.currentTime, 1.2);
     // phones: the background's reverb / echo sends follow its fade too
@@ -664,6 +755,7 @@ function updateBackLevels() {
 // ghost hands play it. (The locked parts are already playing as ghosts.)
 let hint = null;   // { notes: [{laneIdx, time, velocity, flashed}], end }
 function unlockedParts() {
+  if (defend) return defend.done ? [] : [{ part: defend.unlocked(), bars: song().bars }];
   const mode = partMode();
   return song().parts.slice(stageIdx).filter((p) => p.mode === mode);
 }
@@ -881,6 +973,21 @@ function hitLane(idx, lane, press, padVel = 1) {
   // the note it found sounds AS WRITTEN (octave and all); no note near it: the bar's own note
   const found = j && !off && !free ? currentPart().find((n) => n.lane === lane.name && Math.abs(n.beat - j.beat) < 1e-6) : null;
   const midi = found ? found.midi : undefined;
+  if (defend && !life.over && !defend.done) {
+    const box = judgeDiff().window, inBox = found && Math.abs(j.offset) <= box;
+    const p = stage3d.drumScreen(idx);
+    if (inBox) {
+      const loop = 4 * song().bars * clock.beatDur;
+      occDone.add(found.id + "@" + Math.round((j.time - clock.first - found.beat * clock.beatDur) / loop));   // this occurrence is hit, not a miss
+      const r = defend.hit(found.id, { offset: j.offset, velocity: vel });
+      if (r !== "wrong") { const L = LIFE[RUN.damage] || LIFE.normal; life.you += L.heal; life.town += L.heal; }
+      if (p) showStamp(Math.round(Math.max(0, 1 - Math.abs(j.offset) / box) * 100) + "%", p.x, p.y - 4, { size: 30, ms: 900 });
+    } else {
+      defend.stray();   // nothing offered there: breaks a run under way
+      if (p && found) showStamp("0%", p.x, p.y - 4, { size: 26, color: "#ff9a7a", ms: 700 });
+    }
+    defendEvents();
+  }
   if (window.__gr) (window.__gr.hits ||= []).push({ lane: lane.name, lab, force: +padVel.toFixed(2), vel: +vel.toFixed(3) });   // harness readout
 
   // record exactly as played (real timing, real velocity, mistakes and OFF
@@ -1070,7 +1177,7 @@ function frame() {
       if (heardNow > hint.end + 0.4) hint = null;
     }
     stage3d.update(heardNow, buildUpcoming(heardNow), ghostHits);
-    tickBell(heardNow);
+    if (defend) tickDefend(heardNow); else tickBell(heardNow);
   } else {
     // before Start: keep the courtyard (and its drums) visible, no arrows
     stage3d.update(0, []);
@@ -1169,7 +1276,7 @@ roundsReady.then(() => {
     level: +(localStorage.getItem("gr.level") || 0),
     run: RUN, startAt: at,
     onStart: (level, run) => {
-      try { localStorage.setItem("gr.run", JSON.stringify({ ...run, step: run.step === Infinity ? "all" : run.step })); localStorage.setItem("gr.level", level); } catch { /* not remembered */ }
+      try { localStorage.setItem("gr.run", JSON.stringify({ ...run, lock: run.lock === Infinity ? "all" : run.lock })); localStorage.setItem("gr.level", level); } catch { /* not remembered */ }
       Object.assign(RUN, run);
       roundIdx = level;
       buildLessons();
@@ -1188,6 +1295,7 @@ if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; }, get bell() { return bell; },
   get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; },
   setBackLevel: (v) => { for (const g of Object.values(backGain)) g.gain.value = v; },   // harness: backgrounds at full
+  get defend() { return defend; }, get life() { return life; },
   get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln, midi) => laneSound(ln, midi),
   backInfo: () => ({ bpm: BPM, songBpm: song().bpm, loopSeconds: +(song().bars * 4 * clock.beatDur).toFixed(3),
     stretched: [...backCache].map(([k, b]) => [k, +b.duration.toFixed(3)]) }),

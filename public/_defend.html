@@ -1,0 +1,42 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" style="width:1100px;height:760px;border:0"></iframe>
+<script type="module">
+const out = [], wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const lockQ = new URLSearchParams(location.search).get("lock");
+if (lockQ) localStorage.setItem("gr.run", JSON.stringify({ hitbox: 0.07, tempo: 1, patterns: "full", lock: lockQ === "all" ? "all" : +lockQ, damage: "normal" }));
+else localStorage.removeItem("gr.run");   // Easy: lock size 1
+const KEY = { hat: "q", snare: "w", crash: "e", kick: "z", "tom low": "x", "tom high": "c" };
+for (const k of ["bass", "treble"]) "asdfghjkqwertyui".split("").forEach((c, i) => (KEY[`${k} ${i + 1}`] = c));
+const f = document.getElementById("f"); f.src = "/?quality=low";
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  w.addEventListener("error", (e) => out.push("JSERROR " + e.message));
+  try {
+    await wait(3000);
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(1500);
+    const G = w.__gr.game, D = G.defend;
+    const press = (k) => { w.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true })); w.dispatchEvent(new w.KeyboardEvent("keyup", { key: k, bubbles: true })); };
+    const at = (T, k) => { const o = G.ctx.getOutputTimestamp(); setTimeout(() => press(k), Math.max(0, o.performanceTime + (T + G.calibration - o.contextTime) * 1000 - w.performance.now())); };
+    const loop = 4 * G.song().bars * G.clock.beatDur, planned = new Set();
+    out.push(`start: section ${D.section}, offered ${D.offered().length} notes, life ${JSON.stringify(G.life)}`);
+    // 1. play every offered note on time for 25 s
+    const t0 = performance.now();
+    while (performance.now() - t0 < 25000) {
+      const now = G.ctx.getOutputTimestamp().contextTime;
+      for (const n of D.offered()) {
+        const k = Math.ceil((now + 0.25 - G.clock.first - n.beat * G.clock.beatDur) / loop);
+        const t = G.clock.first + k * loop + n.beat * G.clock.beatDur, key = n.id + "@" + k;
+        if (t - now < 1.0 && !planned.has(key)) { planned.add(key); at(t, KEY[n.lane]); }
+      }
+      await wait(60);
+    }
+    out.push(`after 25 s playing: locked ${D.locked.size}/${D.notes.length}, section ${D.section} ${Math.round(D.progress(D.section) * 100)}%, shield ${D.shield().length}, life ${JSON.stringify({ you: G.life.you, town: G.life.town })}`);
+    out.push(`stamps seen: ${[...new Set([...d.querySelectorAll(".gr-stamp .word")].map((x) => x.textContent))].slice(0, 6).join(" ") || "(none right now)"}`);
+    // 2. stop playing for 12 s: misses
+    await wait(12000);
+    out.push(`after 12 s idle: life ${JSON.stringify({ you: G.life.you, town: G.life.town })}, locked ${D.locked.size}`);
+  } catch (e) { out.push("ERROR " + e.message + " " + e.stack); }
+  fetch("http://127.0.0.1:8899/defend", { method: "POST", body: out.join("\n") });
+};
+</script>

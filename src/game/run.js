@@ -8,26 +8,28 @@
  *   patterns  "easy"   only the easy-to-get notes (on the beat and half-beat)
  *             "medium" more, but no fast runs or odd off-grid bits
  *             "full"   every note
- *   step      notes per step (Infinity = an instrument all at once)
- *   keep      notes hit on an earlier pass of a step stay hit
+ *   lock      LOCK SIZE (defend.js): 1 = any note you hit locks; N = the next N
+ *             notes, all hit in order on one pass; Infinity = a whole section
+ *   damage    gentle / normal / harsh: what a miss costs you and the town
  * Notes a run leaves out still play, in the backing, so the song is whole.
  * Every setting moves the SCORE MULTIPLIER: harder pays more.
  */
 
 export const PRESETS = {
-  easy:   { hitbox: 0.14, tempo: 1, patterns: "easy",   step: 8, keep: true },
-  medium: { hitbox: 0.11, tempo: 1, patterns: "medium", step: 8, keep: false },
-  hard:   { hitbox: 0.07, tempo: 1, patterns: "full",   step: 8, keep: false },
-  expert: { hitbox: 0.04, tempo: 1, patterns: "full",   step: Infinity, keep: false },
+  easy:   { hitbox: 0.14, tempo: 1, patterns: "easy",   lock: 1,        damage: "gentle" },
+  medium: { hitbox: 0.11, tempo: 1, patterns: "medium", lock: 3,        damage: "normal" },
+  hard:   { hitbox: 0.07, tempo: 1, patterns: "full",   lock: 8,        damage: "normal" },
+  expert: { hitbox: 0.04, tempo: 1, patterns: "full",   lock: Infinity, damage: "harsh" },
 };
 export const PRESET_NAMES = { easy: "Easy", medium: "Medium", hard: "Hard", expert: "Expert", custom: "Custom" };
 export const LIMITS = { hitbox: [0.03, 0.25], tempo: [0.6, 1.4] };
-export const STEPS = [4, 6, 8, Infinity];
+export const LOCKS = [1, 3, 8, Infinity];
+export const DAMAGES = ["gentle", "normal", "harsh"];
 
 /** which preset a config IS (else "custom") */
 export function presetOf(cfg) {
   for (const [k, p] of Object.entries(PRESETS)) {
-    if (Math.abs(p.hitbox - cfg.hitbox) < 1e-3 && Math.abs(p.tempo - cfg.tempo) < 1e-3 && p.patterns === cfg.patterns && p.step === cfg.step && p.keep === cfg.keep) return k;
+    if (Math.abs(p.hitbox - cfg.hitbox) < 1e-3 && Math.abs(p.tempo - cfg.tempo) < 1e-3 && p.patterns === cfg.patterns && p.lock === cfg.lock && p.damage === cfg.damage) return k;
   }
   return "custom";
 }
@@ -39,8 +41,10 @@ export function normalize(cfg = {}) {
   c.hitbox = clamp(c.hitbox, LIMITS.hitbox);
   c.tempo = clamp(c.tempo, LIMITS.tempo);
   if (!["easy", "medium", "full"].includes(c.patterns)) c.patterns = "easy";
-  if (!STEPS.includes(c.step)) c.step = c.step === null || c.step === "all" ? Infinity : 8;
-  c.keep = !!c.keep;
+  if (c.lock === null || c.lock === "all") c.lock = Infinity;
+  if (!LOCKS.includes(c.lock)) c.lock = 1;
+  if (!DAMAGES.includes(c.damage)) c.damage = "normal";
+  delete c.step; delete c.keep;   // the old bell loop's settings
   return c;
 }
 
@@ -51,17 +55,16 @@ export function scoreMultiplier(cfg) {
     hitbox: Math.min(1.15, Math.max(0.5, 1 - (c.hitbox - 0.08) * 2.5)),   // 0.04 -> x1.10, 0.14 -> x0.85, 0.25 -> x0.58
     tempo: 1 + (c.tempo - 1) * 0.8,                                       // 0.75x -> x0.80, 1.25x -> x1.20
     patterns: { easy: 0.7, medium: 0.85, full: 1 }[c.patterns],
-    step: c.step === Infinity ? 1.1 : 1,
-    keep: c.keep ? 0.8 : 1,
+    lock: { 1: 0.8, 3: 0.95, 8: 1.05 }[c.lock] ?? 1.15,                 // all at once: x1.15
+    damage: { gentle: 0.9, normal: 1, harsh: 1.1 }[c.damage],
   };
   const total = Object.values(parts).reduce((a, b) => a * b, 1);
   return { total: Math.round(total * 100) / 100, parts };
 }
 
-/** what the bell judges with: the box, how much of a step locks it, strays allowed, keep */
+/** what a hit is judged by: the box (seconds either side of its note) */
 export function judgeFor(cfg) {
-  const c = normalize(cfg);
-  return { window: c.hitbox, ratio: c.keep ? 0.75 : c.hitbox >= 0.1 ? 0.8 : 1, extras: c.hitbox >= 0.1 ? 2 : c.hitbox >= 0.06 ? 1 : 0, keep: c.keep };
+  return { window: normalize(cfg).hitbox };
 }
 
 // ---- pattern difficulty: which notes a run plays --------------------------------

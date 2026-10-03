@@ -23,12 +23,12 @@ export function createResults() {
 
   return {
     get open() { return root.style.display !== "none"; },
-    show({ round, title, stats, last, run, onNext: next, onMenu }) {
+    show({ round, title, stats, last, run, failed = false, onNext: next, onMenu }) {
       onNext = next;
       const tend = Math.abs(stats.biasMs) < 8 ? "right on the beat"
         : stats.biasMs < 0 ? `rushing — about ${-stats.biasMs} ms early` : `dragging — about ${stats.biasMs} ms late`;
       card.innerHTML = `
-        <div style="font-size:14px; letter-spacing:2px; opacity:0.7">${round.toUpperCase()} COMPLETE</div>
+        <div style="font-size:14px; letter-spacing:2px; opacity:0.7; ${failed ? "color:#ff8a7a; opacity:1" : ""}">${round.toUpperCase()} ${failed ? "— FAILED" : "COMPLETE"}</div>
         <div style="font-size:18px; margin-top:4px; opacity:0.85">${title}</div>
         <div style="font-size:96px; font-weight:800; line-height:1.1; margin:14px 0 4px; color:${GRADE_COLOR[stats.grade] || "#fff"}">${stats.grade}</div>
         <div style="font-size:28px; font-weight:600">${stats.accuracy}% accuracy</div>
@@ -41,7 +41,7 @@ export function createResults() {
         </div>
         <button id="gr-results-next" style="margin-top:20px; padding:10px 22px; font-size:16px; border-radius:8px;
           border:1px solid rgba(255,190,120,0.6); background:rgba(255,160,80,0.18); color:#fff; cursor:pointer">
-          ${last ? "All rounds done — free play ▶" : "Next level ▶"}</button>
+          ${failed ? "Try again ▶" : last ? "All rounds done — free play ▶" : "Next level ▶"}</button>
         ${onMenu ? `<button id="gr-results-menu" style="margin-top:20px; margin-left:8px; padding:10px 22px; font-size:16px; border-radius:8px;
           border:1px solid rgba(255,190,120,0.35); background:none; color:#fff; cursor:pointer">Menu</button>` : ""}
         <div style="margin-top:8px; font-size:12px; opacity:0.55">or press Enter</div>`;

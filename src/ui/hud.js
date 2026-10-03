@@ -10,6 +10,13 @@ const CSS = `
 #gr-hud .chip { background: rgba(10, 8, 6, 0.55); border: 1px solid rgba(255, 200, 120, 0.25);
   border-radius: 10px; padding: 6px 12px; backdrop-filter: blur(3px); }
 #gr-hud .lives { letter-spacing: 3px; color: #ff6a50; font-size: 18px; }
+/* life: you + the town (owner, 2026-10-03), and the shield's three parts */
+#gr-hud .life { display: grid; grid-template-columns: auto 140px; gap: 4px 8px; align-items: center; font-size: 13px; }
+#gr-hud .life .bar { height: 10px; border-radius: 5px; background: rgba(255,255,255,0.12); overflow: hidden; }
+#gr-hud .life .bar i { display: block; height: 100%; width: 100%; transition: width 0.25s, background 0.25s; }
+#gr-hud .life .you i { background: #ff7a5a; }
+#gr-hud .life .town i { background: #ffc85a; }
+#gr-hud .life .shield { grid-column: 1 / 3; letter-spacing: 4px; font-size: 15px; color: #7fd8ff; text-shadow: 0 0 8px rgba(80,190,255,0.8); }
 #gr-hud .bellbox { position: absolute; right: 26px; bottom: 40px; text-align: center; }
 #gr-hud .bell { pointer-events: auto; cursor: pointer; width: 84px; height: 84px; border-radius: 50%;
   display: grid; place-items: center; font-size: 42px; user-select: none;
@@ -51,7 +58,8 @@ export function createHud({ onBell, onHint } = {}) {
   root.innerHTML = `
     <div class="top">
       <div class="chip"><span class="part">Part 1</span> · <span class="diff">Easy</span></div>
-      <div class="chip lives">♥♥♥</div>
+      <div class="chip life"><span>You</span><div class="bar you"><i></i></div>
+        <span>Town</span><div class="bar town"><i></i></div><div class="shield">shield ◇◇◇</div></div>
     </div>
     <div class="status"></div>
     <div class="bellbox">
@@ -71,7 +79,15 @@ export function createHud({ onBell, onHint } = {}) {
   return {
     setPart(text) { $(".part").textContent = text; },
     setDifficulty(text) { $(".diff").textContent = text; },
-    setLives(n, max = 3) { $(".lives").textContent = "♥".repeat(Math.max(0, n)) + "♡".repeat(Math.max(0, max - n)); },
+    /** life, 0..100 each */
+    setLife(you, town) {
+      $(".life .you i").style.width = Math.max(0, you) + "%";
+      $(".life .town i").style.width = Math.max(0, town) + "%";
+    },
+    /** how many of the shield's three parts are up */
+    setShield(n) { $(".life .shield").textContent = "shield " + "◆".repeat(n) + "◇".repeat(Math.max(0, 3 - n)); },
+    /** no bell in the new loop: only Listen stays */
+    hideBell() { const b = $(".bell"), k = $(".bellkey"); if (b) b.style.display = "none"; if (k) k.style.display = "none"; },
     /** state: "idle" | "armed" | "recording" */
     setBellState(state) {
       bell.classList.toggle("armed", state === "armed");

@@ -21,7 +21,7 @@ import { beatWeight } from "./stages.js";
 
 export const SECTIONS = ["drums", "bass", "treble"];
 export const MIN_GAP_S = 1.0;      // lock size 1: offered notes at least this far apart
-export const MAX_OFFER = 4;        // lock size 1: at most this many offered at once
+export const MAX_OFFER = Infinity; // lock size 1: no cap — only the spacing (an arrow every second or so)
 export const LIFE = {              // per run damage: a miss hurts you and the town, a hit heals both
   gentle: { miss: 3, heal: 3 }, normal: { miss: 5, heal: 2 }, harsh: { miss: 8, heal: 1 },
 };

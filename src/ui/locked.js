@@ -57,3 +57,27 @@ export function showLocked(text = "LOCKED!") {
   document.body.appendChild(root);
   setTimeout(() => root.remove(), 2100);
 }
+
+/* STAMPED ON THE TARGET (owner, 2026-10-03): the same slam, but on the drum or
+   bar itself — every hit stamps its accuracy (0-100%), a lock stamps LOCKED!.
+   x, y: the target on screen (CSS px). size: font px. ms: how long it lives. */
+const STAMP_CSS = `
+.gr-stamp { position: fixed; pointer-events: none; z-index: 41; transform: translate(-50%, -50%); }
+.gr-stamp .word { font-family: "Black Ops One", "Arial Black", sans-serif; letter-spacing: 0.04em; white-space: nowrap;
+  -webkit-text-stroke: 2px #3a1406; paint-order: stroke fill; text-shadow: 0 0 14px rgba(255, 170, 60, 0.8), 0 3px 0 #7a2a08;
+  animation: gr-slam var(--dur) linear forwards; }
+`;
+let stampStyle = false;
+export function showStamp(text, x, y, { size = 34, color = "#ffd76a", ms = 900 } = {}) {
+  if (!stampStyle) {
+    if (!styleAdded) { const st = document.createElement("style"); st.textContent = CSS; document.head.appendChild(st); styleAdded = true; }
+    const st = document.createElement("style"); st.textContent = STAMP_CSS; document.head.appendChild(st); stampStyle = true;
+  }
+  const el = document.createElement("div");
+  el.className = "gr-stamp";
+  el.style.left = x + "px"; el.style.top = y + "px";
+  const rot = (Math.random() * 10 - 5).toFixed(1) + "deg";
+  el.innerHTML = `<div class="word" style="--rot:${rot}; --dur:${ms}ms; font-size:${size}px; color:${color}">${text}</div>`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), ms + 60);
+}

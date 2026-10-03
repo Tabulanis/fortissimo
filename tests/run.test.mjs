@@ -13,12 +13,12 @@ const m = (c) => scoreMultiplier(c).total;
 assert.ok(m(PRESETS.easy) < m(PRESETS.medium) && m(PRESETS.medium) < m(PRESETS.hard) && m(PRESETS.hard) < m(PRESETS.expert), `${["easy", "medium", "hard", "expert"].map((k) => m(PRESETS[k]))}`);
 assert.ok(m({ ...PRESETS.hard, tempo: 1.25 }) > m(PRESETS.hard), "faster pays more");
 assert.ok(m({ ...PRESETS.hard, hitbox: 0.2 }) < m(PRESETS.hard), "a bigger hitbox pays less");
-assert.ok(m({ ...PRESETS.hard, keep: true }) < m(PRESETS.hard), "keeping pays less");
+assert.ok(m({ ...PRESETS.hard, lock: 1 }) < m(PRESETS.hard), "a smaller lock size pays less");
+assert.ok(m({ ...PRESETS.hard, damage: "harsh" }) > m(PRESETS.hard), "harsher damage pays more");
 
 // judging follows the hitbox and keep
 assert.strictEqual(judgeFor(PRESETS.easy).window, 0.14);
-assert.strictEqual(judgeFor(PRESETS.easy).keep, true);
-assert.strictEqual(judgeFor(PRESETS.hard).keep, false);
+assert.strictEqual(normalize({ lock: "all" }).lock, Infinity, "saved 'all' comes back as Infinity");
 
 // pattern difficulty: easy = beats and half-beats; medium drops fast sixteenth runs and off-grid notes; full = all
 const k = (beat) => ({ lane: "kick", beat });
