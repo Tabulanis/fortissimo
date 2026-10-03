@@ -4,7 +4,7 @@ import path from "node:path";
 // DEV ONLY: rounds are written in Hackbeat (its own folders). While developing,
 // the game reads them from there, so a save in Hackbeat is a reload away:
 //   /rounds/roundN.json      <- Hackbeat/projects/garden-roundN.json (if it exists)
-//   /rounds/samples/<path>   <- Hackbeat/samples/<path> (if the game has no copy)
+//   /rounds/samples/<path>   <- Hackbeat/samples/<path> (else the pulled copy in public/)
 // `node tools/pull-rounds.mjs` snapshots both into public/rounds for the repo/shipping.
 const HACKBEAT = path.resolve(process.env.HACKBEAT_DIR || "../Hackbeat");
 const inside = (root, rel) => { const p = path.resolve(root, rel); return p.startsWith(root + path.sep) ? p : null; };
@@ -16,10 +16,17 @@ const hackbeatRounds = {
       let file = null;
       const m = rel.match(/^round(\d+)\.json$/);
       if (m) file = inside(path.join(HACKBEAT, "projects"), `garden-round${m[1]}.json`);
-      else if (rel.startsWith("samples/") && !fs.existsSync(path.resolve("public/rounds", rel))) file = inside(path.join(HACKBEAT, "samples"), rel.slice(8));
+      // Hackbeat's own copy first (edit there, reload here); the pulled copy in public/ is the fallback
+      else if (rel.startsWith("samples/")) file = inside(path.join(HACKBEAT, "samples"), rel.slice(8));
       if (!file || !fs.existsSync(file)) return next();
-      res.setHeader("Content-Type", file.endsWith(".json") ? "application/json" : "audio/wav");
       res.setHeader("Cache-Control", "no-store");
+      if (file.endsWith(".json")) {
+        // the samples embedded in a Hackbeat project are dead weight here: the game loads the files
+        const { sampleData, ...lean } = JSON.parse(fs.readFileSync(file, "utf8"));
+        res.setHeader("Content-Type", "application/json");
+        return res.end(JSON.stringify(lean));
+      }
+      res.setHeader("Content-Type", "audio/wav");
       fs.createReadStream(file).pipe(res);
     });
   },

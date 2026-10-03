@@ -1,0 +1,36 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" src="/" style="width:1200px;height:800px;border:0"></iframe>
+<script type="module">
+const out = [], log = (k, v) => out.push(k + ": " + (typeof v === "string" ? v : JSON.stringify(v)));
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const f = document.getElementById("f");
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  w.addEventListener("error", (e) => log("JSERROR", e.message));
+  try {
+    await wait(3000);
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(3000);
+    const G = w.__gr.game, S = G.song();
+    log("source", G.source());
+    log("round", [S.name, S.title, S.bars + " bars", S.notes && S.notes.length]);
+    log("samples", G.samples());
+    log("tracks", (S.tracks || []).map((t) => t.name));
+    log("kick sound", S.sounds && S.sounds.kick);
+    log("snare track fx", S.tracks && S.tracks[1].fx);
+    const m = G.mixer;
+    const kickDest = G.laneSound({ name: "kick", drum: 3 }).destination;
+    log("kick goes to a Hackbeat chain (not the game strip)", kickDest !== m.lane("kick"));
+    // sound actually flows through the Hackbeat bus when the kick is hit
+    const an = G.ctx.createAnalyser(); an.fftSize = 2048; m.hackbeat.connect(an);
+    let peak = 0; const buf = new Float32Array(2048);
+    const t0 = w.performance.now();
+    w.dispatchEvent(new w.KeyboardEvent("keydown", { key: "z", bubbles: true }));
+    w.dispatchEvent(new w.KeyboardEvent("keyup", { key: "z", bubbles: true }));
+    while (w.performance.now() - t0 < 600) { an.getFloatTimeDomainData(buf); for (const v of buf) peak = Math.max(peak, Math.abs(v)); await wait(10); }
+    log("Hackbeat bus peak after a kick", peak.toFixed(3));
+    log("hits", w.__gr.hits);
+  } catch (e) { log("ERROR", e.message + " " + e.stack); }
+  fetch("http://127.0.0.1:8899/hbfx", { method: "POST", body: out.join("\n") });
+};
+</script>

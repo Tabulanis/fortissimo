@@ -15,7 +15,9 @@ for (const m of manifest) {
   const src = n && path.join(HACKBEAT, "projects", `garden-round${n}.json`);
   if (!src || !fs.existsSync(src)) { console.log(`${m.name}: no Hackbeat copy (keeping ${m.file})`); continue; }
   const project = JSON.parse(fs.readFileSync(src, "utf8"));
-  fs.writeFileSync(path.join(OUT, m.file), JSON.stringify(project, null, 2));
+  // the game loads the sample files themselves; the copies embedded in the project would only be dead weight
+  const { sampleData, ...lean } = project;
+  fs.writeFileSync(path.join(OUT, m.file), JSON.stringify(lean, null, 2));
   const round = roundFromProject(project, m);
   for (const w of round.warnings) console.log(`  ! ${m.name}: ${w}`);
   // every sample the round's drums, bars and back tracks use
