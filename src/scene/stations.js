@@ -71,6 +71,42 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.8 });
 
   const bars = [];
+  // THE TOP ROW IS CANNONS (owner, 2026-10-03; placeholder until real assets):
+  // a carriage you strike (its key on it) and a bronze barrel aimed outward and
+  // up at the archers on the roofs; a hit, yours or the band's, fires a bolt
+  // from the muzzle (defense.js). Same target shape as a bar: top / normal / radius.
+  const cannonMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, metalness: 0.85, roughness: 0.35, emissive: 0x000000 });
+  const carriageMat = new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.75 });
+  function makeCannon(rg, i, z) {
+    const mat = cannonMat.clone();   // its own: it lights up on its own
+    const carriage = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.05, 0.12), carriageMat);
+    carriage.position.set(s * 0.09, 0.025, z);
+    const wheelGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.015, 14);
+    for (const dz of [-0.065, 0.065]) {
+      const w = new THREE.Mesh(wheelGeo, carriageMat);
+      w.rotation.x = Math.PI / 2;
+      w.position.set(s * 0.12, 0.03, z + dz);
+      rg.add(w);
+    }
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.045, 0.3, 16), mat);
+    barrel.rotation.z = -s * (Math.PI / 2 - 0.25);   // the narrow end out and up
+    barrel.position.set(s * 0.17, 0.1, z);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.033, 0.008, 8, 18), mat);
+    ring.position.set(0, 0.15, 0);
+    ring.rotation.x = Math.PI / 2;
+    barrel.add(ring);
+    for (const m of [carriage, barrel]) { m.castShadow = true; m.receiveShadow = true; rg.add(m); }
+    // its key floats just above the breech, always facing you (the barrel hid a flat one)
+    const lab = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(labels[i]), transparent: true, depthWrite: false }));
+    lab.scale.setScalar(0.085);
+    lab.position.set(s * 0.0, 0.16, z);
+    rg.add(lab);
+    rg.updateMatrixWorld(true);
+    const top = new THREE.Vector3(s * 0.06, 0.06, z).applyMatrix4(rg.matrixWorld);
+    const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(rg.quaternion);
+    const muzzle = barrel.localToWorld(new THREE.Vector3(0, 0.17, 0));
+    return { mesh: barrel, mat, label: lab, top, normal, radius: 0.07, len: 0.17, row: 1, cannon: true, muzzle };
+  }
   // rows: bottom = bars 0-7 (near, low), top = bars 8-15 (behind, raised and
   // tilted toward the player). Within a row, left -> right as you face the
   // station: facing +x your left is -z; facing -x your left is +z.
@@ -92,6 +128,7 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
     const z = BAR_MID_Z + s * (j - (PER_ROW - 1) / 2) * PITCH;
     const lx = s * (len / 2);                       // along the row, from its near edge
     const rg = rowGroups[row];
+    if (row === 1) { bars.push(makeCannon(rg, i, z)); continue; }   // the top row: CANNONS
     const mat = barMat.clone();   // own material: each bar lights up on its own
     const bar = new THREE.Mesh(new THREE.BoxGeometry(len, BAR_T, BAR_W), mat);
     bar.position.set(lx, -BAR_T / 2, z);

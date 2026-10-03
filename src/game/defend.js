@@ -21,7 +21,7 @@ import { beatWeight } from "./stages.js";
 
 export const SECTIONS = ["drums", "bass", "treble"];
 export const MIN_GAP_S = 1.0;      // lock size 1: offered notes at least this far apart
-export const MAX_OFFER = Infinity; // lock size 1: no cap — only the spacing (an arrow every second or so)
+export const MAX_OFFER = 1;        // lock size 1: ONE note at a time (owner, 2026-10-03), with a long lead (the game's LEAD)
 export const LIFE = {              // per run damage: a miss hurts you and the town, a hit heals both
   gentle: { miss: 3, heal: 3 }, normal: { miss: 5, heal: 2 }, harsh: { miss: 8, heal: 1 },
 };
@@ -43,6 +43,9 @@ export class Defend {
     this.locked = new Set();          // note ids
     this.sectionIdx = 0;
     this._chunk = null;               // lock size > 1: { ids: [...], next: 0, hits: [] }
+    this._single = null;              // lock size 1: the one note on offer (stays until it locks)
+    this.nowBeat = 0;                 // set by the game: where the song is now (beats into the loop)
+    this.leadBeats = 0;               // set by the game: the lead time, in beats
     this.events = [];                 // what happened since the last drain()
     this._skipEmpty();
   }
@@ -66,14 +69,19 @@ export class Defend {
     if (this.done) return [];
     const open = this.unlocked();
     if (this.lockSize === 1) {
-      // the most important first, spaced out; earlier in the bar breaks ties
-      const order = [...open].sort((a, b) => beatWeight(a.beat) - beatWeight(b.beat) || a.beat - b.beat);
-      const gap = MIN_GAP_S / this.beatDur, picked = [];
-      for (const n of order) {
-        if (picked.length >= MAX_OFFER) break;
-        if (picked.every((p) => this._dist(p.beat, n.beat) >= gap - 1e-6)) picked.push(n);
+      // ONE note at a time; it stays on offer until it locks. Picked so it comes
+      // round just after the lead: the important notes first, weighed against
+      // the wait (each step down in importance is worth about a beat of waiting)
+      if (this._single != null && !this.locked.has(this._single) && this.notes[this._single].section === this.section) return [this.notes[this._single]];
+      let best = null, bestScore = Infinity;
+      const target = this.nowBeat + this.leadBeats;
+      for (const n of open) {
+        const wait = (((n.beat - target) % this.loopBeats) + this.loopBeats) % this.loopBeats;
+        const score = wait + beatWeight(n.beat);
+        if (score < bestScore - 1e-9) { bestScore = score; best = n; }
       }
-      return picked.sort((a, b) => a.beat - b.beat);
+      this._single = best ? best.id : null;
+      return best ? [best] : [];
     }
     if (!this._chunk) {
       const size = this.lockSize === Infinity ? open.length : this.lockSize;

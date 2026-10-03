@@ -1363,6 +1363,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     }
   }
   const _red = new THREE.Color(0xff1408);
+  const _cyan = new THREE.Color(0x6fe6ff);
+  const pending = new Float32Array(64);   // per target 0..1: "coming up" (set by the game)
 
   // path point p(f): lerp(spawn, face, f) + the parabolic arc lift.
   // Written into `out`; reuses module temps, allocates nothing.
@@ -1966,6 +1968,16 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
           frame.material.opacity = Math.min(1, 0.15 + 0.85 * c + 0.3 * peak);
           frame.material.color.copy(hexToColor(BAR_HEX[stationOf(lane)])).lerp(_white, 0.5 * c * c + 0.4 * peak);
         }
+      } else if (pending[lane] > 0.01 && drumVisible[lane]) {
+        // COMING UP (owner, 2026-10-03: more lead, better clues): the next target
+        // glows a soft cyan, fading in over its lead time, pulsing gently
+        const pl = pending[lane] * (0.7 + 0.3 * Math.sin(heardNow * 4.2));
+        fl.glow.visible = true;
+        fl.glow.material.opacity = Math.min(1, 1.0 * pl);
+        fl.glow.scale.setScalar(fl.radius * (3.2 + 0.6 * pl));   // a big halo you can't miss
+        fl.glow.material.color.copy(_cyan);
+        if (frame) { frame.visible = true; frame.material.opacity = Math.min(1, 1.2 * pl); frame.material.color.copy(_cyan); }
+        if (mat && mat.userData.base) { mat.color.copy(mat.userData.base).lerp(_cyan, 0.85 * pl); continue; }
       } else {
         fl.glow.visible = false;
         fl.glow.material.opacity = 0;
@@ -2234,11 +2246,17 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     // per lane: how much of an arrow's flight the camera sees right now (0..1), and whether its launch is on screen
     /** the shield's three parts: { drums|bass|treble: { progress 0..1, up } } */
     setShield: (state) => defense.setShield(state),
+    /** per target 0..1: how strongly it glows as "coming up next" */
+    setPending: (levels) => { pending.fill(0); for (const [i, v] of Object.entries(levels)) pending[+i] = Math.max(pending[+i], v); },
     debugDefense: (heard) => ({ heard: +heard.toFixed(2), ...defense.debug() }),
     /** a missed arrow reached the shield: flash the part in front of that target */
     shieldHit: (section, laneIdx) => defense.shieldHit(section, drumFace[laneIdx]),
     /** a top-row note fires that bar's cannon at its archer, at heard time `at` */
-    fireCannon: (laneIdx, at) => { if (laneIdx >= 6 && laneIdx < N_T) defense.fire(drumFace[laneIdx], SPAWNS[laneIdx], at); },
+    fireCannon: (laneIdx, at) => {
+      if (laneIdx < 6 || laneIdx >= N_T) return;
+      const b = melodyStations[laneIdx < 6 + BARS ? "bass" : "treble"].bars[(laneIdx - 6) % BARS];
+      defense.fire(b.muzzle || drumFace[laneIdx], SPAWNS[laneIdx], at);   // from the muzzle
+    },
     debugArrowView: () => {
       camera.updateMatrixWorld();
       const P = new THREE.Vector3(), out = [];

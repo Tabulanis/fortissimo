@@ -23,19 +23,27 @@ const BOLTS = 16, BURSTS = 16;
 const VERT = `varying vec3 vN; varying vec3 vV; varying vec2 vUv; varying vec3 vP;
 void main() { vec4 wp = modelMatrix * vec4(position, 1.0); vUv = uv; vP = position; vN = normalize(mat3(modelMatrix) * normal);
   vV = normalize(cameraPosition - wp.xyz); gl_Position = projectionMatrix * viewMatrix * wp; }`;
-// an ENERGY LATTICE: bright grid lines on a nearly clear skin, a seam glowing
-// along the ground, a pulse sweeping up — reads as a dome, keeps the view clear
-const FRAG = `uniform vec3 uColor; uniform float uStrength, uTime, uHit; uniform vec3 uHitAt;
+// the owner's SWIRL (public/textures/shield_swirl.jpg, an equirect nebula),
+// wrapped by direction so it runs seamless over all three parts and drifts
+// slowly; its brightness IS its opacity (the dark goes clear), pushed bright
+// for a bloomed glow; plus a rim, a seam on the ground and the hit flash
+const FRAG = `uniform vec3 uColor; uniform float uStrength, uTime, uHit; uniform vec3 uHitAt; uniform sampler2D uTex;
 varying vec3 vN; varying vec3 vV; varying vec2 vUv; varying vec3 vP;
-float line(float x, float w) { float f = abs(fract(x) - 0.5); return smoothstep(0.5 - w, 0.5, f); }
 void main() {
+  vec3 d = normalize(vP);
+  vec2 base = vec2(atan(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(d.y, -1.0, 1.0)) / 3.1415927 + 0.5);
+  // WARP (owner): the swirl's coordinates flow with slow, crossing ripples
+  vec2 w = vec2(sin(base.y * 14.0 + uTime * 0.9) + sin(base.x * 23.0 - uTime * 0.6),
+                cos(base.x * 17.0 + uTime * 0.7) + sin(base.y * 9.0 - uTime * 1.1)) * 0.012;
+  // ROTATION (owner): it turns round the dome; a second copy turns the other way, deeper and dimmer
+  vec3 sw = texture2D(uTex, base + w + vec2(uTime * 0.03, 0.0)).rgb
+          + 0.55 * texture2D(uTex, vec2(1.0 - base.x, base.y) * 1.3 - w * 1.6 + vec2(-uTime * 0.018, 0.0)).rgb;
+  float lum = dot(sw, vec3(0.299, 0.587, 0.114));
   float rim = pow(1.0 - abs(dot(normalize(vN), vV)), 3.0);
-  float grid = max(line(vUv.x * 14.0, 0.03), line(vUv.y * 6.0, 0.04));          // the lattice
-  float seam = smoothstep(0.08, 0.0, vUv.y);                                      // where it meets the ground
-  float sweep = smoothstep(0.12, 0.0, abs(fract(vUv.y - uTime * 0.25) - 0.5) - 0.38);   // a pulse running up
+  float seam = smoothstep(0.08, 0.0, vUv.y);
   float hit = uHit * smoothstep(1.6, 0.0, distance(vP, uHitAt));
-  float a = uStrength * (0.015 + 0.55 * grid + 0.25 * rim + 0.7 * seam + 0.25 * sweep * grid) + hit * (0.5 + 0.8 * grid);
-  gl_FragColor = vec4(uColor * (0.9 + 0.8 * grid + hit), a);
+  float a = uStrength * (pow(lum, 1.7) * 1.05 + 0.15 * rim + 0.6 * seam) + hit * (0.4 + lum);   // light enough to see through
+  gl_FragColor = vec4(mix(sw * 1.8, uColor, 0.25) + uColor * (0.5 * rim + hit), a);
 }`;
 
 export function createDefense(scene, { fireTexture, layer = 0 } = {}) {
@@ -43,13 +51,16 @@ export function createDefense(scene, { fireTexture, layer = 0 } = {}) {
   group.position.copy(CENTER);
   scene.add(group);
 
+  const swirl = new THREE.TextureLoader().load("/textures/shield_swirl.jpg");
+  swirl.colorSpace = THREE.SRGBColorSpace;
+  swirl.wrapS = THREE.RepeatWrapping;
   // ---- the shield: three sector meshes -------------------------------------
   const parts = {};
   for (const [name, mid] of Object.entries(SECTORS)) {
     const mat = new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
-      uniforms: { uColor: { value: new THREE.Color(0x58c8ff) }, uStrength: { value: 0 }, uTime: { value: 0 }, uHit: { value: 0 }, uHitAt: { value: new THREE.Vector3() } },
+      uniforms: { uColor: { value: new THREE.Color(0x58c8ff) }, uStrength: { value: 0 }, uTime: { value: 0 }, uHit: { value: 0 }, uHitAt: { value: new THREE.Vector3() }, uTex: { value: swirl } },
     });
     const geo = new THREE.SphereGeometry(R, 48, 16, mid - Math.PI / 3, (2 * Math.PI) / 3, 0, Math.PI / 2);
     const mesh = new THREE.Mesh(geo, mat);

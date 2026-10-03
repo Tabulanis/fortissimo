@@ -139,6 +139,15 @@ let defend = null;
 let defendFrom = 0;              // misses count from here (a breath after Start)
 const occDone = new Set();       // "noteId@pass": that occurrence was hit or counted as a miss
 const offeredAt = new Map();     // noteId -> when it was first offered (its arrow can only come after that)
+// LEAD TIME (owner, 2026-10-03): a newly offered note's target glows "coming up"
+// (fading in) for this long before its arrow may come. Easy: 3 s, getting
+// shorter as the song fills in (1.2 s near the end) — it speeds up toward the end.
+const leadFor = () => {
+  if (RUN.lock !== 1) return 4;
+  const done = defend ? defend.locked.size / Math.max(1, defend.notes.length) : 0;
+  return 3 - 1.8 * done;
+};
+const readyAt = (id) => (offeredAt.has(id) ? offeredAt.get(id) + leadFor() : Infinity);
 const songDone = () => (defend ? defend.done : stageIdx >= song().parts.length);
 const currentPart = () => (defend ? defend.offered() : songDone() ? [] : song().parts[stageIdx].part);
 const partObj = () => (defend ? (defend.done ? null : { mode: defend.section, bars: song().bars, part: defend.offered() }) : songDone() ? null : song().parts[stageIdx]);
@@ -280,18 +289,33 @@ function ringBell() {
 function tickDefend(heardNow) {
   if (!defend || life.over) return;
   const loop = 4 * song().bars * clock.beatDur, box = judgeDiff().window;
+  // where the song is, and the lead, for picking Easy's next note (it comes just after the lead)
+  defend.nowBeat = (((heardNow - clock.first) / clock.beatDur) % defend.loopBeats + defend.loopBeats) % defend.loopBeats;
+  defend.leadBeats = leadFor() / clock.beatDur;
   if (!defend.done) for (const n of defend.offered()) {
     if (!offeredAt.has(n.id)) offeredAt.set(n.id, heardNow);
     const k = Math.floor((heardNow - box - clock.first - n.beat * clock.beatDur) / loop);
     const t = clock.first + k * loop + n.beat * clock.beatDur;
     if (t < defendFrom || heardNow < t + box) continue;
-    // only a note whose arrow had time to fly in can be missed (fair: newly offered notes aren't)
-    if (t < offeredAt.get(n.id) + 1.5) continue;
+    // only once its lead is over and its arrow had time to fly in (fair: nothing unannounced counts)
+    if (t < readyAt(n.id)) continue;
     const key = n.id + "@" + k;
     if (occDone.has(key)) continue;
     occDone.add(key);
     defend.miss(n.id);
   }
+  // the targets of what's offered glow "coming up"
+  // ...over the last 2 s before its note (owner: ~2 s of warning), then the arrow's red charge takes over
+  const lv = {};
+  if (!defend.done) for (const n of defend.offered()) {
+    const i = LANE_INDEX[n.lane];
+    if (i == null) continue;
+    const from = Math.max(readyAt(n.id), heardNow - box);
+    const k = Math.ceil((from - clock.first - n.beat * clock.beatDur) / loop);
+    const tNext = clock.first + k * loop + n.beat * clock.beatDur;   // its next moment that counts
+    lv[i] = Math.max(lv[i] || 0, Math.min(1, Math.max(0, 1 - (tNext - heardNow) / 2)));
+  }
+  stage3d.setPending(lv);
   defendEvents();
 }
 // the dome: each section's part shimmers as it's built and stands once it's up
@@ -692,6 +716,8 @@ function makeStartButton() {
     defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, beatDur: clock.beatDur });
     defendFrom = clock.first + Math.ceil((ctx.currentTime + 1.5 - clock.first) / (4 * clock.beatDur)) * 4 * clock.beatDur;   // misses count from the next bar after a breath
     hudUI.hideBell();
+    defend.nowBeat = (((ctx.currentTime - clock.first) / clock.beatDur) % defend.loopBeats + defend.loopBeats) % defend.loopBeats;
+    defend.leadBeats = leadFor() / clock.beatDur;   // so even the first note comes just after its lead
     defend.drain();
     session = new SessionLog({
       bpm: BPM,
@@ -1109,6 +1135,14 @@ function buildUpcoming(heardNow) {
   // arrows only for the part you're learning; none in free play
   if (mode === "free" || songDone()) return [];
   const part = (window.__gr && window.__gr.game && window.__gr.game.testPart) || currentPart();   // testPart: harness only
+  if (defend) {
+    // the engine: an arrow only for an occurrence after its note's lead time
+    const loop = 4 * partBars() * clock.beatDur, out = [];
+    for (const n of part) for (const a of partArrows([n], (x) => LANE_INDEX[x], clock.first, loop, clock.beatDur, heardNow - 0.6, heardNow + APPROACH_S)) {
+      if (a.time >= readyAt(n.id)) out.push(a);
+    }
+    return out.sort((a, b) => a.time - b.time);
+  }
   return partArrows(part, (n) => LANE_INDEX[n], clock.first, 4 * partBars() * clock.beatDur,
                     clock.beatDur, heardNow - 0.6, heardNow + APPROACH_S);
 }
@@ -1307,7 +1341,7 @@ if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; }, get bell() { return bell; },
   get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; },
   setBackLevel: (v) => { for (const g of Object.values(backGain)) g.gain.value = v; },   // harness: backgrounds at full
-  get defend() { return defend; }, get life() { return life; },
+  get defend() { return defend; }, get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,
   get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln, midi) => laneSound(ln, midi),
   backInfo: () => ({ bpm: BPM, songBpm: song().bpm, loopSeconds: +(song().bars * 4 * clock.beatDur).toFixed(3),
     stretched: [...backCache].map(([k, b]) => [k, +b.duration.toFixed(3)]) }),

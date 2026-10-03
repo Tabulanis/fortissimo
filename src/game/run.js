@@ -78,6 +78,35 @@ const group = (lane) => lane.split(" ")[0];   // "bass 3" -> "bass"; drums are t
  * @returns {{play: object[], backing: object[]}} what you play, and what the backing plays for you
  */
 export function simplifyNotes(notes, level) {
+  const r = simplifyPattern(notes, level);
+  return twoHands(r.play, r.backing);
+}
+
+// TWO HANDS (owner, 2026-10-03: "in VR you only got two hands"): never more than
+// two notes at the same moment at one station — the two that matter most stay
+// yours (drums: kick, snare, hat, crash, toms; bars: the bottom row, then the
+// top, low to high); the rest go to the backing, so they still sound
+const DRUM_RANK = { kick: 0, snare: 1, hat: 2, crash: 3, "tom low": 4, "tom high": 5 };
+const rank = (lane) => DRUM_RANK[lane] ?? +lane.split(" ")[1];
+export const MAX_AT_ONCE = 2;
+function twoHands(play, backing) {
+  const keep = [], extra = [...backing];
+  const groups = new Map();
+  for (const n of play) {
+    const key = group(n.lane) === "bass" || group(n.lane) === "treble" ? group(n.lane) : "drums";
+    const k = key + "@" + Math.round(n.beat / TOL);
+    (groups.get(k) || groups.set(k, []).get(k)).push(n);
+  }
+  for (const g of groups.values()) {
+    g.sort((a, b) => rank(a.lane) - rank(b.lane));
+    keep.push(...g.slice(0, MAX_AT_ONCE));
+    extra.push(...g.slice(MAX_AT_ONCE));
+  }
+  keep.sort((a, b) => a.beat - b.beat);
+  return { play: keep, backing: extra };
+}
+
+function simplifyPattern(notes, level) {
   if (level === "full") return { play: [...notes], backing: [] };
   const play = [], backing = [];
   const sorted = [...notes].sort((a, b) => a.beat - b.beat);

@@ -1,0 +1,37 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" style="width:1100px;height:760px;border:0"></iframe>
+<script type="module">
+const out = [], wait = (ms) => new Promise((r) => setTimeout(r, ms));
+localStorage.removeItem("gr.run");   // Easy
+const KEY = { hat: "q", snare: "w", crash: "e", kick: "z", "tom low": "x", "tom high": "c" };
+for (const k of ["bass", "treble"]) "asdfghjkqwertyui".split("").forEach((c, i) => (KEY[`${k} ${i + 1}`] = c));
+const f = document.getElementById("f"); f.src = "/?quality=low";
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  w.addEventListener("error", (e) => out.push("JSERROR " + e.message));
+  try {
+    await wait(3000);
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(1000);
+    const G = w.__gr.game, D = G.defend;
+    const press = (k) => { w.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true })); w.dispatchEvent(new w.KeyboardEvent("keyup", { key: k, bubbles: true })); };
+    const at = (T, k) => { const o = G.ctx.getOutputTimestamp(); setTimeout(() => press(k), Math.max(0, o.performanceTime + (T + G.calibration - o.contextTime) * 1000 - w.performance.now())); };
+    const planned = new Set(), lockTimes = [];
+    let locked = D.locked.size, firstArrow = null;
+    const t0 = performance.now();
+    while (performance.now() - t0 < 40000) {
+      const now = G.ctx.getOutputTimestamp().contextTime;
+      for (const a of G.upcoming()) {   // only arrows that are actually flying
+        if (firstArrow === null) firstArrow = +(now).toFixed(2);
+        const key = a.laneIdx + "@" + a.time.toFixed(3);
+        if (!planned.has(key) && a.time - now < 1.0) { planned.add(key); at(a.time, KEY[G.laneOf(a.laneIdx)]); }
+      }
+      if (D.locked.size > locked) { locked = D.locked.size; lockTimes.push(+(now).toFixed(1)); }
+      await wait(50);
+    }
+    const gaps = lockTimes.slice(1).map((t, i) => +(t - lockTimes[i]).toFixed(1));
+    out.push(`40 s, playing only arrows that appear: ${lockTimes.length} locks at ${JSON.stringify(lockTimes)} | gaps between locks (s): ${JSON.stringify(gaps)} | life ${G.life.you}/${G.life.town}`);
+  } catch (e) { out.push("ERROR " + e.message + " " + e.stack); }
+  fetch("http://127.0.0.1:8899/pace", { method: "POST", body: out.join("\n") });
+};
+</script>
