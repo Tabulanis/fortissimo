@@ -126,6 +126,7 @@ const partBars = () => (partObj() && partObj().bars) || 1;            // melody 
 const partMode = () => (partObj() && partObj().mode) || "drums";       // "drums" | "bass" | "treble"
 const isMelody = () => partMode() !== "drums";
 let padConnected = false;   // a game controller is plugged in (the bars then show its buttons)
+let previewedStep = null;   // Easy: the step already played once as a preview
 let audioStarted = false;   // Start pressed and the audio graph exists (the page lays out its HUD before that)
 let roundOffsets = [];          // every guided hit this round: seconds off its note, null = off-chart
 const results = createResults();
@@ -189,6 +190,11 @@ function applyStage() {
   stage3d.setStation(isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left
   if (audioStarted) updateBackLevels();                      // the sections' background music follows progress
   stageMessage();
+  // Easy: a new step plays once by itself, lit up, before you're asked to play it
+  if (difficulty === DIFFICULTY.easy && audioStarted && !songDone() && previewedStep !== song().parts[stageIdx]) {
+    previewedStep = song().parts[stageIdx];
+    playHint([previewedStep], "👂 Here's the next one — listen, then play it");
+  }
 }
 
 // the standing instruction for where you are in the song
@@ -564,6 +570,7 @@ function makeStartButton() {
     makeBackBus();
     setInterval(scheduleBack, 25);
     audioStarted = true;
+    applyStage();   // with the audio up: background levels, and Easy previews the first step
 
     btn.remove();
     hud.textContent = modeStr();
@@ -628,10 +635,10 @@ function unlockedParts() {
   const mode = partMode();
   return song().parts.slice(stageIdx).filter((p) => p.mode === mode);
 }
-function playHint() {
+function playHint(only = null, label = null) {
   if (!ctx || !clock || !pool || !drums) { hudUI.say("Press Start first", "bad", 1500); return; }
   if (songDone()) { hudUI.say("Everything's locked in — nothing left to hear", "", 2000); return; }
-  const parts = unlockedParts();
+  const parts = only || unlockedParts();   // only: just these steps (Easy's preview of a new step)
   const bars = Math.max(1, ...parts.map((p) => p.phraseBars || p.bars || 1));     // one loop that holds every part (a placed bar: its song phrase)
   const phrase = 4 * clock.beatDur * bars;
   const now = ctx.getOutputTimestamp().contextTime;
@@ -650,7 +657,7 @@ function playHint() {
     }
   }
   const left = parts.length;
-  hudUI.say(`👂 Listen — what's left to learn here (${left} part${left > 1 ? "s" : ""}${bars > 1 ? `, ${bars} bars` : ""})`, "good", Math.max(2500, (start + phrase - now) * 1000));
+  hudUI.say(label || `👂 Listen — what's left to learn here (${left} part${left > 1 ? "s" : ""}${bars > 1 ? `, ${bars} bars` : ""})`, "good", Math.max(2500, (start + phrase - now) * 1000));
 }
 
 // --- ghost loops -----------------------------------------------------------

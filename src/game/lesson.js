@@ -40,6 +40,19 @@ const INSTRUMENTS = [
 ];
 const DRUM_INDEX = { hat: 0, snare: 1, crash: 2, kick: 3, "tom low": 4, "tom high": 5 };
 
+/** notes (one bar) in time order, split at the widest gaps until every figure fits in `max` */
+export function figures(notes, max) {
+  const sorted = [...notes].sort((a, b) => a.beat - b.beat);
+  if (!sorted.length) return [];
+  if (sorted.length <= max) return [sorted];
+  let cut = 1, widest = -1;
+  for (let i = 1; i < sorted.length; i++) {
+    const gap = sorted[i].beat - sorted[i - 1].beat, mid = -Math.abs(i - sorted.length / 2) * 1e-3;   // ties: nearer the middle
+    if (gap + mid > widest) { widest = gap + mid; cut = i; }
+  }
+  return [...figures(sorted.slice(0, cut), max), ...figures(sorted.slice(cut), max)];
+}
+
 /** the shortest loop (1, 2, 4... bars, dividing the song) that these notes repeat at */
 export function periodBars(notes, songBars) {
   const key = (n, L) => `${n.lane}@${(((n.beat % (4 * L)) + 4 * L) % (4 * L)).toFixed(4)}`;
@@ -88,24 +101,35 @@ export function lessonParts(song, perStep = 4, { barByBar = false } = {}) {
     const show = mode === "drums" ? [...shown] : [3, 1, 0, 4, 2, 5];
     // a busy part that doesn't repeat bar to bar: one bar at a time (Easy)
     const byBar = barByBar && !all && L > 1 && pattern.length > perStep;
-    const chunks = byBar
-      ? Array.from({ length: L }, (_, b) => ({ b, notes: pattern.filter((n) => n.beat >= 4 * b && n.beat < 4 * b + 4) })).filter((c) => c.notes.length)
-      : [{ b: null, notes: pattern }];
     let addOn = false;
-    for (const c of chunks) {
-      const order = [...c.notes].sort((a, b) => beatWeight(a.beat) - beatWeight(b.beat) || a.beat - b.beat);
-      const n = all ? 1 : Math.ceil(order.length / perStep);
-      const size = Math.ceil(order.length / n);              // even chunks: no lonely 1-note step
-      for (let k = 0; k < n; k++) {
-        const notes = order.slice(k * size, (k + 1) * size).sort((a, b) => a.beat - b.beat);
-        const bit = (c.b != null ? ` bar ${c.b + 1}` : "") + (n > 1 ? ` ${k + 1}/${n}` : "");
-        parts.push(c.b == null
-          ? { label: name + bit, mode, instrument: name, bars: L, addOn, show, part: notes }
-          // the step loops ONE bar (its notes moved to bar 1); locked, it goes back to bar atBar of a phraseBars loop
-          : { label: name + bit, mode, instrument: name, bars: 1, addOn, show, atBar: c.b, phraseBars: L,
-              part: notes.map((n) => ({ ...n, beat: n.beat - 4 * c.b })) });
-        addOn = true;
-      }
+    const push = (notes, extra, bit) => {
+      parts.push({ label: name + bit, mode, instrument: name, addOn, show, ...extra, part: [...notes].sort((a, b) => a.beat - b.beat) });
+      addOn = true;
+    };
+    if (!byBar) {
+      // one loop: the most important notes first, in even chunks
+      const order = [...pattern].sort((a, b) => beatWeight(a.beat) - beatWeight(b.beat) || a.beat - b.beat);
+      const n = all ? 1 : Math.ceil(order.length / perStep), size = Math.ceil(order.length / n);   // even: no lonely 1-note step
+      for (let k = 0; k < n; k++) push(order.slice(k * size, (k + 1) * size), { bars: L }, n > 1 ? ` ${k + 1}/${n}` : "");
+      continue;
+    }
+    // EASY, a busy part (owner, 2026-10-03: "make each round make sense"):
+    // 1. THE BEAT — what every bar shares (kick 1 & 3, snare 2 & 4...) — once, as a 1-bar loop
+    const pos = (n) => `${n.lane}@${(n.beat % 4).toFixed(4)}`;
+    const inBar = (b) => pattern.filter((n) => n.beat >= 4 * b && n.beat < 4 * b + 4);
+    const shared = new Set(inBar(0).map(pos).filter((k) => Array.from({ length: L - 1 }, (_, i) => i + 1).every((b) => inBar(b).some((n) => pos(n) === k))));
+    const core = inBar(0).filter((n) => shared.has(pos(n)));
+    if (core.length) {
+      const order = [...core].sort((a, b) => beatWeight(a.beat) - beatWeight(b.beat) || a.beat - b.beat);
+      const n = Math.ceil(order.length / perStep), size = Math.ceil(order.length / n);
+      for (let k = 0; k < n; k++) push(order.slice(k * size, (k + 1) * size), { bars: 1 }, ` · the beat${n > 1 ? ` ${k + 1}/${n}` : ""}`);
+    }
+    // 2. then each bar's OWN notes, as figures: in time order, split at the widest gaps
+    for (let b = 0; b < L; b++) {
+      const extra = inBar(b).filter((n) => !shared.has(pos(n)));
+      const figs = figures(extra, perStep);
+      figs.forEach((f, k) => push(f.map((n) => ({ ...n, beat: n.beat - 4 * b })), { bars: 1, atBar: b, phraseBars: L },
+        ` · bar ${b + 1}${figs.length > 1 ? ` ${k + 1}/${figs.length}` : ""}`));
     }
   }
   return parts;

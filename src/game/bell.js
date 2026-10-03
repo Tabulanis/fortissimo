@@ -1,6 +1,8 @@
-export function judgeMeasure(hits, part, barStart, beatDur, diff) {
+/** kept: Set of note indices already hit on an earlier pass (Easy: keep what you got right) */
+export function judgeMeasure(hits, part, barStart, beatDur, diff, kept = null) {
   const total = part.length;
   const matched = new Array(part.length).fill(false);
+  const pairs = [];   // [note index, hit] for every hit that found its note
   let extras = 0;
   const lanes = new Set(part.map((n) => n.lane));
   for (const h of hits) {
@@ -12,15 +14,17 @@ export function judgeMeasure(hits, part, barStart, beatDur, diff) {
       const d = Math.abs(h.t - (barStart + n.beat * beatDur));
       if (d < bestD) { bestD = d; best = i; }
     }
-    if (best >= 0 && bestD <= diff.window) matched[best] = true;
+    if (best >= 0 && bestD <= diff.window) { matched[best] = true; pairs.push([best, h]); }
     else extras++;
   }
-  const hitsMatched = matched.filter(Boolean).length;
+  // with keep: a note hit on ANY pass so far counts
+  const hitsMatched = matched.filter((m, i) => m || (kept && kept.has(i))).length;
   return {
     pass: total > 0 && hitsMatched / total >= diff.ratio && extras <= diff.extras,
     matched: hitsMatched,
     total,
     extras,
+    pairs,
   };
 }
 
@@ -72,14 +76,24 @@ export class Bell {
     // an early hit for the NEXT bar's beat 1 is out (it stays buffered).
     const lo = this._recordStart - diff.window, hi = this.recordEnd - diff.window;
     const measure = this._hits.filter((h) => h.t >= lo && h.t < hi);
+    // KEEP WHAT YOU GOT RIGHT (Easy, owner 2026-10-03): notes hit on an earlier
+    // pass of this same step stay hit; a pass only needs the ones still missing
+    if (!diff.keep || this._keptPart !== part) { this._kept = new Map(); this._keptPart = part; }
     const judge = free
       ? { pass: true, matched: measure.length, total: measure.length, extras: 0 }
-      : judgeMeasure(measure, part, this._recordStart, this.beatDur, diff);
+      : judgeMeasure(measure, part, this._recordStart, this.beatDur, diff, diff.keep ? new Set(this._kept.keys()) : null);
+    if (diff.keep && judge.pairs) for (const [i, h] of judge.pairs) this._kept.set(i, { lane: h.lane, pos: h.t - this._recordStart, velocity: h.velocity });
     if (!judge.pass) {
       this._hits = this._hits.filter((h) => h.t >= hi);   // keep the next bar's early hits
       this._recordStart += this._phraseDur();
       return { locked: false, judge };
     }
+    // the locked loop: this pass as played, plus a kept hit for every note this pass missed
+    if (diff.keep && judge.pairs) {
+      const hitNow = new Set(judge.pairs.map(([i]) => i));
+      for (const [i, k] of this._kept) if (!hitNow.has(i)) measure.push({ lane: k.lane, t: this._recordStart + k.pos, velocity: k.velocity });
+    }
+    this._kept = new Map(); this._keptPart = null;
     this._hits = measure;
     const bars = this._bars || 1;
     const layer = {

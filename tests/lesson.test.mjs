@@ -1,7 +1,7 @@
 import assert from "node:assert";
 import { ROUNDS } from "../src/game/stages.js";
 import { roundFromProject, songProjectFromRound } from "../src/game/hackbeat.js";
-import { lessonParts, periodBars, sectionProgress, backLevel, NOTES_PER_STEP } from "../src/game/lesson.js";
+import { lessonParts, periodBars, figures, sectionProgress, backLevel, NOTES_PER_STEP } from "../src/game/lesson.js";
 
 const song = roundFromProject(songProjectFromRound(ROUNDS[0]).project);
 
@@ -53,6 +53,23 @@ const songKeys = song.notes.map((n) => `${n.lane}@${n.beat.toFixed(4)}`).sort();
   assert.ok(ex.filter((p) => p.mode !== "drums").every((p) => /(bottom|top)$/.test(p.instrument)), "rows one at a time");
   assert.deepStrictEqual(rebuilt(ex, song.bars), songKeys);
 }
+
+// EASY makes sense: THE BEAT (what every bar shares) first, as a 1-bar loop; then each bar's own notes
+{
+  const beat = [{ lane: "kick", b: 0 }, { lane: "snare", b: 1 }, { lane: "kick", b: 2 }, { lane: "snare", b: 3 }];
+  const notes = [];
+  for (let bar = 0; bar < 4; bar++) for (const x of beat) notes.push({ lane: x.lane, beat: 4 * bar + x.b, vel: 1 });
+  notes.push({ lane: "kick", beat: 2.5, vel: 1 }, { lane: "kick", beat: 4 + 1.5, vel: 1 }, { lane: "kick", beat: 4 + 1.75, vel: 1 }, { lane: "snare", beat: 12 + 3.5, vel: 1 });
+  const song4 = { bars: 4, notes };
+  const ps = lessonParts(song4, 4, { barByBar: true });
+  assert.ok(/the beat/.test(ps[0].label) && ps[0].bars === 1 && ps[0].atBar == null, "the beat comes first, a 1-bar loop");
+  assert.deepStrictEqual(ps[0].part.map((n) => `${n.lane}@${n.beat}`), ["kick@0", "snare@1", "kick@2", "snare@3"], "the whole backbeat, not half of it");
+  assert.ok(ps.slice(1).every((p) => p.atBar != null && !p.part.some((n) => Number.isInteger(n.beat) && beat.some((x) => x.b === n.beat && x.lane === n.lane))), "later steps teach only each bar's own notes");
+  assert.deepStrictEqual(ps.slice(1).map((p) => p.atBar), [0, 1, 3], "bars with nothing new are skipped");
+  assert.deepStrictEqual(rebuilt(ps, 4), notes.map((n) => `${n.lane}@${n.beat.toFixed(4)}`).sort(), "and it all adds up to the song");
+}
+// figures: split where the gaps are, not by importance
+assert.deepStrictEqual(figures([0, 0.25, 0.5, 2, 2.25, 2.5].map((beat) => ({ lane: "kick", beat })), 3).map((f) => f.map((n) => n.beat)), [[0, 0.25, 0.5], [2, 2.25, 2.5]]);
 
 // BAR BY BAR (Easy): a busy part that doesn't repeat is learned one bar at a time, and still adds up
 {
