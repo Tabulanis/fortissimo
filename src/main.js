@@ -20,10 +20,10 @@ import { SessionLog } from "./game/session.js";
 import { createStage3D } from "./scene/stage3d.js";
 import { Bell } from "./game/bell.js";
 import { Loops } from "./game/loops.js";
-import { DIFFICULTY } from "./game/difficulty.js";
 import { ROUNDS, partArrows, isShown, buildUp } from "./game/stages.js";
 import { loadRoundFiles } from "./game/roundfiles.js";
-import { lessonParts, NOTES_PER_STEP, sectionProgress, backLevel } from "./game/lesson.js";
+import { lessonParts, sectionProgress, backLevel } from "./game/lesson.js";
+import { normalize, judgeFor, simplifyNotes, scoreMultiplier, presetOf, PRESET_NAMES } from "./game/run.js";
 import { gradeRound } from "./game/grade.js";
 import { createResults } from "./ui/results.js";
 import { showLocked } from "./ui/locked.js";
@@ -46,8 +46,10 @@ const stage = document.querySelector("#stage");
 const chart = document.querySelector("#chart");
 const ctx2d = chart.getContext("2d");
 const SET = loadSettings();         // saved settings (Esc / gear)
-let difficulty = DIFFICULTY[SET.difficulty] || DIFFICULTY.easy;   // sets "correct enough" and the tempo
-const BPM = difficulty.bpm;
+// THE RUN (run.js, owner 2026-10-03, Beat Saber style): chosen in the start menu —
+// hitbox, tempo, pattern difficulty, notes per step, keep. Saved between visits.
+const RUN = (() => { try { return normalize(JSON.parse(localStorage.getItem("gr.run") || "null") || {}); } catch { return normalize({}); } })();
+let BPM = 80;   // set at Start: the song's own tempo x the run's tempo
 const CALIB_KEY = "gr.calib";
 
 // --- drum colours (hex strings; shared by the 3D stage and the chart) ------
@@ -105,17 +107,16 @@ let roundIdx = 0;
 const BASE_ROUNDS = ROUNDS;
 const EASY_ROUNDS = ROUNDS.map(buildUp);
 let LESSONS = null;
-// TEMPORARY (owner, 2026-10-03): phones on Easy get a ridiculous hitbox, in
-// time (here) and in space (taps snap to a wanted target, see the tap handler)
-const PHONE_EASY = { window: 0.16, ratio: 0.6, extras: 4 };   // toned down 2026-10-03 (was 0.22 / 0.5 / 6)
-const phoneEasy = () => IS_TOUCH && difficulty === DIFFICULTY.easy;
-const judgeDiff = () => (phoneEasy() ? { ...difficulty, ...PHONE_EASY } : difficulty);
-const difficultyKey = () => Object.keys(DIFFICULTY).find((k) => DIFFICULTY[k] === difficulty) || "easy";
-const song = () => (LESSONS ? LESSONS[roundIdx] : (difficulty === DIFFICULTY.easy ? EASY_ROUNDS : BASE_ROUNDS)[roundIdx]);
+const judgeDiff = () => judgeFor(RUN);   // what a step is judged by
+const song = () => (LESSONS ? LESSONS[roundIdx] : (RUN.patterns === "easy" ? EASY_ROUNDS : BASE_ROUNDS)[roundIdx]);
 const lastRound = () => roundIdx >= (LESSONS || BASE_ROUNDS).length - 1;
 const roundsReady = loadRoundFiles().then((songs) => {
   if (!songs.length) return;
-  LESSONS = songs.map((s) => ({ ...s, parts: lessonParts(s, NOTES_PER_STEP[difficultyKey()] || 4, { barByBar: difficultyKey() === "easy" }) }));
+  // the run's pattern difficulty picks the notes you play; the rest goes to the backing (it still sounds)
+  LESSONS = songs.map((s) => {
+    const { play, backing } = simplifyNotes(s.notes, RUN.patterns);
+    return { ...s, backingNotes: backing, parts: lessonParts({ ...s, notes: play }, RUN.step, { barByBar: RUN.step !== Infinity }) };
+  });
   if (typeof applyStage === "function") applyStage();
   bootlog("rounds from files", { n: songs.length, steps: LESSONS.map((l) => l.parts.length), warnings: songs.flatMap((r) => r.warnings) });
 }).catch((e) => { console.warn("round files unavailable — playing the built-in songs", e); bootlog("rounds: built-in", { why: String(e) }); });
@@ -126,13 +127,21 @@ const partBars = () => (partObj() && partObj().bars) || 1;            // melody 
 const partMode = () => (partObj() && partObj().mode) || "drums";       // "drums" | "bass" | "treble"
 const isMelody = () => partMode() !== "drums";
 let padConnected = false;   // a game controller is plugged in (the bars then show its buttons)
-let previewedStep = null;   // Easy: the step already played once as a preview
+let previewedStep = null;
+// the notes this run's pattern difficulty leaves out: they play anyway, like a
+// locked loop, so the song is always whole (you just don't have to hit them)
+function addBacking() {
+  const b = song().backingNotes;
+  if (!loops || !clock || !b || !b.length) return;
+  loops.add({ bars: song().bars, startBar: 0, backing: true,
+    hits: b.map((n) => ({ lane: n.lane, pos: n.beat * clock.beatDur, velocity: (n.vel ?? 1) * 0.85 })) });
+}   // Easy: the step already played once as a preview
 let audioStarted = false;   // Start pressed and the audio graph exists (the page lays out its HUD before that)
 let roundOffsets = [];          // every guided hit this round: seconds off its note, null = off-chart
 const results = createResults();
 const hudUI = createHud({ onBell: ringBell, onHint: () => playHint() });
 let autoCorrect = SET.autoCorrect;   // A toggles; also in settings
-function showDifficulty() { hudUI.setDifficulty(`${difficulty.name}${autoCorrect ? " · Auto ✓" : ""}`); }
+function showDifficulty() { hudUI.setDifficulty(`${PRESET_NAMES[presetOf(RUN)]} ×${scoreMultiplier(RUN).total}${autoCorrect ? " · Auto ✓" : ""}`); }
 showDifficulty();
 const settingsUI = createSettings({
   onChange: (k, v) => {
@@ -191,7 +200,7 @@ function applyStage() {
   if (audioStarted) updateBackLevels();                      // the sections' background music follows progress
   stageMessage();
   // Easy: a new step plays once by itself, lit up, before you're asked to play it
-  if (difficulty === DIFFICULTY.easy && audioStarted && !songDone() && previewedStep !== song().parts[stageIdx]) {
+  if (RUN.patterns !== "full" && audioStarted && !songDone() && previewedStep !== song().parts[stageIdx]) {   // Easy / Medium patterns
     previewedStep = song().parts[stageIdx];
     playHint([previewedStep], "👂 Here's the next one — listen, then play it");
   }
@@ -282,7 +291,7 @@ function endRound() {
       await loadRoundSamples();    // and its own sounds
       stageIdx = 0;
       roundOffsets = [];
-      if (loops) loops.clear();
+      if (loops) { loops.clear(); addBacking(); }
       if (bell) bell.cancel();
       applyStage();
     },
@@ -535,6 +544,8 @@ function makeStartButton() {
 
     drums = await makeDrums(ctx.sampleRate);
     await roundsReady;
+    BPM = Math.round((song().bpm || 80) * RUN.tempo * 10) / 10;   // the song's own tempo x the run's tempo
+    bootlog("run", { hitbox: RUN.hitbox, tempo: RUN.tempo, patterns: RUN.patterns, perStep: RUN.step === Infinity ? "all" : RUN.step, keep: RUN.keep, bpm: BPM, mult: scoreMultiplier(RUN).total });
     await buildMelodyVoices();   // fallback bar voices
     await loadRoundSamples();    // the round's own sounds (from Hackbeat)
     pool = new VoicePool(ctx, { max: IS_TOUCH ? 12 : 24 });   // phones: fewer voices at once (crackle when busy)
@@ -560,6 +571,7 @@ function makeStartButton() {
     bell = new Bell({ first: clock.first, beatDur: clock.beatDur });
     loops = new Loops(4 * clock.beatDur);
     ghosts = loops;   // the scheduler below replays loop layers
+    addBacking();
     session = new SessionLog({
       bpm: BPM,
       loopBeats: CHART.loopBeats,
@@ -1077,8 +1089,10 @@ stage.style.touchAction = "none";
 stage.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "touch") lastTouch = performance.now();
   // phone Easy: a tap snaps to the nearest target this step wants, from well off it
-  const wanted = phoneEasy() && !songDone() ? currentPart().map((n) => LANE_INDEX[n.lane]) : null;
-  const lane = stage3d.pickDrum(e.clientX, e.clientY, wanted ? { prefer: wanted, reach: 140 } : undefined);
+  // a big hitbox reaches in space too: a tap snaps to the nearest target this step wants
+  const reach = RUN.hitbox >= 0.1 ? Math.round(40 + RUN.hitbox * 650) : 0;   // 0.14 -> 131 px, 0.25 -> 202 px
+  const wanted = reach && !songDone() ? currentPart().map((n) => LANE_INDEX[n.lane]) : null;
+  const lane = stage3d.pickDrum(e.clientX, e.clientY, wanted ? { prefer: wanted, reach } : undefined);
   recentTaps.push(`${Math.round(e.clientX)},${Math.round(e.clientY)}->${lane}`);
   if (recentTaps.length > 12) recentTaps.shift();
   if (lane < 0 || !ctx || !drums || !pool || !clock) {
