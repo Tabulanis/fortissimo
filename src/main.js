@@ -108,7 +108,7 @@ const song = () => (LESSONS ? LESSONS[roundIdx] : (difficulty === DIFFICULTY.eas
 const lastRound = () => roundIdx >= (LESSONS || BASE_ROUNDS).length - 1;
 const roundsReady = loadRoundFiles().then((songs) => {
   if (!songs.length) return;
-  LESSONS = songs.map((s) => ({ ...s, parts: lessonParts(s, NOTES_PER_STEP[difficultyKey()] || 4) }));
+  LESSONS = songs.map((s) => ({ ...s, parts: lessonParts(s, NOTES_PER_STEP[difficultyKey()] || 4, { barByBar: difficultyKey() === "easy" }) }));
   if (typeof applyStage === "function") applyStage();
   bootlog("rounds from files", { n: songs.length, steps: LESSONS.map((l) => l.parts.length), warnings: songs.flatMap((r) => r.warnings) });
 }).catch((e) => { console.warn("round files unavailable — playing the built-in songs", e); bootlog("rounds: built-in", { why: String(e) }); });
@@ -224,6 +224,13 @@ function tickBell(heardNow) {
   if (bell.state === "recording" && !r) hudUI.say("● Recording this measure…");
   if (!r) return;
   if (r.locked) {
+    // a bar-by-bar step (Easy): it was learned as a 1-bar loop; it plays in ITS bar of the song
+    const placed = partObj();
+    if (placed && placed.atBar != null) {
+      const L = placed.phraseBars, barDur = 4 * clock.beatDur;
+      r.layer = { bars: L, startBar: Math.ceil(r.layer.startBar / L) * L,
+        hits: r.layer.hits.map((h) => ({ ...h, pos: h.pos + placed.atBar * barDur })) };
+    }
     loops.add(r.layer);
     // the scheduler may already be past this loop's first notes (it looks
     // 0.1 s ahead) — schedule the new layer's notes up to that point now
@@ -515,39 +522,38 @@ function updateBackLevels() {
 }
 
 // --- LISTEN (hint) ---------------------------------------------------------
-// Plays the WHOLE section once, in time, from the next bar line (a long phrase:
-// from its own grid): the full drum groove, or the full bass line, or the full
-// melody — the original, even when Easy teaches it in steps. Each note sounds
-// through its instrument, its drum/bar flashes and the ghost hands play it.
+// Plays the parts of this section you HAVEN'T locked yet, once, as one loop
+// (owner, 2026-10-03), from the next loop line — then the game carries on as
+// normal. Each note sounds through its instrument, its target flashes and the
+// ghost hands play it. (The locked parts are already playing as ghosts.)
 let hint = null;   // { notes: [{laneIdx, time, velocity, flashed}], end }
-function sectionNotes(mode) {
-  const parts = song().parts.filter((p) => p.mode === mode);
-  // a song from a file: the section's notes as written, the whole song long (steps
-  // only teach its repeating patterns, so they don't add up to it any more)
-  if (song().notes) {
-    const lanes = new Set(parts.flatMap((p) => p.part.map((n) => n.lane)));
-    return { notes: song().notes.filter((n) => lanes.has(n.lane)), bars: song().bars || 1 };
-  }
-  return { notes: parts.flatMap((p) => p.part), bars: Math.max(1, ...parts.map((p) => p.bars || 1)) };   // built-in: steps add up
+function unlockedParts() {
+  const mode = partMode();
+  return song().parts.slice(stageIdx).filter((p) => p.mode === mode);
 }
 function playHint() {
   if (!ctx || !clock || !pool || !drums) { hudUI.say("Press Start first", "bad", 1500); return; }
-  const mode = songDone() ? "drums" : partMode();
-  const { notes, bars } = sectionNotes(mode);
-  const barDur = 4 * clock.beatDur, phrase = barDur * bars;
+  if (songDone()) { hudUI.say("Everything's locked in — nothing left to hear", "", 2000); return; }
+  const parts = unlockedParts();
+  const bars = Math.max(1, ...parts.map((p) => p.phraseBars || p.bars || 1));     // one loop that holds every part (a placed bar: its song phrase)
+  const phrase = 4 * clock.beatDur * bars;
   const now = ctx.getOutputTimestamp().contextTime;
   const start = clock.first + Math.ceil((now + 0.15 - clock.first) / phrase) * phrase;
   hint = { notes: [], end: start + phrase };
-  for (const n of notes) {
-    const entry = KEYMAP_BY_LANE[n.lane];
-    if (!entry) continue;
-    const time = start + n.beat * clock.beatDur;
-    pool.noteOn({ channel: entry.idx + 70, midi: 60, baseNote: 60, ...laneSound(entry.ln), velocity: 0.8,
-      when: time });
-    hint.notes.push({ laneIdx: entry.idx, time, velocity: 0.9, flashed: false });
+  for (const p of parts) {
+    const pb = p.bars || 1;
+    for (let k = 0; k < bars / pb; k++) for (const n of p.part) {     // a short part repeats to fill the loop
+      if (p.atBar != null && k > 0) break;                             // a placed bar plays once, in its own bar
+      const entry = KEYMAP_BY_LANE[n.lane];
+      if (!entry) continue;
+      const time = start + (n.beat + (p.atBar != null ? 4 * p.atBar : 4 * pb * k)) * clock.beatDur;
+      pool.noteOn({ channel: entry.idx + 70, midi: 60, baseNote: 60, ...laneSound(entry.ln), velocity: 0.8,
+        when: time });
+      hint.notes.push({ laneIdx: entry.idx, time, velocity: 0.9, flashed: false });
+    }
   }
-  const what = mode === "drums" ? "the full beat" : mode === "bass" ? "the bass line" : "the melody";
-  hudUI.say(`👂 Listen — ${what}${bars > 1 ? ` (${bars} bars)` : ""}`, "good", Math.max(2500, (start + phrase - now) * 1000));
+  const left = parts.length;
+  hudUI.say(`👂 Listen — what's left to learn here (${left} part${left > 1 ? "s" : ""}${bars > 1 ? `, ${bars} bars` : ""})`, "good", Math.max(2500, (start + phrase - now) * 1000));
 }
 
 // --- ghost loops -----------------------------------------------------------

@@ -11,12 +11,20 @@
  *             Hard and Expert 8 — a pattern bigger than that is split, the
  *             most important notes first (bar downbeats, beat 3, the other
  *             beats, off-beats, finer); each next step fills in over the ghosts
- *   TOGETHER  neighbouring pieces that loop at the same length share a step
- *             while they fit in N: drums come in together (kick + snare...)
+ *   TWO DRUMS drums are taught two at a time (owner, 2026-10-03): bass drum
+ *             + snare first, then hihat + crash, then the toms; bass and treble rows
+ *             one row at a time (never top and bottom together)
+ *   EXPERT    every note on the instrument you're at: all the drums in one
+ *             step, then each row whole
+ *   BAR BY BAR (Easy, owner 2026-10-03) a busy part that doesn't repeat bar to
+ *             bar is taught ONE BAR AT A TIME: bar 1's pattern loops on its own,
+ *             and once locked it drops into its place in the song (atBar /
+ *             phraseBars), then bar 2...
  */
 import { beatWeight } from "./stages.js";
 
-export const NOTES_PER_STEP = { easy: 4, normal: 6, hard: 8, expert: 8 };
+// notes a step may hold; Expert: everything on the instrument you're at, in one step
+export const NOTES_PER_STEP = { easy: 4, normal: 6, hard: 8, expert: Infinity };
 const INSTRUMENTS = [
   { mode: "drums", name: "Bass drum", lanes: ["kick"] },
   { mode: "drums", name: "Snare", lanes: ["snare"] },
@@ -50,38 +58,57 @@ export function periodBars(notes, songBars) {
  * @param {number} perStep notes per step
  * @returns {{label, mode, bars, show, part, instrument, addOn}[]}
  */
-export function lessonParts(song, perStep = 4) {
-  // 1. pieces: each instrument's repeating pattern, split into chunks of <= perStep
-  const pieces = [];
+export function lessonParts(song, perStep = 4, { barByBar = false } = {}) {
+  const all = perStep === Infinity;
+  // 1. each instrument's notes and the loop it repeats at
+  const insts = [];
   for (const inst of INSTRUMENTS) {
     const notes = song.notes.filter((n) => inst.lanes.includes(n.lane));
-    if (!notes.length) continue;
+    if (notes.length) insts.push({ inst, notes, L: periodBars(notes, song.bars) });
+  }
+  // 2. groups taught together: drums in pairs (Expert: all of them), rows one at a time
+  const groups = [];
+  const drums = insts.filter((x) => x.inst.mode === "drums");
+  if (all && drums.length) groups.push(drums);
+  else {
+    // in drum order: bass drum + snare, hihat + crash, then the toms
+    for (let i = 0; i < drums.length; i += 2) groups.push(drums.slice(i, i + 2));
+  }
+  for (const x of insts) if (x.inst.mode !== "drums") groups.push([x]);
+  // 3. each group: its repeating pattern, split (evenly, most important first) past perStep
+  const parts = [];
+  const shown = new Set();
+  for (const g of groups) {
+    const mode = g[0].inst.mode;
+    const notes = g.flatMap((x) => x.notes);
     const L = periodBars(notes, song.bars);
     const pattern = notes.filter((n) => n.beat < 4 * L);
-    const order = [...pattern].sort((a, b) => beatWeight(a.beat) - beatWeight(b.beat) || a.beat - b.beat);
-    const n = Math.ceil(order.length / perStep);
-    for (let k = 0; k < n; k++) pieces.push({ inst, L, k, n, notes: order.slice(k * perStep, (k + 1) * perStep) });
+    if (mode === "drums") for (const x of g) shown.add(DRUM_INDEX[x.inst.lanes[0]]);
+    const name = g.map((x) => x.inst.name).join(" + ");
+    const show = mode === "drums" ? [...shown] : [3, 1, 0, 4, 2, 5];
+    // a busy part that doesn't repeat bar to bar: one bar at a time (Easy)
+    const byBar = barByBar && !all && L > 1 && pattern.length > perStep;
+    const chunks = byBar
+      ? Array.from({ length: L }, (_, b) => ({ b, notes: pattern.filter((n) => n.beat >= 4 * b && n.beat < 4 * b + 4) })).filter((c) => c.notes.length)
+      : [{ b: null, notes: pattern }];
+    let addOn = false;
+    for (const c of chunks) {
+      const order = [...c.notes].sort((a, b) => beatWeight(a.beat) - beatWeight(b.beat) || a.beat - b.beat);
+      const n = all ? 1 : Math.ceil(order.length / perStep);
+      const size = Math.ceil(order.length / n);              // even chunks: no lonely 1-note step
+      for (let k = 0; k < n; k++) {
+        const notes = order.slice(k * size, (k + 1) * size).sort((a, b) => a.beat - b.beat);
+        const bit = (c.b != null ? ` bar ${c.b + 1}` : "") + (n > 1 ? ` ${k + 1}/${n}` : "");
+        parts.push(c.b == null
+          ? { label: name + bit, mode, instrument: name, bars: L, addOn, show, part: notes }
+          // the step loops ONE bar (its notes moved to bar 1); locked, it goes back to bar atBar of a phraseBars loop
+          : { label: name + bit, mode, instrument: name, bars: 1, addOn, show, atBar: c.b, phraseBars: L,
+              part: notes.map((n) => ({ ...n, beat: n.beat - 4 * c.b })) });
+        addOn = true;
+      }
+    }
   }
-  // 2. steps: neighbouring pieces of the same section and loop length share a step while they fit
-  const steps = [];
-  for (const pc of pieces) {
-    const cur = steps[steps.length - 1];
-    if (cur && cur.mode === pc.inst.mode && cur.L === pc.L && cur.notes.length + pc.notes.length <= perStep) {
-      cur.pieces.push(pc); cur.notes.push(...pc.notes);
-    } else steps.push({ mode: pc.inst.mode, L: pc.L, pieces: [pc], notes: [...pc.notes] });
-  }
-  // 3. parts, in the shape the game plays
-  const shown = new Set();
-  return steps.map((st) => {
-    if (st.mode === "drums") for (const pc of st.pieces) shown.add(DRUM_INDEX[pc.inst.lanes[0]]);
-    const label = st.pieces.map((pc) => (pc.n > 1 ? `${pc.inst.name} ${pc.k + 1}/${pc.n}` : pc.inst.name)).join(" + ");
-    return {
-      label, mode: st.mode, instrument: st.pieces.map((pc) => pc.inst.name).join(" + "),
-      bars: st.L, addOn: st.pieces.some((pc) => pc.k > 0),
-      show: st.mode === "drums" ? [...shown] : [3, 1, 0, 4, 2, 5],
-      part: [...st.notes].sort((a, b) => a.beat - b.beat),
-    };
-  });
+  return parts;
 }
 
 /**

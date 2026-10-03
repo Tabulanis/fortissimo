@@ -25,11 +25,12 @@ f.onload = async () => {
     };
     const log = [`songs from: ${G.source()}`, `samples: ${G.samples().join(" | ")}`];
     const variant = location.hash.slice(1) || "perfect";
-    const nRounds = location.hash === "#r1" || location.hash.startsWith("#p4") ? 1 : ROUNDS.length;
+    const nRounds = location.hash.startsWith("#r1") || location.hash.startsWith("#p4") ? 1 : ROUNDS.length;
     for (let round = 0; round < nRounds; round++) {
     const SONG = G.song();   // what the game is actually playing (Easy builds parts up)
     log.push(`== ${SONG.name}: ${SONG.title}`);
-    for (let p = 0; p < SONG.parts.length; p++) {
+    const capM = location.hash.match(/n(\d+)$/), cap = capM ? +capM[1] : Infinity;   // #r1n6: only the first 6 steps
+    for (let p = 0; p < Math.min(cap, SONG.parts.length); p++) {
       const idx = G.stageIdx;
       if (location.hash.startsWith("#p4") && idx === 3) {
         // stop at the last part and look: what's the game asking for, what flies?
@@ -52,6 +53,11 @@ f.onload = async () => {
       await wait(200);
       const msg = (d.body.innerText.match(/Locked in[^\n]*|Not quite[^\n]*/) || ["(no message)"])[0];
       log.push(`part ${idx + 1} [${P.label}, ${P.part.length} notes, facing ${facing}]: ${msg}${d.getElementById("gr-locked") ? "  + LOCKED!" : ""}  back ${JSON.stringify(G.backLevels())}`);
+    }
+    if (cap < Infinity) {   // capped run: where did each locked step land in the song loop?
+      const bd = G.clock.beatDur;
+      log.push("layers: " + JSON.stringify(G.loops._layers.map((l) => ({ bars: l.bars, beats: l.hits.map((h) => +(h.pos / bd).toFixed(2)) }))));
+      say("locks", log.join("\n")); say("done", "ok"); return;
     }
     // the results panel
     await wait(2500);

@@ -1,0 +1,21 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" src="/?quality=low" style="width:1400px;height:900px;border:0"></iframe>
+<script type="module">
+const out = [], wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const f = document.getElementById("f");
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  try {
+    await wait(3000);
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(3000);
+    const s = w.__gr.stage3d;
+    for (const [st, lo, hi] of [["drums", 0, 6], ["bass", 6, 22], ["treble", 22, 38]]) {
+      s.setStation(st); await wait(2500);
+      const v = s.debugArrowView().slice(lo, hi);
+      out.push(`${st}: seen ${v.map((x) => Math.round(x[0] * 100) + "%").join(" ")} | launch on screen ${v.filter((x) => x[1]).length}/${v.length}`);
+    }
+  } catch (e) { out.push("ERROR " + e.message); }
+  fetch("http://127.0.0.1:8899/aview", { method: "POST", body: out.join("\n") });
+};
+</script>

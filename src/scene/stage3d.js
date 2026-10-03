@@ -56,13 +56,14 @@ const SPAWNS = [
   new THREE.Vector3(-6.3, 7.6, -30),   // upright 0 — left roof
   new THREE.Vector3(-6.3, 7.6, -38),   // upright 1 — left roof, further
   new THREE.Vector3(6.3, 7.6, -30),    // upright 2 — right roof
-  new THREE.Vector3(-6.3, 7.6, -20),   // floor 3   — left roof
+  new THREE.Vector3(-6.3, 7.6, -27),   // floor 3   — left roof (far enough that the whole arc stays in view)
   new THREE.Vector3(6.3, 7.6, -38),    // floor 4   — right roof, further
-  new THREE.Vector3(6.3, 7.6, -20),    // floor 5   — right roof
+  new THREE.Vector3(6.3, 7.6, -27),    // floor 5   — right roof
 ];
 
 // arc height of the parabolic lift on top of the straight line: a real lob
-const ARC_LIFT = [3.5, 3.5, 3.5, 4.5, 4.5, 4.5];   // they start high already
+// kept low enough that the WHOLE flight stays on screen (owner, 2026-10-03: see them coming)
+const ARC_LIFT = [3.5, 3.5, 3.5, 3.5, 3.5, 3.5];   // they start high already
 
 function hexToColor(s) {
   return new THREE.Color(s);   // accepts "#rrggbb"
@@ -457,8 +458,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // the bars' archers: fixed spots along their own court's roofs, alternating sides
   for (let i = 6; i < N_T; i++) {
     const k = (i - 6) % BARS, side = k % 2 ? 1 : -1;
-    SPAWNS[i] = armToWorld(stationOf(i), side * ARCHER_ROOF_X, ARCHER_ROOF_Y, -8 - ((k >> 1) % 4) * 4.5 - (k >= PER_ROW ? 2.2 : 0));
-    ARC_LIFT[i] = 4;
+    // far enough down the court that the whole flight stays on screen
+    SPAWNS[i] = armToWorld(stationOf(i), side * ARCHER_ROOF_X, ARCHER_ROOF_Y, -17 - ((k >> 1) % 4) * 4.5 - (k >= PER_ROW ? 2.2 : 0));
+    ARC_LIFT[i] = 2.5;
   }
 
   // DRUM STANDS (placeholder): a post from the ground to each drum's body
@@ -2212,6 +2214,24 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; }, setVrBellHandler: (fn) => { onVrBell = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */
     /** debug: arrows in flight per lane, and which drums are shown */
+    // per lane: how much of an arrow's flight the camera sees right now (0..1), and whether its launch is on screen
+    debugArrowView: () => {
+      camera.updateMatrixWorld();
+      const P = new THREE.Vector3(), out = [];
+      for (let i = 0; i < N_T; i++) {
+        let seen = 0, launch = false;
+        for (let k = 0; k <= 20; k++) {
+          const f = k / 20;
+          P.copy(SPAWNS[i]).lerp(drumFace[i], f); P.y += ARC_LIFT[i] * 4 * f * (1 - f);
+          P.project(camera);
+          const vis = P.z < 1 && Math.abs(P.x) <= 1 && Math.abs(P.y) <= 1;
+          if (vis) seen++;
+          if (k === 0) launch = vis;
+        }
+        out.push([+(seen / 21).toFixed(2), launch]);
+      }
+      return out;
+    },
     debugArrows: () => ({ flying: Array.from({ length: N_T }, (_, i) => i).map((i) => activeNotes.filter((e) => e.laneIdx === i).length), shown: [...drumVisible] }),
     /** debug: which ghost hands are showing right now (lane order) */
     debugGhosts: () => ghostHands.map((g) => g.group.visible),
