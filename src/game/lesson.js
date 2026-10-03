@@ -126,9 +126,11 @@ export function sectionProgress(parts, stageIdx) {
 }
 
 /**
- * Background level for a section's BACK track: it fades in as the section's
- * steps lock (up to 35%), and comes in fully when the section is done.
+ * Background level for a section's BACK track (owner, 2026-10-03): quiet but
+ * audible from the start (30%), growing as the section's steps lock (to 60%),
+ * and FULL — as set in Hackbeat — once the section is unlocked.
  */
+export const BACK_START = 0.3, BACK_LEARNING = 0.6;
 export function backLevel(progress) {
-  return progress >= 1 ? 1 : 0.35 * progress;
+  return progress >= 1 ? 1 : BACK_START + (BACK_LEARNING - BACK_START) * progress;
 }

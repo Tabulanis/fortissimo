@@ -73,8 +73,8 @@ const songKeys = song.notes.map((n) => `${n.lane}@${n.beat.toFixed(4)}`).sort();
   assert.strictEqual(sectionProgress(parts, firstBass).drums, 1, "drums done when the bass starts");
   assert.ok(sectionProgress(parts, 1).drums > 0 && sectionProgress(parts, 1).drums < 1);
   assert.deepStrictEqual(sectionProgress(parts, parts.length), { drums: 1, bass: 1, treble: 1 });
-  assert.strictEqual(backLevel(0), 0);
-  assert.ok(backLevel(0.5) > 0 && backLevel(0.5) < 0.5, "fades in partly while the section is learned");
+  assert.ok(backLevel(0) > 0.2 && backLevel(0) < 0.5, "quiet but audible from the start");
+  assert.ok(backLevel(0.5) > backLevel(0) && backLevel(0.5) < 1, "grows while the section is learned");
   assert.strictEqual(backLevel(1), 1, "fully in when the section is done");
 }
 console.log("lesson ok");

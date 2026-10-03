@@ -484,16 +484,18 @@ function makeStartButton() {
 
 // --- BACKGROUND MUSIC --------------------------------------------------------
 // Each section's BACK track (Hackbeat: DRUM BACK / BASS BACK / TREBLE BACK)
-// loops with the song, in time, on its own fader into the backing bus: it fades
-// in as the section's steps lock and comes in fully when the section is done;
-// a new round starts silent.
+// loops with the song, in time, on its own fader. It plays from the start,
+// quiet but audible, grows as the section's steps lock, and is at FULL — the
+// level set in Hackbeat — once the section is unlocked (owner, 2026-10-03).
+// Full goes through the same stage as the Hackbeat tracks (mixer.hackbeat),
+// so it sits in the mix exactly as it does in Hackbeat.
 const backGain = {};
 let backUntil = 0, backCh = 0;
 function makeBackBus() {
   for (const m of ["drums", "bass", "treble"]) {
     const g = ctx.createGain();
-    g.gain.value = 0;
-    g.connect(mixer.backing);
+    g.gain.value = backLevel(0);
+    g.connect(mixer.hackbeat);
     backGain[m] = g;
   }
 }
