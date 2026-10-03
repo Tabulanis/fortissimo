@@ -1348,8 +1348,11 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       shape.holes.push(new THREE.Path([[-hx - gap, -hz - gap], [-hx - gap, hz + gap], [hx + gap, hz + gap], [hx + gap, -hz - gap]].map(([x, y]) => new THREE.Vector2(x, y))));
       const frame = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({
         color: hexToColor(BAR_HEX[kind]), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
-      frame.rotation.x = -Math.PI / 2;
-      frame.position.copy(b.top).add(new THREE.Vector3(0, 0.004, 0));
+      // lie on the bar's face, tilted with it (the top row faces the player)
+      b.mesh.updateWorldMatrix(true, false);
+      frame.quaternion.copy(b.mesh.getWorldQuaternion(new THREE.Quaternion()))
+        .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2));
+      frame.position.copy(b.top).addScaledVector(b.normal, 0.004);
       frame.layers.set(FX_LAYER);
       frame.visible = false;
       scene.add(frame);

@@ -107,7 +107,7 @@ const EASY_ROUNDS = ROUNDS.map(buildUp);
 let LESSONS = null;
 // TEMPORARY (owner, 2026-10-03): phones on Easy get a ridiculous hitbox, in
 // time (here) and in space (taps snap to a wanted target, see the tap handler)
-const PHONE_EASY = { window: 0.22, ratio: 0.5, extras: 6 };
+const PHONE_EASY = { window: 0.16, ratio: 0.6, extras: 4 };   // toned down 2026-10-03 (was 0.22 / 0.5 / 6)
 const phoneEasy = () => IS_TOUCH && difficulty === DIFFICULTY.easy;
 const judgeDiff = () => (phoneEasy() ? { ...difficulty, ...PHONE_EASY } : difficulty);
 const difficultyKey = () => Object.keys(DIFFICULTY).find((k) => DIFFICULTY[k] === difficulty) || "easy";
@@ -1071,7 +1071,7 @@ stage.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "touch") lastTouch = performance.now();
   // phone Easy: a tap snaps to the nearest target this step wants, from well off it
   const wanted = phoneEasy() && !songDone() ? currentPart().map((n) => LANE_INDEX[n.lane]) : null;
-  const lane = stage3d.pickDrum(e.clientX, e.clientY, wanted ? { prefer: wanted, reach: 220 } : undefined);
+  const lane = stage3d.pickDrum(e.clientX, e.clientY, wanted ? { prefer: wanted, reach: 140 } : undefined);
   recentTaps.push(`${Math.round(e.clientX)},${Math.round(e.clientY)}->${lane}`);
   if (recentTaps.length > 12) recentTaps.shift();
   if (lane < 0 || !ctx || !drums || !pool || !clock) {
