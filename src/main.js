@@ -24,6 +24,7 @@ import { ROUNDS, partArrows, isShown, buildUp } from "./game/stages.js";
 import { loadRoundFiles } from "./game/roundfiles.js";
 import { lessonParts, sectionProgress, backLevel } from "./game/lesson.js";
 import { normalize, judgeFor, simplifyNotes, scoreMultiplier, presetOf, PRESET_NAMES } from "./game/run.js";
+import { createMenu } from "./ui/menu.js";
 import { gradeRound } from "./game/grade.js";
 import { createResults } from "./ui/results.js";
 import { showLocked } from "./ui/locked.js";
@@ -50,6 +51,10 @@ const SET = loadSettings();         // saved settings (Esc / gear)
 // hitbox, tempo, pattern difficulty, notes per step, keep. Saved between visits.
 const RUN = (() => { try { return normalize(JSON.parse(localStorage.getItem("gr.run") || "null") || {}); } catch { return normalize({}); } })();
 let BPM = 80;   // set at Start: the song's own tempo x the run's tempo
+// levels unlock one by one: finishing level N opens N + 1
+const UNLOCKED_KEY = "gr.unlocked";
+const unlockedLevel = () => { try { return +localStorage.getItem(UNLOCKED_KEY) || 0; } catch { return 0; } };
+
 const CALIB_KEY = "gr.calib";
 
 // --- drum colours (hex strings; shared by the 3D stage and the chart) ------
@@ -110,13 +115,19 @@ let LESSONS = null;
 const judgeDiff = () => judgeFor(RUN);   // what a step is judged by
 const song = () => (LESSONS ? LESSONS[roundIdx] : (RUN.patterns === "easy" ? EASY_ROUNDS : BASE_ROUNDS)[roundIdx]);
 const lastRound = () => roundIdx >= (LESSONS || BASE_ROUNDS).length - 1;
-const roundsReady = loadRoundFiles().then((songs) => {
-  if (!songs.length) return;
-  // the run's pattern difficulty picks the notes you play; the rest goes to the backing (it still sounds)
-  LESSONS = songs.map((s) => {
+let SONGS = null;   // the rounds' songs as written (Hackbeat files)
+// the run's pattern difficulty picks the notes you play; the rest goes to the backing (it still sounds)
+function buildLessons() {
+  if (!SONGS) return;
+  LESSONS = SONGS.map((s) => {
     const { play, backing } = simplifyNotes(s.notes, RUN.patterns);
     return { ...s, backingNotes: backing, parts: lessonParts({ ...s, notes: play }, RUN.step, { barByBar: RUN.step !== Infinity }) };
   });
+}
+const roundsReady = loadRoundFiles().then((songs) => {
+  if (!songs.length) return;
+  SONGS = songs;
+  buildLessons();
   if (typeof applyStage === "function") applyStage();
   bootlog("rounds from files", { n: songs.length, steps: LESSONS.map((l) => l.parts.length), warnings: songs.flatMap((r) => r.warnings) });
 }).catch((e) => { console.warn("round files unavailable — playing the built-in songs", e); bootlog("rounds: built-in", { why: String(e) }); });
@@ -282,19 +293,17 @@ applyStage();
 // fresh loops); after the last round, free play
 function endRound() {
   const stats = gradeRound(roundOffsets, judgeDiff().window);
+  // finishing a level unlocks the next
+  try { if (unlockedLevel() < roundIdx + 1) localStorage.setItem(UNLOCKED_KEY, roundIdx + 1); } catch { /* not remembered */ }
+  const toMenu = (where, level) => {
+    try { sessionStorage.setItem("gr.menuAt", where); if (level != null) localStorage.setItem("gr.level", level); } catch { /* menu from the top */ }
+    location.reload();   // a fresh run: its own tempo and settings
+  };
   results.show({
     round: song().name, title: song().title, stats, last: lastRound(),
-    onNext: async () => {
-      if (lastRound()) { stageMessage(); return; }
-      roundIdx++;
-      await buildMelodyVoices();   // the new round's key + scale (fallback voices)
-      await loadRoundSamples();    // and its own sounds
-      stageIdx = 0;
-      roundOffsets = [];
-      if (loops) { loops.clear(); addBacking(); }
-      if (bell) bell.cancel();
-      applyStage();
-    },
+    run: { name: PRESET_NAMES[presetOf(RUN)], mult: scoreMultiplier(RUN).total },
+    onNext: () => { if (lastRound()) { stageMessage(); return; } toMenu("setup", roundIdx + 1); },
+    onMenu: () => toMenu("levels"),
   });
 }
 
@@ -1134,7 +1143,27 @@ window.addEventListener("mousemove", (e) => {
   mouseLook.tMove = performance.now();
 });
 
-makeStartButton();
+const startBtn = makeStartButton();
+// THE START MENU: level (unlocked ones) -> the run's settings -> Start
+roundsReady.then(() => {
+  const list = LESSONS || BASE_ROUNDS;
+  let at = "title";
+  try { at = sessionStorage.getItem("gr.menuAt") || "title"; sessionStorage.removeItem("gr.menuAt"); } catch { /* storage blocked: title */ }
+  createMenu({
+    levels: list.map((r) => ({ name: r.name, title: r.title, bpm: r.bpm })),
+    unlocked: Math.min(unlockedLevel(), list.length - 1),
+    level: +(localStorage.getItem("gr.level") || 0),
+    run: RUN, startAt: at,
+    onStart: (level, run) => {
+      try { localStorage.setItem("gr.run", JSON.stringify({ ...run, step: run.step === Infinity ? "all" : run.step })); localStorage.setItem("gr.level", level); } catch { /* not remembered */ }
+      Object.assign(RUN, run);
+      roundIdx = level;
+      buildLessons();
+      showDifficulty();
+      startBtn.click();   // inside the menu's tap: the audio may start
+    },
+  });
+});
 makeCalibrateButton();
 window.addEventListener("keydown", onKey);
 resize();

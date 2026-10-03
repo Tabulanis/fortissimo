@@ -4,7 +4,6 @@
 
 const KEY = "gr.settings";
 export const DEFAULTS = {
-  difficulty: "easy",      // easy | normal | hard | expert
   autoCorrect: true,
   master: 0.9,
   hits: 1.0,
@@ -59,13 +58,6 @@ export function createSettings({ onChange, onRestart } = {}) {
   root.innerHTML = `
     <div class="card">
       <h2>Settings</h2>
-      <div class="row"><span>Difficulty</span>
-        <select data-k="difficulty">
-          <option value="easy">Easy — ±120 ms, 60 bpm, 4 notes a step</option>
-          <option value="normal">Normal — ±85 ms, 80 bpm, 6 notes a step</option>
-          <option value="hard">Hard — ±50 ms, 100 bpm, 8 notes a step</option>
-          <option value="expert">Expert — ±25 ms, 112 bpm, 8 notes a step</option>
-        </select></div>
       <div class="row"><span>Graphics</span>
         <select data-k="quality">
           <option value="auto">Auto — measures this device</option>
@@ -79,7 +71,7 @@ export function createSettings({ onChange, onRestart } = {}) {
       <div class="row"><span>Master volume</span><input type="range" min="0" max="1" step="0.01" data-k="master"></div>
       <div class="row"><span>Drum hits</span><input type="range" min="0" max="1" step="0.01" data-k="hits"></div>
       <div class="row"><span>Metronome</span><input type="range" min="0" max="1" step="0.01" data-k="metronome"></div>
-      <div class="note">Changing difficulty restarts the song.</div>
+      <div class="note">Difficulty and the run's modifiers are chosen in the start menu.</div>
       <div class="foot"><button data-act="restart">Restart song</button><button data-act="close">Close (Esc)</button></div>
     </div>`;
   document.body.appendChild(root);
@@ -91,7 +83,7 @@ export function createSettings({ onChange, onRestart } = {}) {
     el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => {
       const v = el.type === "checkbox" ? el.checked : el.type === "range" ? +el.value : el.value;
       s[k] = v; save(s);
-      if (k === "difficulty" || k === "quality") { onRestart && onRestart(); return; }   // both rebuild the game
+      if (k === "quality") { onRestart && onRestart(); return; }   // graphics rebuild the game
       onChange && onChange(k, v, s);
     });
   }
