@@ -11,20 +11,19 @@ assert.deepStrictEqual(trackRole("DRUM BACK"), { back: "drums" });
 assert.deepStrictEqual(trackRole("BASS BACK"), { back: "bass" });
 assert.strictEqual(trackRole("tambourine"), null);
 
-// every built-in round -> one full-song file -> back: the same notes (toms aside: not in the owner's list)
+// every built-in round -> one full-song file -> back: the same notes, toms included
 for (const r of ROUNDS) {
   const { project } = songProjectFromRound(r);
   assert.strictEqual(project.patterns.length, 1, "one full song");
   assert.deepStrictEqual(project.channels.map((c) => c.name),
-    ["Bass drum", "snare", "hihat", "crash", "Bass instrument top", "Bass instrument bottom", "Treble instrument top", "Treble instrument bottom", "DRUM BACK", "BASS BACK", "TREBLE BACK"]);
+    ["Bass drum", "snare", "hihat", "crash", "Low tom", "High tom", "Bass instrument top", "Bass instrument bottom", "Treble instrument top", "Treble instrument bottom", "DRUM BACK", "BASS BACK", "TREBLE BACK"]);
   const song = roundFromProject(JSON.parse(JSON.stringify(project)), { name: r.name });
   assert.deepStrictEqual(song.warnings, [], `${r.name}: no warnings`);
   const bars = Math.max(...r.parts.map((p) => p.bars || 1));
   assert.strictEqual(song.bars, bars, `${r.name}: song length`);
-  // expected: every part repeated to the song length, toms left out
+  // expected: every part repeated to the song length
   const want = [];
   for (const p of r.parts) for (const n of p.part) {
-    if (n.lane.startsWith("tom")) continue;
     for (let k = 0; k < bars / (p.bars || 1); k++) want.push({ ...n, beat: n.beat + k * 4 * (p.bars || 1) });
   }
   const drumsOf = (list) => list.filter((n) => DRUM_LANES.includes(n.lane)).map((n) => `${n.lane}@${n.beat.toFixed(4)}`).sort();

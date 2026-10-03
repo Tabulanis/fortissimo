@@ -12,7 +12,7 @@ const song = roundFromProject(songProjectFromRound(ROUNDS[0]).project);
   const modes = parts.map((p) => p.mode);
   assert.ok(modes.lastIndexOf("drums") < modes.indexOf("bass") && modes.lastIndexOf("bass") < modes.indexOf("treble"), "drums, bass, treble");
   const instruments = [...new Set(parts.map((p) => p.instrument))];
-  assert.deepStrictEqual(instruments, ["Bass drum", "Snare", "Hihat", "Crash", "Bass top", "Bass bottom", "Treble top", "Treble bottom"].filter((i) => instruments.includes(i)).sort((a, b) => instruments.indexOf(a) - instruments.indexOf(b)));
+  assert.deepStrictEqual(instruments, ["Bass drum", "Snare", "Hihat", "Crash", "Low tom", "High tom", "Bass top", "Bass bottom", "Treble top", "Treble bottom"].filter((i) => instruments.includes(i)).sort((a, b) => instruments.indexOf(a) - instruments.indexOf(b)));
   assert.deepStrictEqual(instruments.slice(0, 4), ["Bass drum", "Snare", "Hihat", "Crash"], "drums one at a time, in the owner's order");
   // each step is an instrument's notes only, as long as the song
   for (const p of parts) assert.ok(p.part.every((n) => p.part[0].lane.split(" ")[0] === n.lane.split(" ")[0]) && p.bars === song.bars);

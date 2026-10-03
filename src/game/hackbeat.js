@@ -166,6 +166,8 @@ export const SONG_TRACKS = [
   { name: "snare", lane: "snare", sample: "garden/snare.wav" },
   { name: "hihat", lane: "hat", sample: "garden/hat.wav" },
   { name: "crash", lane: "crash", sample: "garden/crash.wav" },
+  { name: "Low tom", lane: "tom low", sample: "garden/tom_low.wav" },
+  { name: "High tom", lane: "tom high", sample: "garden/tom_high.wav" },
   { name: "Bass instrument top", kind: "bass", row: 1, sample: "garden/bass_bars.wav" },
   { name: "Bass instrument bottom", kind: "bass", row: 0, sample: "garden/bass_bars.wav" },
   { name: "Treble instrument top", kind: "treble", row: 1, sample: "garden/treble_bars.wav" },
