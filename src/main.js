@@ -9,7 +9,8 @@
 
 import "./audio/voices.js";
 import "./audio/hbchain.js";
-import { stretchBuffer } from "./audio/stretch.js";   // Hackbeat's own track chain, word for word (tools/sync-hackbeat-audio.mjs)
+import { stretchBuffer } from "./audio/stretch.js";
+import { bakeThroughTrack, liteTrack, sendsAny } from "./audio/bake.js";   // Hackbeat's own track chain, word for word (tools/sync-hackbeat-audio.mjs)
 import { makeDrums } from "./audio/drums.js";
 import { startClock } from "./audio/clock.js";
 import { nearestOnGrid, nearestInLoop, velocityFor, label, OFF_CHART, OFF_VEL } from "./game/judge.js";
@@ -342,23 +343,78 @@ async function loadRoundSamples() {
       sampleCache.set(p, await ctx.decodeAudioData(await r.arrayBuffer()));
     } catch (e) { sampleCache.set(p, null); console.warn(`sample ${p} failed: ${e}`); }
   }));
+  if (BAKE) await bakeRound();   // phones: each track's sound through its effects, once
   prepareBackBuffers();   // stretch the background recordings to the game's tempo now, not mid-song
+}
+
+// --- PHONES: baked sounds instead of live effect chains (bake.js) ----------
+const BAKE = IS_TOUCH;
+const bakedCache = new Map();   // "path|track" -> the sample through that track's effects
+const baked = (path, track) => bakedCache.get(path + "|" + track) || null;
+async function bakeRound() {
+  const s = song();
+  if (!s.tracks) return;
+  const jobs = new Map();
+  const backPaths = new Set(Object.values(s.back || {}).flat().map((e) => e.path + "|" + e.track));
+  for (const x of [...Object.values(s.sounds || {}), ...Object.values(s.back || {}).flat()]) {
+    if (x.track == null || !s.tracks[x.track]) continue;
+    const key = x.path + "|" + x.track, buf = sampleCache.get(x.path);
+    // a background loop keeps its exact length (its tail wraps round)
+    if (buf && !bakedCache.has(key) && !jobs.has(key)) jobs.set(key, bakeThroughTrack(buf, s.tracks[x.track].fx, HB_CHAIN, { loop: backPaths.has(key) }).then((b) => bakedCache.set(key, b)));
+  }
+  const t0 = performance.now();
+  await Promise.all(jobs.values());
+  bootlog("baked", { sounds: jobs.size, ms: Math.round(performance.now() - t0) });
+}
+// one shared reverb + echo for every baked track (phones: not one per track / section)
+let phoneBus = null, phoneBusSong = null;
+const backSends = {};   // section -> {reverbIn, delayIn}: the background's sends, following its section fade
+function sharedSends(section) {
+  const s = song();
+  if (!phoneBus || phoneBusSong !== s) {
+    phoneBus = HB_CHAIN.buildSendBuses(ctx, mixer.hackbeat);
+    phoneBus.setReverb(s.fxBus.reverbDecay);
+    phoneBus.setDelay(s.fxBus.delayTime, s.fxBus.delayFb);
+    phoneBusSong = s;
+    for (const k of Object.keys(backSends)) delete backSends[k];
+  }
+  if (!section) return phoneBus;
+  if (!backSends[section]) {
+    const level = backGain[section] ? backGain[section].gain.value : 1;
+    const r = ctx.createGain(), d = ctx.createGain();
+    r.gain.value = d.gain.value = level;
+    r.connect(phoneBus.reverbIn); d.connect(phoneBus.delayIn);
+    backSends[section] = { reverbIn: r, delayIn: d };
+  }
+  return backSends[section];
+}
+let liteTracks = null;
+function phoneTrack(track, dest, destKey, section) {
+  const s = song();
+  if (track == null || !s.tracks || !s.tracks[track] || !ctx) return null;
+  if (!liteTracks || liteTracks.song !== s) liteTracks = { song: s, map: new Map() };
+  const key = track + "|" + destKey;
+  if (!liteTracks.map.has(key)) {
+    const fx = s.tracks[track].fx;
+    liteTracks.map.set(key, liteTrack(ctx, dest, fx, sendsAny(fx) ? sharedSends(section) : null));
+  }
+  return liteTracks.map.get(key);
 }
 // the BACK tracks are recordings at the song's Hackbeat tempo: stretched (pitch
 // kept) to the game's tempo, once per round (owner, 2026-10-03)
 const backCache = new Map();   // "path@factor" -> stretched AudioBuffer
 function backFactor() { const b = song().bpm; return b ? b / BPM : 1; }
-function backBuffer(path) {
-  const buf = sampleCache.get(path);
+function backBuffer(path, track) {
+  const buf = (BAKE && baked(path, track)) || sampleCache.get(path);
   if (!buf) return null;
   const f = backFactor();
   if (Math.abs(f - 1) < 1e-3) return buf;
-  const key = path + "@" + f.toFixed(4);
+  const key = path + "|" + (BAKE ? track : "") + "@" + f.toFixed(4);
   if (!backCache.has(key)) backCache.set(key, stretchBuffer(ctx, buf, f));
   return backCache.get(key);
 }
 function prepareBackBuffers() {
-  for (const p of new Set(Object.values(song().back || {}).flat().map((e) => e.path))) backBuffer(p);
+  for (const e of Object.values(song().back || {}).flat()) backBuffer(e.path, e.track);
 }
 /* What a lane plays and where it goes. A round's own sample plays through
    its Hackbeat track's chain (the effects set on that track in Hackbeat);
@@ -366,6 +422,10 @@ function prepareBackBuffers() {
 function laneSound(ln) {
   const s = song().sounds && song().sounds[ln.name];
   const buf = s && sampleCache.get(s.path);
+  if (buf && BAKE) {   // phones: the baked sound, through a lite track (shared reverb / echo)
+    return { buffer: baked(s.path, s.track) || buf, midi: s.note, baseNote: 60,
+      destination: phoneTrack(s.track, mixer.hackbeat, "hits", null) || laneDest(ln), settings: hbVoice(s.voice) };
+  }
   if (buf) return { buffer: buf, midi: s.note, baseNote: 60, destination: hbTrack(s.track, mixer.hackbeat, "hits") || laneDest(ln), settings: hbVoice(s.voice) };
   return { buffer: ln.kind ? melodyVoices[ln.kind][ln.slot] : drums[ln.drum], midi: 60, baseNote: 60, destination: laneDest(ln), settings: hbVoice(null) };
 }
@@ -530,13 +590,14 @@ function scheduleBack() {
   const from = Math.max(backUntil, ctx.currentTime), until = ctx.currentTime + 0.15;
   for (const m of ["drums", "bass", "treble"]) {
     for (const e of song().back[m]) {
-      const buf = backBuffer(e.path);   // stretched to the game's tempo, pitch kept
+      const buf = backBuffer(e.path, e.track);   // stretched to the game's tempo, pitch kept (phones: baked first)
       if (!buf) continue;
       for (let k = Math.ceil((from - clock.first - e.beat * clock.beatDur) / period); ; k++) {
         const t = clock.first + k * period + e.beat * clock.beatDur;
         if (t >= until) break;
         if (t >= from) pool.noteOn({ channel: 120 + (backCh++ % 24), midi: e.note, baseNote: 60, buffer: buf, velocity: e.vel, keep: true,
-          when: t, destination: hbTrack(e.track, backGain[m], "back " + m) || backGain[m], settings: hbVoice(e.voice) });
+          when: t, destination: (BAKE ? phoneTrack(e.track, backGain[m], "back " + m, m) : hbTrack(e.track, backGain[m], "back " + m)) || backGain[m],
+          settings: hbVoice(e.voice) });
       }
     }
   }
@@ -545,7 +606,11 @@ function scheduleBack() {
 function updateBackLevels() {
   if (!ctx || !backGain.drums) return;
   const prog = sectionProgress(song().parts, stageIdx);
-  for (const m of ["drums", "bass", "treble"]) backGain[m].gain.setTargetAtTime(backLevel(prog[m]), ctx.currentTime, 1.2);
+  for (const m of ["drums", "bass", "treble"]) {
+    backGain[m].gain.setTargetAtTime(backLevel(prog[m]), ctx.currentTime, 1.2);
+    // phones: the background's reverb / echo sends follow its fade too
+    if (backSends[m]) for (const g of [backSends[m].reverbIn, backSends[m].delayIn]) g.gain.setTargetAtTime(backLevel(prog[m]), ctx.currentTime, 1.2);
+  }
 }
 
 // --- LISTEN (hint) ---------------------------------------------------------
