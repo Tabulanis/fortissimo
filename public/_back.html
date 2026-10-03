@@ -1,0 +1,18 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" src="/" style="width:1200px;height:800px;border:0"></iframe>
+<script type="module">
+const out = [], wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const f = document.getElementById("f");
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  w.addEventListener("error", (e) => out.push("JSERROR " + e.message));
+  try {
+    await wait(3000);
+    const t0 = performance.now();
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(5000);
+    out.push(JSON.stringify(w.__gr.game.backInfo()));
+  } catch (e) { out.push("ERROR " + e.message); }
+  fetch("http://127.0.0.1:8899/back", { method: "POST", body: out.join("\n") });
+};
+</script>

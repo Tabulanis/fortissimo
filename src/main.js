@@ -8,7 +8,8 @@
    offset. */
 
 import "./audio/voices.js";
-import "./audio/hbchain.js";   // Hackbeat's own track chain, word for word (tools/sync-hackbeat-audio.mjs)
+import "./audio/hbchain.js";
+import { stretchBuffer } from "./audio/stretch.js";   // Hackbeat's own track chain, word for word (tools/sync-hackbeat-audio.mjs)
 import { makeDrums } from "./audio/drums.js";
 import { startClock } from "./audio/clock.js";
 import { nearestOnGrid, nearestInLoop, velocityFor, label, OFF_CHART, OFF_VEL } from "./game/judge.js";
@@ -341,6 +342,23 @@ async function loadRoundSamples() {
       sampleCache.set(p, await ctx.decodeAudioData(await r.arrayBuffer()));
     } catch (e) { sampleCache.set(p, null); console.warn(`sample ${p} failed: ${e}`); }
   }));
+  prepareBackBuffers();   // stretch the background recordings to the game's tempo now, not mid-song
+}
+// the BACK tracks are recordings at the song's Hackbeat tempo: stretched (pitch
+// kept) to the game's tempo, once per round (owner, 2026-10-03)
+const backCache = new Map();   // "path@factor" -> stretched AudioBuffer
+function backFactor() { const b = song().bpm; return b ? b / BPM : 1; }
+function backBuffer(path) {
+  const buf = sampleCache.get(path);
+  if (!buf) return null;
+  const f = backFactor();
+  if (Math.abs(f - 1) < 1e-3) return buf;
+  const key = path + "@" + f.toFixed(4);
+  if (!backCache.has(key)) backCache.set(key, stretchBuffer(ctx, buf, f));
+  return backCache.get(key);
+}
+function prepareBackBuffers() {
+  for (const p of new Set(Object.values(song().back || {}).flat().map((e) => e.path))) backBuffer(p);
 }
 /* What a lane plays and where it goes. A round's own sample plays through
    its Hackbeat track's chain (the effects set on that track in Hackbeat);
@@ -505,7 +523,7 @@ function scheduleBack() {
   const from = Math.max(backUntil, ctx.currentTime), until = ctx.currentTime + 0.15;
   for (const m of ["drums", "bass", "treble"]) {
     for (const e of song().back[m]) {
-      const buf = sampleCache.get(e.path);
+      const buf = backBuffer(e.path);   // stretched to the game's tempo, pitch kept
       if (!buf) continue;
       for (let k = Math.ceil((from - clock.first - e.beat * clock.beatDur) / period); ; k++) {
         const t = clock.first + k * period + e.beat * clock.beatDur;
@@ -1027,6 +1045,8 @@ if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; }, get bell() { return bell; },
   get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; },
   get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln) => laneSound(ln),
+  backInfo: () => ({ bpm: BPM, songBpm: song().bpm, loopSeconds: +(song().bars * 4 * clock.beatDur).toFixed(3),
+    stretched: [...backCache].map(([k, b]) => [k, +b.duration.toFixed(3)]) }),
   upcoming: () => (ctx ? buildUpcoming(ctx.getOutputTimestamp().contextTime) : []),
   part: () => currentPart(),
   song: () => song(),
