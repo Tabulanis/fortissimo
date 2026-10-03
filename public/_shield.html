@@ -20,11 +20,9 @@ f.onload = async () => {
     s.setStation("bass"); await wait(2200);
     const now = G.ctx.getOutputTimestamp().contextTime;
     for (let k = 0; k < 4; k++) s.fireCannon(6 + 8 + k * 2, now + k * 0.12);
-    say("bolts0", JSON.stringify({ ctxNow: +now.toFixed(2), ...s.debugDefense(0) }));
-    await wait(200);
-    say("bolts200", JSON.stringify(s.debugDefense(0)));
+    await wait(500);
     say("shot_bass", await grab());
-    await wait(250);
+    await wait(420);
     say("shot_bass2", await grab());
     say("done", "ok");
   } catch (e) { say("err", e.message + " " + e.stack); }

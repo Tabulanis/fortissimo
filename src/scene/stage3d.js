@@ -1364,6 +1364,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   }
   const _red = new THREE.Color(0xff1408);
   const _cyan = new THREE.Color(0x6fe6ff);
+  const _shot = new THREE.Vector3();
   const pending = new Float32Array(64);   // per target 0..1: "coming up" (set by the game)
 
   // path point p(f): lerp(spawn, face, f) + the parabolic arc lift.
@@ -1958,7 +1959,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         const pl = pending[lane], ramp = pl * pl * pl;
         fl.glow.visible = true;
         fl.glow.material.opacity = Math.min(1, 0.2 + 0.8 * pl * pl);
-        fl.glow.scale.setScalar(fl.radius * (2.6 + 2.2 * ramp));
+        fl.glow.scale.setScalar(fl.radius * (1.25 + 0.55 * ramp));   // tight on the object (owner)
         _mc.copy(_cyan).lerp(_white, Math.max(0, (pl - 0.65) / 0.35) * 0.9);
         fl.glow.material.color.copy(_mc);
         if (frame) { frame.visible = true; frame.material.opacity = Math.min(1, 0.3 + 0.9 * pl); frame.material.color.copy(_mc); }
@@ -2257,8 +2258,12 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     /** a top-row note fires that bar's cannon at its archer, at heard time `at` */
     fireCannon: (laneIdx, at) => {
       if (laneIdx < 6 || laneIdx >= N_T) return;
-      const b = melodyStations[laneIdx < 6 + BARS ? "bass" : "treble"].bars[(laneIdx - 6) % BARS];
-      defense.fire(b.muzzle || drumFace[laneIdx], SPAWNS[laneIdx], at);   // from the muzzle
+      const name = laneIdx < 6 + BARS ? "bass" : "treble", k = (laneIdx - 6) % BARS;
+      const b = melodyStations[name].bars[k], from = b.muzzle || drumFace[laneIdx];
+      // FORWARD, down the court you're facing (owner: "so we can see"), fanned across the view
+      const yaw = STATIONS[name].yaw, fx = -Math.sin(yaw), fz = -Math.cos(yaw), j = (k % PER_ROW) - (PER_ROW - 1) / 2;
+      _shot.set(from.x + fx * 26 + -fz * j * 1.6, 9, from.z + fz * 26 + fx * j * 1.6);
+      defense.fire(from, _shot, at);
     },
     debugArrowView: () => {
       camera.updateMatrixWorld();
