@@ -75,6 +75,8 @@ export function roundFromProject(project, meta = {}) {
   const defaultInst = ((project.ui && project.ui.curInstrument) || 0) + 1;
   const instOf = (ev) => (ev.inst == null ? defaultInst : +ev.inst);
   const pathOf = (inst) => (project.instruments[inst - 1] || {}).path;   // slots count from 1
+  // the slot's Pitch (semitones) + Tune (cents) from Hackbeat's voice panel
+  const shiftOf = (inst) => { const i = project.instruments[inst - 1] || {}; return (+i.transpose || 0) + (+i.tune || 0) / 100; };
   // the song: patterns in play order, end to end
   const seq = [];
   let offsetBeats = 0;
@@ -114,7 +116,7 @@ export function roundFromProject(project, meta = {}) {
   const instCount = {}, noteCount = {};
   for (const { c, beat, ev } of events) {
     const role = roles[c], vel = ev.vol == null ? 1 : ev.vol / 64;
-    if (role.back) { const path = pathOf(instOf(ev)); if (path) back[role.back].push({ beat, note: ev.note, path, vel }); continue; }
+    if (role.back) { const path = pathOf(instOf(ev)); if (path) back[role.back].push({ beat, note: ev.note + shiftOf(instOf(ev)), path, vel }); continue; }
     let lane;
     if (role.drum) {
       lane = role.drum;
@@ -130,12 +132,12 @@ export function roundFromProject(project, meta = {}) {
   notes.sort((a, b) => a.beat - b.beat || a.lane.localeCompare(b.lane));
   const sounds = {};
   for (const [lane, counts] of Object.entries(instCount)) {
-    const path = pathOf(+mostUsed(counts));
+    const inst = +mostUsed(counts), path = pathOf(inst);
     if (!path) continue;
-    if (DRUM_LANES.includes(lane)) sounds[lane] = { path, note: +mostUsed(noteCount[lane]) };
+    if (DRUM_LANES.includes(lane)) sounds[lane] = { path, note: +mostUsed(noteCount[lane]) + shiftOf(inst) };
     else {
       const [kind, bar] = lane.split(" ");
-      sounds[lane] = { path, note: rowBars[`${kind} ${+bar > 4 ? 1 : 0}`][(+bar - 1) % 4].note };
+      sounds[lane] = { path, note: rowBars[`${kind} ${+bar > 4 ? 1 : 0}`][(+bar - 1) % 4].note + shiftOf(inst) };
     }
   }
   return { name: meta.name || "Round", title: meta.title || "Untitled", bpm: project.bpm, bars, notes, sounds, back, warnings };

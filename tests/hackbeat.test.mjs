@@ -45,6 +45,13 @@ for (const r of ROUNDS) {
   assert.strictEqual(roundFromProject(project).sounds.snare.path, "mine/snare2.wav");
 }
 
+// Hackbeat's per-slot Pitch + Tune move the sound (the bar stays the same note name)
+{
+  const { project } = songProjectFromRound(ROUNDS[0]);
+  project.instruments[0].transpose = -2; project.instruments[0].tune = 25;
+  assert.strictEqual(roundFromProject(project).sounds.kick.note, 60 - 2 + 0.25);
+}
+
 // rows: four note NAMES, low -> high; octaves fold; a fifth name is warned about
 {
   const { project } = songProjectFromRound({ parts: [{ part: [{ lane: "hat", beat: 0 }] }] });
