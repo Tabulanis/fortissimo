@@ -42,7 +42,9 @@ function makeCourtyard(ctx) {
   return ir;
 }
 
-export function createMixer(ctx) {
+/** light: phones / tablets — no oversampling on the saturators and the clipper (it's CPU, not sound, at these levels) */
+export function createMixer(ctx, { light = false } = {}) {
+  const OVERSAMPLE = light ? "none" : "4x";
   // --- master: fader -> limiter -> speakers
   const master = ctx.createGain();
   master.gain.value = 1.6;   // a lone block peaks ~-4 dBFS; stacked hits ride the soft clipper, never past full scale
@@ -71,7 +73,7 @@ export function createMixer(ctx) {
       curve[i] = Math.sign(x) * y;
     }
     clip.curve = curve;
-    clip.oversample = "4x";
+    clip.oversample = OVERSAMPLE;
   }
   // halve going in so the curve covers signals up to ±2
   const clipIn = ctx.createGain(); clipIn.gain.value = 0.5;
@@ -119,7 +121,7 @@ export function createMixer(ctx) {
       }
       const sat = ctx.createWaveShaper();
       sat.curve = curve;
-      sat.oversample = "4x";
+      sat.oversample = OVERSAMPLE;
       node.connect(sat);
       node = sat;
     }

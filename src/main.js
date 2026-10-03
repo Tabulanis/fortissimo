@@ -384,8 +384,11 @@ function hbTrack(track, dest, destKey) {
   if (!hbChains || hbChains.song !== s) hbChains = { song: s, chains: new Map(), buses: new Map() };
   const key = track + "|" + destKey;
   if (!hbChains.chains.has(key)) {
-    let buses = hbChains.buses.get(destKey);
-    if (!buses) {
+    // a reverb / echo bus only where a track actually sends to one: a convolver
+    // runs flat out even when nothing reaches it (the heaviest node there is)
+    const fx = s.tracks[track].fx, sends = (fx.reverb && fx.reverb.on) || (fx.delay && fx.delay.on);
+    let buses = sends ? hbChains.buses.get(destKey) : null;
+    if (sends && !buses) {
       buses = HB_CHAIN.buildSendBuses(ctx, dest);
       buses.setReverb(s.fxBus.reverbDecay);
       buses.setDelay(s.fxBus.delayTime, s.fxBus.delayFb);
@@ -449,9 +452,13 @@ function makeStartButton() {
   btn.addEventListener("click", async () => {
     bootlog("start tapped");
     if (ctx) return;
-    ctx = new AudioContext();
+    // phones / tablets: a bigger audio buffer — the tiny default crackles on
+    // Android whenever the audio work spikes (owner, 2026-10-03). The press
+    // timing reads the real output clock, so the added delay is allowed for.
+    ctx = new AudioContext(IS_TOUCH ? { latencyHint: "playback" } : {});
     await ctx.resume();
-    mixer = createMixer(ctx);
+    bootlog("audio", { rate: ctx.sampleRate, base: +(ctx.baseLatency || 0).toFixed(4), out: +(ctx.outputLatency || 0).toFixed(4), hint: IS_TOUCH ? "playback" : "interactive" });
+    mixer = createMixer(ctx, { light: IS_TOUCH });
     for (const k of ["master", "hits", "metronome"]) mixer.setVolume(k, SET[k]);
     masterGain = mixer.master;
 

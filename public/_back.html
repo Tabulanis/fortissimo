@@ -1,9 +1,11 @@
 <!doctype html><body style="margin:0">
-<iframe id="f" src="/" style="width:1200px;height:800px;border:0"></iframe>
+<iframe id="f" src="about:blank" style="width:1200px;height:800px;border:0"></iframe>
 <script type="module">
 const out = [], wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const f = document.getElementById("f");
+f.src = "/" + location.search;
 f.onload = async () => {
+  if (f.contentWindow.location.href === "about:blank") return;
   const w = f.contentWindow, d = w.document;
   w.addEventListener("error", (e) => out.push("JSERROR " + e.message));
   try {
