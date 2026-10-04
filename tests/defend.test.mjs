@@ -19,8 +19,8 @@ const ids = (ns) => ns.map((n) => n.lane[0] + n.at);
 {
   const d = mk({ keep: "any" });
   const w = at(d, 0);
-  assert.ok(w.length >= 4 && w.every((n) => n.lane === "kick" || n.lane === "snare"), `first pass: the backbone (${ids(w)})`);
-  assert.ok(w.every((n, i) => !i || n.at - w[i - 1].at >= 1 - 1e-9), "Easy: at least a beat apart, never two together");
+  assert.ok(w.length >= 2 && w.every((n) => n.lane === "kick" || n.lane === "snare"), `first pass: the backbone (${ids(w)})`);
+  assert.ok(w.every((n, i) => !i || n.at - w[i - 1].at >= 2 - 1e-9), "Easy: two beats apart, never two together");
   assert.ok(w.every((n) => n.at >= 0 && n.at <= 5), "only what's inside the window");
   // the stream keeps coming: time moves on, the window slides, nothing waits for a hit
   const w2 = at(d, 3);
@@ -30,14 +30,14 @@ const ids = (ns) => ns.map((n) => n.lane[0] + n.at);
   assert.equal(d.hit(n0.id), "lock");
   assert.ok(d.locked.has(n0.id) && d.drain().some((e) => e.type === "lock"));
   // what went by unhit is a MISS, once, and the stream carries on past it
-  const gone = at(d, 6).length;   // notes at 3.x..4 went by
+  const gone = at(d, w2[1].at + 1).length;   // the next streamed note went by
   const ev = d.drain(), misses = ev.filter((e) => e.type === "miss");
   assert.ok(misses.length >= 1, "misses reported");
   d.tick(); assert.equal(d.drain().filter((e) => e.type === "miss").length, 0, "each occurrence missed once only");
   assert.ok(gone > 0, "still streaming after misses");
   // the missed ones come back next pass; the second pass still streams
-  const w3 = at(d, 9);
-  assert.ok(w3.length > 0 && w3.some((n) => n.at >= 8), "pass two streams too");
+  const w3 = at(d, w2[1].at + 5);
+  assert.ok(w3.length > 0 && w3.some((n) => n.at > w2[1].at + 1), "the stream keeps going");
 }
 // PASSES reveal the song: once kick + snare are locked, the next pass is the hats
 {
@@ -45,7 +45,7 @@ const ids = (ns) => ns.map((n) => n.lane[0] + n.at);
   for (const n of d.notes) if (n.lane === "kick" || n.lane === "snare") d.locked.add(n.id);
   const w = at(d, 0);
   assert.ok(w.length && w.every((n) => n.lane === "hat"), `then the hats (${ids(w)})`);
-  assert.ok(w.every((n, i) => !i || n.at - w[i - 1].at >= 1 - 1e-9), "Easy thins the hats to one a beat");
+  assert.ok(w.every((n, i) => !i || n.at - w[i - 1].at >= 2 - 1e-9), "Easy thins the hats to one every two beats");
 }
 // MEDIUM: half-beat density, up to two together; a pattern of 3 in a row locks; a break keeps a random half
 {

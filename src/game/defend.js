@@ -12,7 +12,7 @@
  * song is recognisable long before it's all locked. Hard streams the chart as written.
  *
  * DIFFICULTY is density and the keep rule (run.js):
- *   keep "any"  (Easy)    at least a beat between notes, one at a time; every hit locks
+ *   keep "any"  (Easy)    two beats between notes, one at a time; every hit locks
  *   keep "half" (Medium)  half a beat, up to two together (two hands); a PATTERN of
  *                         lockSize hits in a row locks them all — break it (a miss, a
  *                         wrong note) and a random half of the run locks anyway
@@ -31,7 +31,7 @@ export const LIFE = {              // per run damage: a miss hurts you and the t
   gentle: { miss: 3, heal: 3 }, normal: { miss: 5, heal: 2 }, harsh: { miss: 8, heal: 1 },
 };
 /** the stream's density per keep rule: gap = beats between notes, together = at most this many at one beat */
-export const STREAM = { any: { gap: 1, together: 1, maxGap: 2 }, half: { gap: 0.5, together: 2, maxGap: 1 }, none: { gap: 0, together: 2, maxGap: 2 } };
+export const STREAM = { any: { gap: 2, together: 1, maxGap: 3 }, half: { gap: 0.5, together: 2, maxGap: 1 }, none: { gap: 0, together: 2, maxGap: 2 } };   // Easy: every 2 beats (owner, 2026-10-04: one a beat "came a bit fast")
 // maxGap: the stream never leaves you waiting longer than this (owner, 2026-10-04) — a thin
 // stretch of the song gets BONUS notes on the section's other drums / guns: in key (a bar plays
 // its own note), they fire the guns and score like any hit, but lock nothing (they're not the song)
