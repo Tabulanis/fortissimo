@@ -646,7 +646,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       const left = b._cdNext / beatDur, n = left <= 3 ? Math.ceil(left) : 0;
       if (n && !b._cd) {
         b._cd = new THREE.Sprite(new THREE.SpriteMaterial({ map: COUNT_TEX[0], transparent: true, depthWrite: false, depthTest: false, fog: false }));
-        b._cd.renderOrder = 20; b._cd.layers.set(FX_LAYER); b._cd.position.copy(b.top); b._cd.position.y += 0.2;   // straight up, over its key letter (the tilted row's normal leans at the camera) scene.add(b._cd); b._cdN = 0;
+        b._cd.renderOrder = 20; b._cd.layers.set(FX_LAYER); b._cd.position.copy(b.top); b._cd.position.y += 0.2;   // straight up, over its key letter (the tilted row's normal leans at the camera)
         scene.add(b._cd); b._cdN = 0;
       }
       if (!b._cd) continue;

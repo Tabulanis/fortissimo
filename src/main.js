@@ -1288,7 +1288,9 @@ if (window.__gr) window.__gr.game = {
   get roundIdx() { return roundIdx; },
   setBackLevel: (v) => { for (const g of Object.values(backGain)) g.gain.value = v; },   // harness: backgrounds at full
   get defend() { return defend; }, get siege() { return siege; },
-  fireGun: (idx, lane) => fireGun(idx, lane, ctx.getOutputTimestamp().contextTime),   // harness only get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,
+  // fireGun: harness only
+  fireGun: (idx, lane) => fireGun(idx, lane, ctx.getOutputTimestamp().contextTime),
+  get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,
   get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln, midi) => laneSound(ln, midi),
   backInfo: () => ({ bpm: BPM, songBpm: song().bpm, loopSeconds: +(song().bars * 4 * clock.beatDur).toFixed(3),
     stretched: [...backCache].map(([k, b]) => [k, +b.duration.toFixed(3)]) }),
