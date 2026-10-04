@@ -2316,8 +2316,13 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       const b = melodyStations[name].bars[k], from = b.muzzle || drumFace[laneIdx];
       // FORWARD, down the court you're facing (owner: "so we can see"), fanned across the view
       const yaw = STATIONS[name].yaw, fx = -Math.sin(yaw), fz = -Math.cos(yaw), j = (k % PER_ROW) - (PER_ROW - 1) / 2;
-      _shot.set(from.x + fx * 26 + -fz * j * 1.6, 9, from.z + fz * 26 + fx * j * 1.6);
-      defense.fire(from, _shot, at);
+      if (b.mortar) {   // mortars lob high, landing nearer down the court
+        _shot.set(from.x + fx * 18 + -fz * j * 1.4, 0.3, from.z + fz * 18 + fx * j * 1.4);
+        defense.fire(from, _shot, at, { arc: 11, dur: 1.5 });
+      } else {
+        _shot.set(from.x + fx * 26 + -fz * j * 1.6, 9, from.z + fz * 26 + fx * j * 1.6);
+        defense.fire(from, _shot, at);
+      }
     },
     debugArrowView: () => {
       camera.updateMatrixWorld();

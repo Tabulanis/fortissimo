@@ -66,8 +66,6 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
   const group = new THREE.Group();
   group.name = "station-" + kind;
   scene.add(group);
-  const barMat = new THREE.MeshStandardMaterial({ color: K.bar, metalness: K.metal, roughness: K.rough, emissive: 0x000000 });
-  const tubeMat = new THREE.MeshStandardMaterial({ color: 0x5a4022, metalness: 0.7, roughness: 0.45 });
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.8 });
 
   const bars = [];
@@ -77,6 +75,28 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
   // from the muzzle (defense.js). Same target shape as a bar: top / normal / radius.
   const cannonMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, metalness: 0.85, roughness: 0.35, emissive: 0x000000 });
   const carriageMat = new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.75 });
+  // MORTARS on the bottom row: short and wide, angled up and a little outward, lobbing high
+  function makeMortar(rg, i, z) {
+    const mat = cannonMat.clone();
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.05, 16), carriageMat);
+    base.position.set(s * 0.1, 0.025, z);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.062, 0.17, 16), mat);
+    barrel.rotation.z = -s * 0.35;   // up, leaning out
+    barrel.position.set(s * 0.12, 0.13, z);
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(0.054, 0.01, 8, 18), mat);
+    lip.position.set(0, 0.085, 0); lip.rotation.x = Math.PI / 2;
+    barrel.add(lip);
+    for (const m of [base, barrel]) { m.castShadow = true; m.receiveShadow = true; rg.add(m); }
+    const lab = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(labels[i]), transparent: true, depthWrite: false }));
+    lab.scale.setScalar(0.085);
+    lab.position.set(s * 0.0, 0.17, z);
+    rg.add(lab);
+    rg.updateMatrixWorld(true);
+    const top = new THREE.Vector3(s * 0.06, 0.06, z).applyMatrix4(rg.matrixWorld);
+    const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(rg.quaternion);
+    const muzzle = barrel.localToWorld(new THREE.Vector3(0, 0.1, 0));
+    return { mesh: barrel, mat, label: lab, top, normal, radius: 0.08, len: 0.17, row: 0, mortar: true, muzzle };
+  }
   function makeCannon(rg, i, z) {
     const mat = cannonMat.clone();   // its own: it lights up on its own
     const carriage = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.05, 0.12), carriageMat);
@@ -123,35 +143,11 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
   });
   const zLo = BAR_MID_Z - (PER_ROW - 1) / 2 * PITCH - BAR_W / 2 - 0.05, zHi = BAR_MID_Z + (PER_ROW - 1) / 2 * PITCH + BAR_W / 2 + 0.05;
   for (let i = 0; i < BARS; i++) {
-    const t = i / (BARS - 1), row = i < PER_ROW ? 0 : 1, j = i % PER_ROW;
-    const len = K.len[0] + (K.len[1] - K.len[0]) * t;
+    const row = i < PER_ROW ? 0 : 1, j = i % PER_ROW;
     const z = BAR_MID_Z + s * (j - (PER_ROW - 1) / 2) * PITCH;
-    const lx = s * (len / 2);                       // along the row, from its near edge
     const rg = rowGroups[row];
-    if (row === 1) { bars.push(makeCannon(rg, i, z)); continue; }   // the top row: CANNONS
-    const mat = barMat.clone();   // own material: each bar lights up on its own
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(len, BAR_T, BAR_W), mat);
-    bar.position.set(lx, -BAR_T / 2, z);
-    bar.castShadow = true; bar.receiveShadow = true;
-    rg.add(bar);
-    // resonator tube hanging under the bar's middle, shorter for higher notes
-    const tl = K.tube[0] + (K.tube[1] - K.tube[0]) * t;
-    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, tl, 12), tubeMat);
-    tube.position.set(lx, -BAR_T - 0.03 - tl / 2, z);
-    tube.castShadow = true;
-    rg.add(tube);
-    // the key / button label, lying on the bar near the player, reading upright from them
-    const lab = new THREE.Mesh(new THREE.PlaneGeometry(0.11, 0.11),
-      new THREE.MeshBasicMaterial({ map: labelTexture(labels[i]), transparent: true, depthWrite: false }));
-    lab.rotation.set(-Math.PI / 2, 0, 0, "YXZ");
-    lab.rotation.y = -s * Math.PI / 2;
-    lab.position.set(s * 0.07, 0.002, z);
-    rg.add(lab);
-    // world-space face centre + normal (arrows, hits and VR striking use these)
-    rg.updateMatrixWorld(true);
-    const top = new THREE.Vector3(lx, 0, z).applyMatrix4(rg.matrixWorld);
-    const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(rg.quaternion);
-    bars.push({ mesh: bar, mat, label: lab, top, normal, radius: BAR_W / 2, len, row });
+    // every bar is a GUN (owner, 2026-10-03): cannons on the top row, mortars on the bottom
+    bars.push(row === 1 ? makeCannon(rg, i, z) : makeMortar(rg, i, z));
   }
   // frame: per row, two rails under the bar ends (tilting with the row) and legs to the floor
   for (let row = 0; row < 2; row++) {

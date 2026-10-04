@@ -29,7 +29,7 @@ void main() { vec4 wp = modelMatrix * vec4(position, 1.0); vUv = uv; vP = positi
 // where they cross the shield brightens; the bright layer swells and ebbs.
 // Brightness IS opacity (the dark goes clear), pushed bright for a bloomed glow.
 // Toward the floor it fades out smoothly (no hard line where it meets the ground).
-const FRAG = `uniform vec3 uColor; uniform float uStrength, uTime, uHit; uniform vec3 uHitAt; uniform sampler2D uTex, uTexB;
+const FRAG = `uniform vec3 uColor; uniform float uStrength, uTime, uHit, uRise; uniform vec3 uHitAt; uniform sampler2D uTex, uTexB;
 varying vec3 vN; varying vec3 vV; varying vec2 vUv; varying vec3 vP;
 void main() {
   vec3 d = normalize(vP);
@@ -46,8 +46,12 @@ void main() {
   float rim = pow(1.0 - abs(dot(normalize(vN), vV)), 3.0);
   float floorFade = smoothstep(0.0, 0.18, vUv.y);                           // soft into the ground
   float hit = uHit * smoothstep(1.6, 0.0, distance(vP, uHitAt));
-  float a = (uStrength * (pow(lum, 1.6) * 1.1 + 0.15 * rim) + hit * (0.4 + lum)) * floorFade;
-  gl_FragColor = vec4(mix(sw * 1.5, uColor, 0.2) + uColor * (0.5 * rim + hit), a);
+  // IT BUILDS UPWARD (owner): only up to uRise (0 = a band at the floor, 1 = the top), soft above it,
+  // with a bright edge where it's still growing
+  float risen = 1.0 - smoothstep(uRise - 0.05, uRise + 0.03, vUv.y);
+  float edge = (uRise < 0.99) ? smoothstep(0.025, 0.0, abs(vUv.y - uRise)) * (0.4 + 0.6 * lum) : 0.0;   // a fine line, following the swirl
+  float a = (uStrength * (pow(lum, 1.6) * 1.1 + 0.15 * rim) * risen + uStrength * edge * 0.3 + hit * (0.4 + lum)) * floorFade;
+  gl_FragColor = vec4(mix(sw * 1.5, uColor, 0.2) + uColor * (0.5 * rim + hit + 0.5 * edge), a);
 }`;
 
 export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null } = {}) {
@@ -67,7 +71,7 @@ export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null 
     const mat = new THREE.ShaderMaterial({
       vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
-      uniforms: { uColor: { value: new THREE.Color(0x58c8ff) }, uStrength: { value: 0 }, uTime: { value: 0 }, uHit: { value: 0 }, uHitAt: { value: new THREE.Vector3() }, uTex: { value: swirl }, uTexB: { value: swirlBright } },
+      uniforms: { uColor: { value: new THREE.Color(0x58c8ff) }, uStrength: { value: 0 }, uTime: { value: 0 }, uHit: { value: 0 }, uHitAt: { value: new THREE.Vector3() }, uTex: { value: swirl }, uTexB: { value: swirlBright }, uRise: { value: 0 } },
     });
     const geo = new THREE.SphereGeometry(R, 48, 16, mid - Math.PI / 3, (2 * Math.PI) / 3, 0, Math.PI / 2);
     const mesh = new THREE.Mesh(geo, mat);
@@ -76,7 +80,7 @@ export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null 
     mesh.visible = false;
     mesh.renderOrder = 5;
     group.add(mesh);
-    parts[name] = { mesh, mat, target: 0, value: 0, up: false, hit: 0 };
+    parts[name] = { mesh, mat, target: 0, value: 0, up: false, hit: 0, rise: 0, riseTarget: 0 };
   }
 
   // ---- cannon bolts + bursts (pools, nothing allocated per shot) -------------
@@ -118,6 +122,24 @@ export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null 
       e.v.set(Math.random() - 0.5, 0.6 + Math.random() * 0.8, Math.random() - 0.5).normalize().multiplyScalar(7 + Math.random() * 7);
     }
   };
+  // ATTACKERS (owner, 2026-10-03): while a part of the shield is up, enemy fire
+  // arrows come at that side of the dome — and get ZAPPED where they hit it
+  const ATTACK_S = 1.6;                       // an attacker's flight
+  const attackers = Array.from({ length: 12 }, () => ({ s: mk(0xff9a40, true, fireTexture), from: new THREE.Vector3(), to: new THREE.Vector3(), part: "", t0: 0, live: false }));
+  const zaps = Array.from({ length: 12 }, () => ({ flash: mk(0x7fd8ff), sparks: Array.from({ length: 8 }, () => ({ s: mk(0xbfeaff, true, fireTexture), v: new THREE.Vector3() })), at: new THREE.Vector3(), t0: 0, live: false }));
+  const nextAttack = {};                      // part -> heard time of its next attacker
+  const FROM = {                              // where each side's attackers come from (far down its court, high)
+    drums: () => new THREE.Vector3(-6 + Math.random() * 12, 8 + Math.random() * 3, -34),
+    bass: () => new THREE.Vector3(34, 8 + Math.random() * 3, -5 + Math.random() * 10),
+    treble: () => new THREE.Vector3(-34, 8 + Math.random() * 3, -5 + Math.random() * 10),
+  };
+  const zap = (at, now) => {
+    const z = zaps.find((x) => !x.live);
+    if (!z) return;
+    z.live = true; z.t0 = now; z.at.copy(at); z.flash.position.copy(at); z.flash.visible = true;
+    for (const e of z.sparks) { e.s.position.copy(at); e.s.visible = true; e.v.copy(at).sub(CENTER).normalize().multiplyScalar(2 + Math.random() * 3).add(new THREE.Vector3(Math.random() - 0.5, Math.random(), Math.random() - 0.5).multiplyScalar(3)); }
+  };
+  const _ap = new THREE.Vector3();
   const queue = [];   // shots waiting for their moment: { at, from, to }
   const _p = new THREE.Vector3();
 
@@ -128,7 +150,8 @@ export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null 
         const st = state[name] || { progress: 0, up: false };
         p.up = !!st.up;
         const pr = Math.min(1, st.progress || 0);
-        p.target = p.up ? 0.85 : pr > 0 ? 0.15 + 0.4 * pr : 0;   // building: comes together as you lock; up: solid
+        p.target = p.up ? 0.85 : pr > 0 ? 0.6 : 0;                 // building: as strong as it'll be, just not as tall
+        p.riseTarget = p.up ? 1.05 : pr > 0 ? 0.08 + 0.92 * pr : 0;   // a band at the floor, rising to the top as you lock
       }
     },
     /** a missed arrow reached a part that's up: flash it where it struck (world point) */
@@ -140,15 +163,51 @@ export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null 
     },
     debug: () => ({ queued: queue.map((q) => +q.at.toFixed(2)), flying: bolts.filter((b) => b.live).map((b) => b.s.position.toArray().map((v) => +v.toFixed(1))), bursts: bursts.filter((u) => u.live).length }),
     /** a cannon shot from a bar (world) to its archer (world), at heard time `at` */
-    fire(from, to, at) { queue.push({ at, from: from.clone(), to: to.clone() }); },
+    fire(from, to, at, { arc = 2.2, dur = BOLT_S } = {}) { queue.push({ at, from: from.clone(), to: to.clone(), arc, dur }); },
     update(heardNow, dt) {
       for (const p of Object.values(parts)) {
         p.value += (p.target - p.value) * (1 - Math.exp(-dt / 0.6));
         p.hit = Math.max(0, p.hit - dt * 2.5);
         p.mesh.visible = p.value > 0.005 || p.hit > 0.01;
         p.mat.uniforms.uStrength.value = p.value;
+        p.rise += (p.riseTarget - p.rise) * (1 - Math.exp(-dt / 0.8));   // rises smoothly
+        p.mat.uniforms.uRise.value = p.rise;
         p.mat.uniforms.uHit.value = p.hit;
         p.mat.uniforms.uTime.value = heardNow;
+      }
+      // attackers: a part that's up draws fire (more parts up, more fire), zapped at the dome
+      const upCount = Object.values(parts).filter((p) => p.up).length;
+      for (const [name, p] of Object.entries(parts)) {
+        if (!p.up) { nextAttack[name] = 0; continue; }
+        if (!nextAttack[name]) nextAttack[name] = heardNow + 0.5 + Math.random();
+        if (heardNow < nextAttack[name]) continue;
+        nextAttack[name] = heardNow + (1.0 + Math.random() * 1.2) * (1.5 / Math.max(1, upCount * 0.75));
+        const a = attackers.find((x) => !x.live);
+        if (!a) continue;
+        a.live = true; a.t0 = heardNow; a.part = name; a.from.copy(FROM[name]());
+        a.to.set(CENTER.x + (Math.random() - 0.5) * 1.5, 1.4 + Math.random(), CENTER.z + (Math.random() - 0.5) * 1.5);
+        a.s.visible = true;
+      }
+      for (const a of attackers) {
+        if (!a.live) continue;
+        const f = (heardNow - a.t0) / ATTACK_S;
+        _ap.copy(a.from).lerp(a.to, f); _ap.y += 3 * 4 * f * (1 - f);
+        if (_ap.distanceTo(CENTER) <= R || f >= 1) {   // it reached the dome: ZAP
+          a.live = false; a.s.visible = false;
+          const hitAt = _ap.clone().sub(CENTER).setLength(R).add(CENTER);
+          zap(hitAt, heardNow);
+          const p = parts[a.part]; if (p) { p.hit = 1; p.mat.uniforms.uHitAt.value.copy(hitAt).sub(CENTER); }
+          continue;
+        }
+        a.s.position.copy(_ap); a.s.scale.setScalar(0.9);
+      }
+      for (const z of zaps) {
+        if (!z.live) continue;
+        const t = heardNow - z.t0;
+        if (t >= 0.7) { z.live = false; z.flash.visible = false; for (const e of z.sparks) e.s.visible = false; continue; }
+        const k = t / 0.7;
+        z.flash.scale.setScalar(1.2 + 3 * Math.min(1, t / 0.15)); z.flash.material.opacity = Math.max(0, 1 - t / 0.25); z.flash.visible = t < 0.25;
+        for (const e of z.sparks) { e.s.position.set(z.at.x + e.v.x * t, z.at.y + e.v.y * t - 4.9 * t * t, z.at.z + e.v.z * t); e.s.scale.setScalar(0.25 * (1 - k) + 0.04); e.s.material.opacity = 1 - k; }
       }
       // fire what's due
       for (let i = queue.length - 1; i >= 0; i--) {
@@ -156,17 +215,17 @@ export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null 
         const q = queue.splice(i, 1)[0];
         const b = bolts.find((x) => !x.live);
         if (!b) continue;
-        b.live = true; b.t0 = q.at; b.from.copy(q.from); b.to.copy(q.to); b.s.visible = true;
+        b.live = true; b.t0 = q.at; b.from.copy(q.from); b.to.copy(q.to); b.arc = q.arc; b.dur = q.dur; b.s.visible = true;
       }
       for (const b of bolts) {
         if (!b.live) continue;
-        const f = (heardNow - b.t0) / BOLT_S;
+        const f = (heardNow - b.t0) / b.dur;
         if (f >= 1) {
           b.live = false; b.s.visible = false; for (const t of b.trail) t.visible = false;
           explode(b.to, heardNow);
           continue;
         }
-        const at = (ff, out) => { out.copy(b.from).lerp(b.to, ff); out.y += 2.2 * 4 * ff * (1 - ff); return out; };   // a shallow arc
+        const at = (ff, out) => { out.copy(b.from).lerp(b.to, ff); out.y += b.arc * 4 * ff * (1 - ff); return out; };   // cannon: shallow; mortar: a high lob
         b.s.position.copy(at(f, _p));
         b.s.scale.setScalar(0.9 + 0.9 * f);              // grows as it goes: still clear far away
         b.trail.forEach((t, i) => {

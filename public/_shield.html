@@ -13,13 +13,20 @@ f.onload = async () => {
     [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
     await wait(3000);
     const s = w.__gr.stage3d, G = w.__gr.game;
-    s.setShield({ drums: { progress: 1, up: true }, bass: { progress: 0.5, up: false }, treble: { progress: 1, up: true } });
+    s.setShield({ drums: { progress: 0.4, up: false }, bass: { progress: 0.7, up: false }, treble: { progress: 1, up: true } });
     const grab = () => new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png"))));
     await wait(2500);
     say("shot_drums", await grab());
+    for (const k of [1, 2, 3]) { await wait(330); say("shot_zap" + k, await grab()); }
+    say("glowinfo", JSON.stringify(s.debugShieldGlow()));
+    say("sinfo", JSON.stringify(s.debugShieldInfo()));
+    const urls = [...w.performance.getEntriesByType("resource")].map((e) => e.name).filter((n) => n.includes("defense.js"));
+    const mod = await w.eval(`import("${urls[0] ? new URL(urls[0]).pathname + new URL(urls[0]).search : "/src/scene/defense.js"}")`);
+    say("modinfo", JSON.stringify({ urls, hasGlowLayer: mod.createDefense.toString().includes("glowLayer") }));
+    s.debugShieldOnly(true); await wait(300); say("shot_only", await grab()); s.debugShieldOnly(false);
     s.setStation("bass"); await wait(2200);
     const now = G.ctx.getOutputTimestamp().contextTime;
-    for (let k = 0; k < 4; k++) s.fireCannon(6 + 8 + k * 2, now + k * 0.12);
+    for (let k = 0; k < 4; k++) { s.fireCannon(6 + 8 + k * 2, now + k * 0.12); s.fireCannon(6 + k * 2, now + 0.05 + k * 0.12); }
     await wait(500);
     say("shot_bass", await grab());
     await wait(420);
