@@ -53,20 +53,14 @@ const LANES3D = [
 // arrow spawn points per lane: archers spread across the FAR courtyard wall
 // (~70 m out). Every arrow is visible from launch and lobs in on a high arc;
 // the horizontal fan keeps each shaft readable side-on, never a dot.
-const SPAWNS = [
-  // archers on the COLONNADE ROOFS (courtyard.js: roof y 7.6, inner edge x ±6.3),
-  // far down the courtyard, firing across the open space onto the drums
-  new THREE.Vector3(-6.3, 7.6, -30),   // upright 0 — left roof
-  new THREE.Vector3(-6.3, 7.6, -38),   // upright 1 — left roof, further
-  new THREE.Vector3(6.3, 7.6, -30),    // upright 2 — right roof
-  new THREE.Vector3(-6.3, 7.6, -27),   // floor 3   — left roof (far enough that the whole arc stays in view)
-  new THREE.Vector3(6.3, 7.6, -38),    // floor 4   — right roof, further
-  new THREE.Vector3(6.3, 7.6, -27),    // floor 5   — right roof
-];
+// LANES (owner, 2026-10-03: "like guitar hero has lanes"): each drum's arrows come
+// straight down the middle of the court on their own lane, lined up with their drum
+// (spread a little wider far away), on a low arc — six lanes side by side, a highway
+const SPAWNS = LANES3D.map((L) => new THREE.Vector3(L.x * 3.6, L.upright ? 3.4 : 2.6, -30));
 
 // arc height of the parabolic lift on top of the straight line: a real lob
 // kept low enough that the WHOLE flight stays on screen (owner, 2026-10-03: see them coming)
-const ARC_LIFT = [3.5, 3.5, 3.5, 3.5, 3.5, 3.5];   // they start high already
+const ARC_LIFT = [0.9, 0.9, 0.9, 0.9, 0.9, 0.9];   // a low arc: they ride their lane in
 
 function hexToColor(s) {
   return new THREE.Color(s);   // accepts "#rrggbb"
@@ -591,6 +585,63 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   let beatFirst = 0, beatDur = 0.6, beatKick = 0;
   const cueBeats = () => (beatDur < 0.42 ? 4 : 2);   // fast songs: 4 beats, so it's never a blink
   const cueSpan = () => cueBeats() * beatDur;
+  // THE LANES: a glowing strip per drum along its arrows' exact path, faded far away,
+  // with BEAT BARS sliding down it — a bar reaches the drum on each beat (brighter on
+  // the bar's downbeat), so an arrow rides in with a bar under it. Built on first use
+  // (the drums' faces exist by then).
+  const LANE_VERT = `attribute float aF; varying float vF; void main() { vF = aF; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+  const LANE_FRAG = `uniform vec3 uColor; uniform float uNow, uFirst, uBeat, uA, uOn, uHot; varying float vF;
+    void main() {
+      float b = (uNow + (1.0 - vF) * uA - uFirst) / uBeat;           // which beat reaches the drum when this point does
+      float d = abs(fract(b + 0.5) - 0.5) * uBeat / uA;               // distance to the nearest bar, in path units
+      float down = step(0.5, 1.0 - abs(mod(floor(b + 0.5), 4.0)));    // the bar's downbeat
+      float bar = (1.0 - smoothstep(0.008, 0.02, d)) * (0.6 + 0.4 * down);
+      float fade = smoothstep(0.0, 0.35, vF);
+      float a = fade * (0.16 + 0.22 * uHot + bar * 1.6) * uOn;
+      gl_FragColor = vec4(mix(uColor, vec3(1.0), 0.6 * bar) * (1.0 + 1.5 * bar), min(1.0, a));   // the bars run white-hot
+    }`;
+  let lanes = null;
+  function buildLanes() {
+    lanes = [];
+    const N = 48, W = 0.16, e = { spawn: null, face: null, laneIdx: 0 }, P = new THREE.Vector3(), Q = new THREE.Vector3(), side = new THREE.Vector3();
+    for (let i = 0; i < 6; i++) {
+      e.spawn = SPAWNS[i]; e.face = drumFace[i]; e.laneIdx = i;
+      const pos = new Float32Array((N + 1) * 2 * 3), fs = new Float32Array((N + 1) * 2), idx = [];
+      for (let k = 0; k <= N; k++) {
+        const f = k / N;
+        pathPoint(e, f, P); pathPoint(e, Math.min(1, f + 0.01), Q);
+        if (f >= 1) { pathPoint(e, 0.99, Q); Q.subVectors(P, Q).add(P); }
+        side.subVectors(Q, P).cross(UP).normalize().multiplyScalar(W / 2);
+        pos.set([P.x - side.x, P.y - side.y, P.z - side.z, P.x + side.x, P.y + side.y, P.z + side.z], k * 6);
+        fs[k * 2] = fs[k * 2 + 1] = f;
+        if (k < N) idx.push(k * 2, k * 2 + 1, k * 2 + 2, k * 2 + 1, k * 2 + 3, k * 2 + 2);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      g.setAttribute("aF", new THREE.BufferAttribute(fs, 1));
+      g.setIndex(idx);
+      const m = new THREE.ShaderMaterial({ vertexShader: LANE_VERT, fragmentShader: LANE_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending, fog: false,
+        uniforms: { uColor: { value: hexToColor(laneHex(i)) }, uNow: { value: 0 }, uFirst: { value: 0 }, uBeat: { value: 0.6 }, uA: { value: APPROACH_S }, uOn: { value: 0 }, uHot: { value: 0 } } });
+      const mesh = new THREE.Mesh(g, m);
+      mesh.layers.set(FX_LAYER); mesh.renderOrder = 2; mesh.frustumCulled = false;
+      scene.add(mesh);
+      lanes.push({ mesh, m });
+    }
+  }
+  function updateLanes(heardNow) {
+    if (!lanes) buildLanes();
+    const atDrums = station === "drums";
+    for (let i = 0; i < lanes.length; i++) {
+      const u = lanes[i].m.uniforms, want = atDrums && drumVisible[i] ? 1 : 0;
+      u.uOn.value += (want - u.uOn.value) * Math.min(1, fireDt * 3);
+      lanes[i].mesh.visible = u.uOn.value > 0.01;
+      u.uNow.value = heardNow; u.uFirst.value = beatFirst; u.uBeat.value = beatDur;
+      let hot = 0;   // an arrow on this lane lights it up
+      for (const e of activeNotes) if (e.laneIdx === i && !e.hit && e.time > heardNow) hot = 1;
+      u.uHot.value += (hot - u.uHot.value) * Math.min(1, fireDt * 6);
+    }
+  }
   /** each drum's next note: 3, 2, 1 over the last three beats before it, popping as it changes */
   function updateCountdown(heardNow, upcoming) {
     for (let i = 0; i < countdown.length; i++) {
@@ -1968,6 +2019,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     }
 
     updateCountdown(heardNow, upcoming);
+    updateLanes(heardNow);
     // position + flame flicker + retirement
     for (const e of activeNotes) {
       const dt = e.time - heardNow;
