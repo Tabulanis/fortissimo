@@ -33,6 +33,13 @@ function labelTexture(text) {
   const g = c.getContext("2d");
   g.lineWidth = 10; g.strokeStyle = "rgba(0,0,0,0.55)"; g.fillStyle = "#fff8ec";
   const DPAD = { dL: Math.PI, dD: Math.PI / 2, dR: 0, dU: -Math.PI / 2 };   // D-pad arrows, drawn (no font needed)
+  if (text.startsWith("LT:")) {
+    // a top-row pad label: the button, smaller, under a small "LT" (hold LT for this row)
+    text = text.slice(3);
+    g.font = "bold 34px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.lineWidth = 6; g.strokeText("LT", 64, 20); g.fillText("LT", 64, 20);
+    g.translate(64, 76); g.scale(0.7, 0.7); g.translate(-64, -64); g.lineWidth = 10;
+  }
   if (text in DPAD) {
     const a = DPAD[text], tri = [[44, 0], [-30, -36], [-30, 36]].map(([x, y]) => [64 + x * Math.cos(a) - y * Math.sin(a), 64 + x * Math.sin(a) + y * Math.cos(a)]);
     g.beginPath(); tri.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath();

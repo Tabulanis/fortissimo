@@ -222,7 +222,7 @@ function stageMessage() {
   hudUI.setPart(`${song().name} · ${sec} ${pct}%`);
   const topName = sec === "treble" ? "crystals (charge the lightning gun)" : "cannons";
   const how = sec === "drums" ? (IS_TOUCH ? "tap the drums" : "top Q W E · bottom A S D") : IS_TOUCH ? "tap the buttons"
-    : padConnected ? `D-pad = mortars · X A B Y = ${topName}` : `mortars A S D F G H J K · ${topName} Q W E R T Y U I`;
+    : padConnected ? `D-pad + X A B Y = mortars · hold LT for the ${topName}` : `mortars A S D F G H J K · ${topName} Q W E R T Y U I`;
   const rule = RUN.lock === 1 ? "every note you hit locks"
     : RUN.keep === "any" ? `groups of ${RUN.lock === Infinity ? "the whole section" : RUN.lock}: every note you hit locks`
     : RUN.keep === "half" ? `groups of ${RUN.lock === Infinity ? "the whole section" : RUN.lock}, in order — break it and half of your hits still lock`
@@ -283,6 +283,8 @@ function tickSiege(heardNow) {
     else if (e.type === "killed") { stage3d.troopKill(e.enemy, e.by); if (e.enemy.kind === "boss") hudUI.say("💥 THE BOSS IS DOWN!", "good", 4000); }
     else if (e.type === "bossHit") stage3d.bossHit(e.enemy);
     else if (e.type === "wallHit") life.town -= e.dmg;   // no shield: they're at the town
+    else if (e.type === "balloonRocket") stage3d.enemyRocket(e.enemy, e.landAt, heardNow);   // a balloon fires at the cannons
+    else if (e.type === "rocketHit") life.town -= e.dmg;   // ...and the town takes it
   }
   hudUI.setShield(siege.full ? siege.hp : 100 * siege.rise, siege.full ? (siege.broken ? "broken" : "up") : "building");
 }
@@ -297,7 +299,8 @@ function showShield() {
 function fireGun(idx, lane, at) {
   const side = lane.startsWith("bass") ? "bass" : "treble";
   if (isCrystal(lane)) { chargeLightning(idx); return; }   // treble's top row: crystals, not cannons
-  const target = siege ? siege.shoot(side, at + stage3d.gunFlight(idx)) : null;
+  const kind = +lane.split(" ")[1] >= 9 ? "balloon" : "soldier";   // cannons hunt the balloon guys, mortars the soldiers
+  const target = siege ? siege.shoot(side, at + stage3d.gunFlight(idx), undefined, kind) : null;
   stage3d.fireCannon(idx, at, target);
 }
 const isGun = (lane) => /^(bass|treble) \d+$/.test(lane);   // every bar is a gun now: cannons on top, mortars below
@@ -421,8 +424,9 @@ for (const e of Object.values(KEYMAP)) KEYMAP_BY_LANE[e.ln.name] = e;
 const MELODY_LETTERS = [..."ASDFGHJK", ..."QWERTYUI"];
 const MELODY_KEYS = Object.fromEntries(MELODY_LETTERS.map((c, i) => [c.toLowerCase(), i]));
 // the pad: the same 8 buttons for both rows (hold LT = top row); drawn as D-pad arrows / face letters
-// the pad (owner, 2026-10-03): D-pad = the mortars, X A B Y = the cannons, each button on two neighbours
-const PAD_LABELS = [..."dL dL dD dD dR dR dU dU X X A A B B Y Y".split(" ")];
+// the pad (owner, 2026-10-04): D-pad + X A B Y = the bottom row; hold LT = the top row (drawn "LT" over the button)
+const PAD_ROW = ["dL", "dD", "dR", "dU", "X", "A", "B", "Y"];
+const PAD_LABELS = [...PAD_ROW, ...PAD_ROW.map((b) => "LT:" + b)];
 const MELODY_ENTRY = { bass: [], treble: [] };
 for (const kind of ["bass", "treble"]) {
   for (let slot = 0; slot < BARS; slot++) {
@@ -434,7 +438,6 @@ for (const kind of ["bass", "treble"]) {
 }
 // the melody voices, built for the current round's key + scale
 let melodyVoices = { bass: [], treble: [] };
-let lastUp = [];   // this frame's upcoming notes: a pad button on two guns picks the one that's due
 async function buildMelodyVoices() {
   if (!ctx) return;
   const { key = "C", scale = "major" } = song();
@@ -897,14 +900,11 @@ function onKey(e) {
 const pads = createPads({
   melodyMode: () => isMelody(),
   onHint: () => playHint(),
-  onMelody: (slots, force, ts) => {
+  onMelody: (slot, force, ts) => {
     if (!ctx || !drums || !pool || !clock) return;
     const o = ctx.getOutputTimestamp();
     const press = o.contextTime + (ts - o.performanceTime) / 1000 - calibration;
-    // a button covers two guns: fire the one whose note is due nearest the press (else the first)
-    const pick = (slot) => MELODY_ENTRY[partMode()][slot];
-    let entry = pick(slots[0]), best = Infinity;
-    for (const s of slots) for (const u of lastUp) if (u.laneIdx === pick(s).idx && Math.abs(u.time - press) < best) { best = Math.abs(u.time - press); entry = pick(s); }
+    const entry = MELODY_ENTRY[partMode()][slot];
     hitLane(entry.idx, entry.ln, press, force);
   },
   onHit: (laneName, force, ts) => {
@@ -1168,7 +1168,6 @@ function frame() {
       if (heardNow > hint.end + 0.4) hint = null;
     }
     const up = buildUpcoming(heardNow);
-    lastUp = up;
     // drums and CANNONS get rockets down their lanes; mortars get ammo carts (stage3d's gun cues);
     // every gun keeps its fuse / falling shell / red button too
     const rocketLane = (i) => i < 6 || (i - 6) % BARS >= 8;

@@ -8,10 +8,8 @@
    DRUMS   upper row  LB = hat    Y = snare      RB = crash
            lower row  A = kick    X = tom low    RT = tom high
    BARS    (bass / treble, two rows of 8)
-           D-pad (left down right up) = the MORTARS, the bottom row;
-           X A B Y (same order: left down right up) = the CANNONS, the top row
-           (owner, 2026-10-03: no trigger shift). 4 buttons for 8 guns: each
-           button covers two neighbours — the game fires whichever is due
+           D-pad (left down right up) + X A B Y = the 8 guns of the BOTTOM row;
+           hold LT = the same 8 play the TOP row (owner, 2026-10-04: back to the trigger)
    every mode: View = LISTEN (the whole section),
            either thumbstick = look around a little (screen mode)
 
@@ -29,10 +27,9 @@ export const GM_DRUMS = {
 
 // standard-mapping gamepad button -> lane (or "hint")
 export const PAD_BUTTONS = { 4: "hat", 3: "snare", 5: "crash", 0: "kick", 2: "tom low", 7: "tom high", 8: "hint" };
-// melody: standard-mapping button -> a PAIR of guns: D-pad = mortar pairs 0-3 (bars 0-7), face = cannon pairs 4-7 (bars 8-15)
+// melody: standard-mapping button -> bar 0..7 of the bottom row (+8 with LT held = the top row)
 export const MELODY_BUTTONS = { 14: 0, 13: 1, 15: 2, 12: 3, 2: 4, 0: 5, 1: 6, 3: 7 };
-/** the two bars (0..15) a melody button's pair covers */
-export const pairSlots = (pair) => [2 * pair, 2 * pair + 1];
+export const ROW_SHIFT = 6;   // LT: hold for the top row
 export const HINT_BUTTON = 8;   // View: LISTEN to the whole section, every mode
 
 /** Pure: one MIDI message -> {lane, force} | null */
@@ -80,9 +77,10 @@ export function createPads({ onHit, onStatus, onMelody, onHint, melodyMode = () 
         const prev = was.get(gp.index) || [];
         const now = gp.buttons.map((b) => b.pressed || b.value > 0.5);
         if (melodyMode()) {
-          // the guns: D-pad = mortars, face buttons = cannons, a pair each; View listens
-          for (const [i, pair] of Object.entries(MELODY_BUTTONS)) {
-            if (now[i] && !prev[i]) onMelody && onMelody(pairSlots(pair), 1, performance.now());
+          // the guns: D-pad + face buttons = the bottom row, LT held = the top row; View listens
+          const top = now[ROW_SHIFT] ? 8 : 0;
+          for (const [i, slot] of Object.entries(MELODY_BUTTONS)) {
+            if (now[i] && !prev[i]) onMelody && onMelody(slot + top, 1, performance.now());
           }
           if (now[HINT_BUTTON] && !prev[HINT_BUTTON]) onHint && onHint();
         } else for (const [i, what] of Object.entries(PAD_BUTTONS)) {

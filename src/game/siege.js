@@ -32,14 +32,17 @@
 export const ARMY = {
   start: 24,            // where they appear (m down the court)
   wall: 4.1,            // where they stop and hit the shield (the dome is 3.4 m)
-  soldierSpeed: 1.6,    // m/s
-  soldierEvery: 2.2,    // s between soldiers (bass); the boss's escort comes half as often
+  soldierSpeed: 1.6,    // m/s (each one 0.75-1.25x of it: a loose mob, not a formation — owner)
+  soldierEvery: 1.3,    // s between spawns (bass), 1-3 at a time; the boss's escort comes half as often
   soldierDps: 3,        // shield damage per second, each soldier at the wall
-  bossSpeed: 0.55,
+  bossSpeed: 0.22,      // way slower (owner, 2026-10-04): it lumbers, stopping to wreck things on the way
   bossDps: 5,           // play-tested 2026-10-03: at 9 the boss + escort broke the shield and took the town 99 -> 31 against a robot hitting every note
   bossHpPerNote: 2,     // the boss's life: 2 hits per treble note you'll play
   blast: 2.6,           // m: a shell kills soldiers this close
   lanes: 4.6,           // m either side of the court's middle (some walk past either side of the guns)
+  // BALLOON GUYS (owner, 2026-10-04): float in high over the bass court, hover, and fire rockets
+  // at the cannons that hurt the TOWN; the cannons' shells pop them (mortars can't reach)
+  balloonEvery: 7, balloonSpeed: 0.8, balloonAlt: 7, balloonHover: 11, rocketEvery: 3.2, rocketFlight: 1.6, rocketDmg: 2,
 };
 export const ARROW_BEATS = 2;        // one arrow every 2 beats
 export const FLIGHT_S = 1.6;         // an arrow's flight (the 3D arrow flies this long)
@@ -84,27 +87,30 @@ export class Siege {
     this.wave = null;
   }
   _spawn(side, kind, lat) {
-    const e = { id: ++this._id, side, kind, dist: ARMY.start, lat, hp: 1, alive: true, attacking: false, claimed: 0 };
+    const e = { id: ++this._id, side, kind, dist: ARMY.start, lat, hp: 1, alive: true, attacking: false, claimed: 0,
+      speed: kind === "boss" ? ARMY.bossSpeed : kind === "balloon" ? ARMY.balloonSpeed : ARMY.soldierSpeed * (0.75 + 0.5 * this.rng()),
+      alt: kind === "balloon" ? ARMY.balloonAlt + (this.rng() - 0.5) * 2 : 0, nextRocket: null };
     this.enemies.push(e);
     this.events.push({ type: "spawn", enemy: e });
     return e;
   }
   _kill(e, by) { e.alive = false; this.events.push({ type: "killed", enemy: e, by }); }
-  _distAt(e, t, now) { const speed = e.attacking ? 0 : e.kind === "boss" ? ARMY.bossSpeed : ARMY.soldierSpeed; return Math.max(ARMY.wall, e.dist - speed * Math.max(0, t - now)); }
+  _distAt(e, t, now) { const stop = e.kind === "balloon" ? ARMY.balloonHover : ARMY.wall; return Math.max(stop, e.dist - (e.attacking ? 0 : e.speed) * Math.max(0, t - now)); }
 
   /**
    * a gun fired down `side`'s court; its shell lands at `landAt` (heard time).
-   * Aims at the enemy nearest the wall (the boss counts), leading it.
-   * @returns {{dist: number, lat: number} | null} where it'll land (null: nothing to shoot)
+   * kind: what this gun hunts — "soldier" (mortars) or "balloon" (cannons); the boss takes LIGHTNING.
+   * Aims at the nearest, leading it.
+   * @returns {{dist: number, lat: number, alt: number} | null} where it'll land (null: nothing to shoot)
    */
-  shoot(side, landAt, now = this.lastT ?? landAt) {
-    const live = this.enemies.filter((e) => e.alive && e.side === side && e.kind !== "boss");   // shells are for soldiers; the boss takes LIGHTNING
+  shoot(side, landAt, now = this.lastT ?? landAt, kind = "soldier") {
+    const live = this.enemies.filter((e) => e.alive && e.side === side && e.kind === kind);
     if (!live.length) return null;
     // the nearest, spreading the fire: each shell already on its way counts as 4 m further
     let best = null, bestD = Infinity;
     for (const e of live) { const d = e.dist + e.claimed * 4; if (d < bestD) { bestD = d; best = e; } }
     best.claimed++;
-    const at = { dist: this._distAt(best, landAt, now), lat: best.lat };
+    const at = { dist: this._distAt(best, landAt, now), lat: best.lat, alt: best.alt };
     this.shells.push({ side, landAt, at, target: best });
     return at;
   }
@@ -112,6 +118,7 @@ export class Siege {
   /** the full shield is standing (not still building, not broken) */
   get standing() { return this.full && !this.broken; }
 
+  /** the first live balloon (the rockets' source) — for the game's drawing */
   tick(now) {
     this._tickArmy(now);
     if (this.next == null) this.next = now + this.every;
@@ -165,14 +172,27 @@ export class Siege {
     if (w && !this.paused) {
       if (w.nextAt == null) w.nextAt = now + 0.5;
       if (now >= w.nextAt) {
-        this._spawn(w.side, "soldier", (this.rng() * 2 - 1) * ARMY.lanes);
+        const n = 1 + Math.floor(this.rng() * 3), lat = (this.rng() * 2 - 1) * ARMY.lanes;   // a clump of 1-3, loosely together
+        for (let i = 0; i < n; i++) { const s = this._spawn(w.side, "soldier", Math.max(-ARMY.lanes, Math.min(ARMY.lanes, lat + (this.rng() - 0.5) * 2.5))); s.dist += this.rng() * 2; }
         w.nextAt = now + ARMY.soldierEvery * (w.kind === "boss" ? 2 : 1) * (0.7 + 0.6 * this.rng());
+      }
+      if (w.side === "bass") {   // the balloon guys, over the bass court
+        if (w.nextBalloon == null) w.nextBalloon = now + 3;
+        if (now >= w.nextBalloon) { this._spawn("bass", "balloon", (this.rng() * 2 - 1) * 5); w.nextBalloon = now + ARMY.balloonEvery * (0.7 + 0.6 * this.rng()); }
       }
     }
     for (const e of this.enemies) {
       if (!e.alive) continue;
+      if (e.kind === "balloon") {   // drifts in, hovers, and fires rockets at the cannons — they hurt the TOWN
+        if (e.dist > ARMY.balloonHover) e.dist = Math.max(ARMY.balloonHover, e.dist - e.speed * dt);
+        else {
+          if (e.nextRocket == null) e.nextRocket = now + 1;
+          if (now >= e.nextRocket && !this.paused) { e.nextRocket = now + ARMY.rocketEvery * (0.8 + 0.4 * this.rng()); this.shells.push({ side: e.side, landAt: now + ARMY.rocketFlight, at: null, target: null, rocket: e }); this.events.push({ type: "balloonRocket", enemy: e, landAt: now + ARMY.rocketFlight }); }
+        }
+        continue;
+      }
       if (!e.attacking) {
-        e.dist -= (e.kind === "boss" ? ARMY.bossSpeed : ARMY.soldierSpeed) * dt;
+        e.dist -= e.speed * dt;
         if (e.dist <= ARMY.wall) { e.dist = ARMY.wall; e.attacking = true; }
       } else if (dt > 0) {
         const dmg = (e.kind === "boss" ? ARMY.bossDps : ARMY.soldierDps) * dt;
@@ -184,11 +204,13 @@ export class Siege {
       const s = this.shells[i];
       if (now < s.landAt) continue;
       this.shells.splice(i, 1);
+      if (s.rocket) { this.events.push({ type: "rocketHit", enemy: s.rocket, dmg: ARMY.rocketDmg }); continue; }   // a balloon's rocket lands: the town takes it
       s.target.claimed = Math.max(0, s.target.claimed - 1);
       for (const e of this.enemies) {
         if (!e.alive || e.side !== s.side) continue;
         const d = Math.hypot(e.dist - s.at.dist, e.lat - s.at.lat);
         if (e.kind === "boss") continue;   // shells don't hurt it (owner, 2026-10-04: the lightning gun does)
+        if (e.kind === "balloon" && s.target.kind !== "balloon") continue;   // only a shell aimed up there pops one
         if (d <= ARMY.blast) this._kill(e, s.at);
       }
     }

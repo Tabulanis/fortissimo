@@ -86,3 +86,29 @@ console.log("siege ok");
   assert.ok(s.enemies.every((x) => !x.alive) && s.drain().some((x) => x.type === "killed" && x.enemy.kind === "boss"));
 }
 console.log("army ok");
+
+// BALLOON GUYS: float in over the bass court, hover, fire rockets that hurt the town; a cannon's shell pops them
+{
+  const { ARMY } = await import("../src/game/siege.js");
+  const s = new Siege({ beatDur: 0.5, rng: seq([0.5]) });
+  s.full = true; s.rise = 1; s.startWave("bass");
+  let ev = run(s, 0, 4);
+  const b = ev.filter((e) => e.type === "spawn" && e.enemy.kind === "balloon").map((e) => e.enemy);
+  assert.ok(b.length >= 1 && b[0].alt > 0 && b[0].side === "bass", "a balloon comes over the bass court, up high");
+  // a mortar (soldiers) can't target it; a cannon (balloons) can, and aims where it will be
+  assert.ok(s.shoot("bass", 4.5, 4, "soldier") === null || s.shoot("bass", 4.5, 4, "soldier").alt === 0, "mortars never aim at balloons");
+  const aim = s.shoot("bass", 5.5, 4, "balloon");
+  assert.ok(aim && aim.alt > 0 && Math.abs(aim.dist - (b[0].dist - ARMY.balloonSpeed * 1.5)) < 0.05, `a cannon leads it (${aim && aim.dist} vs ${b[0].dist})`);
+  ev = run(s, 4.05, 5.7);
+  assert.ok(ev.some((e) => e.type === "killed" && e.enemy === b[0]), "the shell pops it");
+  // left alone, one hovers and fires rockets: each one lands and hurts the town
+  const s2 = new Siege({ beatDur: 0.5, rng: seq([0.5, 0.1, 0.9, 0.3, 0.7]) });
+  s2.full = true; s2.startWave("bass");
+  ev = run(s2, 0, 3 + (ARMY.start - ARMY.balloonHover) / ARMY.balloonSpeed + 12);
+  const fired = ev.filter((e) => e.type === "balloonRocket").length, hits = ev.filter((e) => e.type === "rocketHit");
+  assert.ok(fired >= 2 && hits.length >= 1 && hits[0].dmg === ARMY.rocketDmg, `hovering, it fires (${fired}) and the rockets land (${hits.length})`);
+  // soldiers come in loose clumps at their own speeds
+  const sp = ev.filter((e) => e.type === "spawn" && e.enemy.kind === "soldier").map((e) => e.enemy);
+  assert.ok(new Set(sp.map((e) => +e.speed.toFixed(3))).size > 1 || sp.length < 2, "soldiers walk at their own pace");
+  console.log("balloons ok");
+}

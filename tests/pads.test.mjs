@@ -20,14 +20,11 @@ for (const l of lanes) {
 }
 console.log("pads: all passed");
 
-// every controller button does ONE thing (owner, 2026-10-03): no trigger shift, no bell
+// every controller button does ONE thing (owner): LT only switches rows, no bell
 {
-  const { MELODY_BUTTONS, pairSlots } = await import("../src/input/pads.js");
-  assert.ok(!(6 in MELODY_BUTTONS), "no LT row shift at the guns");
-  // D-pad = the mortars (bars 0-7), X A B Y = the cannons (bars 8-15), two neighbours each
-  const cover = (btns) => btns.flatMap((b) => pairSlots(MELODY_BUTTONS[b])).sort((a, b) => a - b);
-  assert.deepStrictEqual(cover([14, 13, 15, 12]), [0, 1, 2, 3, 4, 5, 6, 7], "D-pad covers the mortars");
-  assert.deepStrictEqual(cover([2, 0, 1, 3]), [8, 9, 10, 11, 12, 13, 14, 15], "face buttons cover the cannons");
+  const { MELODY_BUTTONS, ROW_SHIFT } = await import("../src/input/pads.js");
+  assert.ok(!(ROW_SHIFT in PAD_BUTTONS) && !(ROW_SHIFT in MELODY_BUTTONS), "LT is only the row switch");
+  assert.deepStrictEqual(Object.values(MELODY_BUTTONS).sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 7], "D-pad + X A B Y cover the 8 guns of a row");
   assert.ok(!Object.values(PAD_BUTTONS).includes("bell"), "no bell button");
 }
 console.log("pads one-job ok");

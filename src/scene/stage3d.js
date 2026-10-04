@@ -581,7 +581,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const courtOf = (side) => { const yaw = STATIONS[side].yaw, fx = -Math.sin(yaw), fz = -Math.cos(yaw);
     return { fwd: new THREE.Vector3(fx, 0, fz), right: new THREE.Vector3(-fz, 0, fx) }; };
   const COURTS = { bass: courtOf("bass"), treble: courtOf("treble") };
-  const troops = createTroops(scene, { court: (side) => COURTS[side], center: new THREE.Vector3(0, 0, 0.3), layer: FX_LAYER });
+  const troops = createTroops(scene, { court: (side) => COURTS[side], center: new THREE.Vector3(0, 0, 0.3), layer: FX_LAYER, fireTexture });
   // THE LIGHTNING GUN (treble, owner 2026-10-04): crystal hits arc into the orb, which fills
   // with charge; charged, a jagged BOLT leaps from the orb to the boss
   const LG = melodyStations.treble.lightning;
@@ -2646,6 +2646,11 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       const a = arcs.reduce((best, x) => (x.t0 < best.t0 ? x : best)); a.t0 = lgState.now; a.from.copy(b.muzzle); },
     setCharge: (f) => { lgState.charge = Math.max(0, Math.min(1, f)); },
     lightningStrike: (target) => { lgState.boltT0 = lgState.now; lgState.from.copy(LG.pos); lgState.to.copy(target); },
+    /** a BALLOON's rocket (siege.js "balloonRocket"): from the balloon down at the cannon row, bursting there, landing at `landAt` */
+    enemyRocket: (e, landAt, heardNow) => { const c = COURTS[e.side], from = new THREE.Vector3(0, 0, 0.3).addScaledVector(c.fwd, e.dist).addScaledVector(c.right, e.lat).setY((e.alt || 7) - 1.2);
+      const row = melodyStations[e.side].bars, tgt = row[PER_ROW + Math.floor(Math.random() * PER_ROW)];
+      const to = tgt.muzzle.clone(); to.y = Math.max(0.3, to.y - 0.6);
+      defense.fire(from, to, heardNow, { arc: 0.4, dur: Math.max(0.3, landAt - heardNow) }); },
     /** a point down a side's court (dist m out, lat m across, y up) — where an enemy stands */
     enemyPos: (side, dist, lat, y = 0) => { const c = COURTS[side]; return new THREE.Vector3(0, 0, 0.3).addScaledVector(c.fwd, dist).addScaledVector(c.right, lat).setY(y); },
     troopSpawn: (e) => troops.spawn(e), troopKill: (e, by) => troops.kill(e, by), bossHit: (e) => troops.bossHit(e),
@@ -2658,7 +2663,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       if (target) {   // at an enemy (siege.js aimed it): {dist, lat} down this court
         const c = COURTS[name];
         _shot.set(0, 0, 0.3).addScaledVector(c.fwd, target.dist).addScaledVector(c.right, target.lat);
-        _shot.y = b.mortar ? 0.3 : 1.0;
+        _shot.y = target.alt || (b.mortar ? 0.3 : 1.0);   // a balloon: up where it floats
         defense.fire(from, _shot, at, b.mortar ? { arc: 9, dur: 1.5 } : { arc: 1.2, dur: 0.9 });
         return;
       }
