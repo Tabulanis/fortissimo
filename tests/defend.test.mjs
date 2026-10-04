@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import fs from "node:fs";
-import { Defend, townDamage, MIN_GAP_S } from "../src/game/defend.js";
+import { Defend, MIN_GAP_S } from "../src/game/defend.js";
 import { roundFromProject } from "../src/game/hackbeat.js";
 
 const n = (lane, beat) => ({ lane, beat });
@@ -16,12 +16,11 @@ const song = { bars: 1, notes: [n("kick", 0), n("snare", 1), n("kick", 2), n("sn
   assert.strictEqual(d.hit(off[0].id), "lock");
   assert.ok(d.locked.has(off[0].id));
   assert.ok(d.drain().some((e) => e.type === "lock"));
-  // lock every drum: the section moves on and the drums' part of the shield goes up
+  // lock every drum: the section moves on
   while (d.section === "drums") d.hit(d.offered()[0].id);
   assert.strictEqual(d.section, "bass");
-  assert.deepStrictEqual(d.shield(), ["drums"]);
   const ev = d.drain();
-  assert.ok(ev.some((e) => e.type === "shield" && e.part === "drums") && ev.some((e) => e.type === "sectionDone" && e.section === "drums"));
+  assert.ok(ev.some((e) => e.type === "sectionDone" && e.section === "drums"));
 }
 
 // lock size 1: a miss moves on to a different note (the pace stays steady); the missed one comes back later
@@ -57,10 +56,6 @@ const song = { bars: 1, notes: [n("kick", 0), n("snare", 1), n("kick", 2), n("sn
   assert.strictEqual(d.offered().length, 5, "every drum note");
 }
 
-// the shield takes a third off the town's damage per part
-assert.strictEqual(townDamage(6, 0), 6);
-assert.strictEqual(townDamage(6, 1), 4);
-assert.strictEqual(townDamage(6, 3), 0);
 
 // a whole real song: every note can be locked, sections go drums -> bass -> treble
 {

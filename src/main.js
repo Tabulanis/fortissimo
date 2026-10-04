@@ -19,13 +19,13 @@ import { Ghosts } from "./game/ghosts.js";
 import { SessionLog } from "./game/session.js";
 import { createStage3D } from "./scene/stage3d.js";
 import { Loops } from "./game/loops.js";
-import { ROUNDS, partArrows, isShown, buildUp } from "./game/stages.js";
+import { ROUNDS, partArrows, songOf } from "./game/stages.js";
 import { loadRoundFiles } from "./game/roundfiles.js";
-import { lessonParts, sectionProgress, backLevel, finishedLanes } from "./game/lesson.js";
+import { backLevel } from "./game/backing.js";
 import { normalize, judgeFor, simplifyNotes, scoreMultiplier, levelOf } from "./game/run.js";
 const runName = (r) => { const lv = levelOf(r); return lv ? `Level ${lv}` : "Custom"; };
 import { createMenu } from "./ui/menu.js";
-import { Defend, townDamage, LIFE } from "./game/defend.js";
+import { Defend, LIFE } from "./game/defend.js";
 import { Siege } from "./game/siege.js";
 import { gradeRound } from "./game/grade.js";
 import { createResults } from "./ui/results.js";
@@ -87,7 +87,7 @@ stage.addEventListener("webglcontextlost", () => bootlog("WEBGL CONTEXT LOST"));
   setInterval(() => {
     const a = stage3d.debugArrows ? stage3d.debugArrows() : {};
     bootlog("alive", { fps: Math.round(frames / 5), started: !!ctx,
-      round: roundIdx + 1, part: stageIdx + 1, wants: [...new Set(currentPart().map((n) => n.lane))],
+      round: roundIdx + 1, wants: [...new Set(currentPart().map((n) => n.lane))],
       flying: a.flying, shown: a.shown && a.shown.map((v) => (v ? 1 : 0)).join(""), taps: recentTaps.splice(0) });
     frames = 0;
   }, 5000); }
@@ -100,41 +100,34 @@ const LANE_INDEX = {};                    // lane name -> target 0..37
 [...LAYOUT.top, ...LAYOUT.bottom].forEach((ln, i) => { LANE_INDEX[ln.name] = i; });
 // melody bars: "bass 1".."bass 16" -> 6..21, "treble 1".."treble 16" -> 22..37
 for (let k = 0; k < BARS; k++) { LANE_INDEX[`bass ${k + 1}`] = 6 + k; LANE_INDEX[`treble ${k + 1}`] = 6 + BARS + k; }
-let stageIdx = 0;
 let loops = null;                         // locked measures, replayed exactly as played
 // 3 ROUNDS in the same arena; each ends with an accuracy grade
 let roundIdx = 0;
-// Easy teaches every part in steps (on-beat core first, then the add-on over its ghost)
 // the songs: Hackbeat projects (public/rounds, or Hackbeat's own copies while
-// developing); the built-in ROUNDS only if those can't be read
-// the round's SONG is a Hackbeat file; the game TEACHES it by the difficulty's
-// rule (lesson.js: drums one instrument at a time, then bass, then treble, at
-// most 4 / 6 / 8 notes a step). The built-in ROUNDS only if the files can't be read.
-const BASE_ROUNDS = ROUNDS;
-const EASY_ROUNDS = ROUNDS.map(buildUp);
+// developing); the built-in ROUNDS only if those can't be read. The run's
+// pattern difficulty picks the notes you play; the rest goes to the backing (it still sounds)
+let SONGS = ROUNDS.map(songOf), songsFromFiles = false;
 let LESSONS = null;
-const judgeDiff = () => judgeFor(RUN);   // what a step is judged by
-const song = () => (LESSONS ? LESSONS[roundIdx] : (RUN.patterns === "easy" ? EASY_ROUNDS : BASE_ROUNDS)[roundIdx]);
-const lastRound = () => roundIdx >= (LESSONS || BASE_ROUNDS).length - 1;
-let SONGS = null;   // the rounds' songs as written (Hackbeat files)
-// the run's pattern difficulty picks the notes you play; the rest goes to the backing (it still sounds)
+const judgeDiff = () => judgeFor(RUN);   // what a hit is judged by
+const song = () => LESSONS[roundIdx];
+const lastRound = () => roundIdx >= LESSONS.length - 1;
 function buildLessons() {
-  if (!SONGS) return;
   LESSONS = SONGS.map((s) => {
     const { play, backing } = simplifyNotes(s.notes, RUN.patterns);
-    return { ...s, playNotes: play, backingNotes: backing, parts: lessonParts({ ...s, notes: play }, 8, { barByBar: true }) };
+    return { ...s, playNotes: play, backingNotes: backing };
   });
 }
+buildLessons();
 const roundsReady = loadRoundFiles().then((songs) => {
   if (!songs.length) return;
-  SONGS = songs;
+  SONGS = songs; songsFromFiles = true;
   buildLessons();
   if (typeof applyStage === "function") applyStage();
-  bootlog("rounds from files", { n: songs.length, steps: LESSONS.map((l) => l.parts.length), warnings: songs.flatMap((r) => r.warnings) });
+  bootlog("rounds from files", { n: songs.length, warnings: songs.flatMap((r) => r.warnings) });
 }).catch((e) => { console.warn("round files unavailable — playing the built-in songs", e); bootlog("rounds: built-in", { why: String(e) }); });
 // THE CORE LOOP (defend.js, owner 2026-10-03): no bell — the song runs, arrows
 // come for the notes you still need (song time: the "part" is the whole song),
-// a correct hit locks by the run's lock size. Before Start: the old step view.
+// a correct hit locks by the run's lock size. Before Start: nothing is offered.
 let defend = null;
 let siege = null;                // the enemy: arrows always coming, the shield's life (siege.js)
 let defendFrom = 0;              // misses count from here (a breath after Start)
@@ -149,10 +142,10 @@ const leadFor = () => {
   return 3 - 1.8 * done;
 };
 const readyAt = (id) => (offeredAt.has(id) ? offeredAt.get(id) + leadFor() : Infinity);
-const songDone = () => (defend ? defend.done : stageIdx >= song().parts.length);
-const currentPart = () => (defend ? defend.offered() : songDone() ? [] : song().parts[stageIdx].part);
-const partObj = () => (defend ? (defend.done ? null : { mode: defend.section, bars: song().bars, part: defend.offered() }) : songDone() ? null : song().parts[stageIdx]);
-const partBars = () => (defend ? song().bars : (partObj() && partObj().bars) || 1);   // the engine: the whole song is the loop
+const songDone = () => !!defend && defend.done;
+const currentPart = () => (defend ? defend.offered() : []);
+const partObj = () => (defend && !defend.done ? { mode: defend.section, bars: song().bars, part: defend.offered() } : null);
+const partBars = () => song().bars;   // the whole song is the loop
 const partMode = () => (partObj() && partObj().mode) || "drums";       // "drums" | "bass" | "treble"
 const isMelody = () => partMode() !== "drums";
 let padConnected = false;   // a game controller is plugged in (the bars then show its buttons)
@@ -163,9 +156,8 @@ let backingJoined = new Set();   // lanes whose left-out notes are already playi
 function addBacking() { backingJoined = new Set(); joinBacking(); }   // a fresh round: nothing joined yet
 function joinBacking() {
   const b = song().backingNotes;
-  if (!loops || !clock || !b || !b.length) return;
-  const done = defend ? new Set(b.filter((n) => defend.progress(n.lane.startsWith("bass") ? "bass" : n.lane.startsWith("treble") ? "treble" : "drums") >= 1).map((n) => n.lane))
-    : finishedLanes(song().parts, stageIdx);
+  if (!loops || !clock || !defend || !b || !b.length) return;
+  const done = new Set(b.filter((n) => defend.progress(n.lane.startsWith("bass") ? "bass" : n.lane.startsWith("treble") ? "treble" : "drums") >= 1).map((n) => n.lane));
   const lanes = [...done].filter((l) => !backingJoined.has(l) && b.some((n) => n.lane === l));
   if (!lanes.length) return;
   for (const l of lanes) backingJoined.add(l);
@@ -223,8 +215,8 @@ hudUI.setLife(100, 100);
 hudUI.setShield(0);
 
 function applyStage() {
-  if (defend) { const lanes = new Set(song().notes.map((n) => n.lane)); for (let i = 0; i < 6; i++) stage3d.setDrumVisible(i, lanes.has(KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name)); }
-  else for (let i = 0; i < 6; i++) stage3d.setDrumVisible(i, isShown(song(), stageIdx, i));
+  const used = new Set(song().notes.map((n) => LANE_INDEX[n.lane]));   // only the drums this song uses
+  for (let i = 0; i < 6; i++) stage3d.setDrumVisible(i, used.has(i));
   stage3d.setStation(isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left
   if (audioStarted) updateBackLevels();                      // the sections' background music follows progress
   stageMessage();
@@ -284,8 +276,8 @@ function tickDefend(heardNow) {
 // Once it's full it has its own life; broken, it drops until locks heal it back.
 function tickSiege(heardNow) {
   if (!siege || heardNow < defendFrom) return;
-  const drumsDone = defend.partProgress("drums") >= 1;
-  siege.rise = defend.partProgress("drums");
+  const drumsDone = defend.progress("drums") >= 1;
+  siege.rise = defend.progress("drums");
   if (drumsDone && !siege.full) { siege.full = true; showShield(); hudUI.say("🛡 The shield is up — it takes the hits now", "good", 2600); }
   siege.paused = life.over;
   siege.tick(heardNow);
@@ -301,7 +293,7 @@ function tickSiege(heardNow) {
 function showShield() {
   // the whole dome rises with the drums (owner: "by the end of drums you get it to the top");
   // broken, it's down until it's healed back
-  const st = siege && siege.broken ? { progress: 0, up: false } : { progress: defend.partProgress("drums"), up: defend.partProgress("drums") >= 1 };
+  const st = siege && siege.broken ? { progress: 0, up: false } : { progress: defend.progress("drums"), up: defend.progress("drums") >= 1 };
   stage3d.setShield({ drums: st, bass: st, treble: st });
 }
 const isGun = (lane) => /^(bass|treble) \d+$/.test(lane);   // every bar is a gun now: cannons on top, mortars below
@@ -310,11 +302,8 @@ function defendEvents() {
   for (const e of defend.drain()) {
     if (e.type === "miss") {
       if (e.note.section !== "drums") continue;   // at the guns a miss just doesn't fire: the enemy is the threat
-      // a part that's up catches the arrow (the town takes less, see townDamage)
-      const sec = e.note.lane.startsWith("bass") ? "bass" : e.note.lane.startsWith("treble") ? "treble" : "drums";
-      if (LANE_INDEX[e.note.lane] != null) stage3d.shieldHit(sec, LANE_INDEX[e.note.lane]);
-      life.you -= L.miss;
-      life.town -= townDamage(L.miss, defend.shield().length);
+      life.you -= L.miss;   // a drum miss: the shield is still being built, so it hurts both
+      life.town -= L.miss;
       const idx = LANE_INDEX[e.note.lane], p = idx != null && stage3d.drumScreen(idx);
       if (p) showStamp("MISS", p.x, p.y, { size: 26, color: "#ff7a5a", ms: 800 });
     } else if (e.type === "lock") {
@@ -716,7 +705,7 @@ function scheduleBack() {
 }
 function updateBackLevels() {
   if (!ctx || !backGain.drums) return;
-  const prog = defend ? { drums: defend.progress("drums"), bass: defend.progress("bass"), treble: defend.progress("treble") } : sectionProgress(song().parts, stageIdx);
+  const prog = defend ? { drums: defend.progress("drums"), bass: defend.progress("bass"), treble: defend.progress("treble") } : { drums: 0, bass: 0, treble: 0 };
   for (const m of ["drums", "bass", "treble"]) {
     backGain[m].gain.setTargetAtTime(backLevel(prog[m]), ctx.currentTime, 1.2);
     // phones: the background's reverb / echo sends follow its fade too
@@ -731,9 +720,7 @@ function updateBackLevels() {
 // ghost hands play it. (The locked parts are already playing as ghosts.)
 let hint = null;   // { notes: [{laneIdx, time, velocity, flashed}], end }
 function unlockedParts() {
-  if (defend) return defend.done ? [] : [{ part: defend.unlocked(), bars: song().bars }];
-  const mode = partMode();
-  return song().parts.slice(stageIdx).filter((p) => p.mode === mode);
+  return defend && !defend.done ? [{ part: defend.unlocked(), bars: song().bars }] : [];
 }
 function playHint(only = null, label = null) {
   if (!ctx || !clock || !pool || !drums) { hudUI.say("Press Start first", "bad", 1500); return; }
@@ -1070,16 +1057,12 @@ function buildUpcoming(heardNow) {
   // arrows only for the part you're learning; none in free play
   if (mode === "free" || songDone()) return [];
   const part = (window.__gr && window.__gr.game && window.__gr.game.testPart) || currentPart();   // testPart: harness only
-  if (defend) {
-    // the engine: an arrow only for an occurrence after its note's lead time
-    const loop = 4 * partBars() * clock.beatDur, out = [];
-    for (const n of part) for (const a of partArrows([n], (x) => LANE_INDEX[x], clock.first, loop, clock.beatDur, heardNow - 0.6, heardNow + APPROACH_S)) {
-      if (a.time >= readyAt(n.id)) out.push(a);
-    }
-    return out.sort((a, b) => a.time - b.time);
+  // an arrow only for an occurrence after its note's lead time
+  const loop = 4 * partBars() * clock.beatDur, out = [];
+  for (const n of part) for (const a of partArrows([n], (x) => LANE_INDEX[x], clock.first, loop, clock.beatDur, heardNow - 0.6, heardNow + APPROACH_S)) {
+    if (a.time >= readyAt(n.id)) out.push(a);
   }
-  return partArrows(part, (n) => LANE_INDEX[n], clock.first, 4 * partBars() * clock.beatDur,
-                    clock.beatDur, heardNow - 0.6, heardNow + APPROACH_S);
+  return out.sort((a, b) => a.time - b.time);
 }
 
 // --- timing chart (its own canvas) ------------------------------------------
@@ -1252,7 +1235,7 @@ window.addEventListener("mousemove", (e) => {
 const startBtn = makeStartButton();
 // THE START MENU: level (unlocked ones) -> the run's settings -> Start
 roundsReady.then(() => {
-  const list = LESSONS || BASE_ROUNDS;
+  const list = LESSONS;
   let at = "title";
   try { at = sessionStorage.getItem("gr.menuAt") || "title"; sessionStorage.removeItem("gr.menuAt"); } catch { /* storage blocked: title */ }
   createMenu({
@@ -1278,7 +1261,7 @@ stage3d.setLoop(frame);
 // test hook (the harness robot reads the song state through this)
 if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; },
-  get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; },
+  get roundIdx() { return roundIdx; },
   setBackLevel: (v) => { for (const g of Object.values(backGain)) g.gain.value = v; },   // harness: backgrounds at full
   get defend() { return defend; }, get siege() { return siege; }, get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,
   get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln, midi) => laneSound(ln, midi),
@@ -1288,7 +1271,7 @@ if (window.__gr) window.__gr.game = {
   part: () => currentPart(),
   song: () => song(),
   get hint() { return hint; },
-  source: () => (LESSONS ? "files" : "built-in"),
+  source: () => (songsFromFiles ? "files" : "built-in"),
   tier: TIER,
   backLevels: () => Object.fromEntries(Object.entries(backGain).map(([m, g]) => [m, +g.gain.value.toFixed(2)])),
   samples: () => [...sampleCache].map(([p, b]) => `${p}: ${b ? b.duration.toFixed(2) + " s" : "FAILED"}`), get calibration() { return calibration; }, get loops() { return loops; },

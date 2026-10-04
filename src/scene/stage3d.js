@@ -2380,7 +2380,6 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     setPending: (levels) => { pending.fill(0); for (const [i, v] of Object.entries(levels)) pending[+i] = Math.max(pending[+i], v); },
     debugDefense: (heard) => ({ heard: +heard.toFixed(2), ...defense.debug() }),
     /** a missed arrow reached the shield: flash the part in front of that target */
-    shieldHit: (section, laneIdx) => defense.shieldHit(section, drumFace[laneIdx]),
     /** a top-row note fires that bar's cannon at its archer, at heard time `at` */
     fireCannon: (laneIdx, at) => {
       if (laneIdx < 6 || laneIdx >= N_T) return;

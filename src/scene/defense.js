@@ -3,13 +3,13 @@
  *   THE SHIELD  a fresnel-blue dome round the player in three parts, one per
  *               section: FRONT = the drums, RIGHT = the bass, LEFT = the treble.
  *               A part shimmers faintly while it's being built (its progress)
- *               and stands solid once its section is done; a missed arrow that
- *               reaches a part that's up flashes it where it struck.
+ *               and stands solid once its section is done; an arrow it stops
+ *               flashes it where it struck.
  *   CANNONS     every top-row note (yours, or the band's ghosts) launches a
  *               glowing bolt from its bar at that bar's archer on the roofs,
  *               bursting where it lands.
  *
- * createDefense(scene, { fireTexture, layer }) -> { setShield, shieldHit, volley, fire, update } */
+ * createDefense(scene, { fireTexture, layer }) -> { setShield, volley, fire, update } */
 import * as THREE from "three";
 
 const R = 3.4;                       // dome radius (m): round the player and both stations
@@ -160,13 +160,6 @@ export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null 
         p.target = p.up ? 0.85 : pr > 0 ? 0.6 : 0;                 // building: as strong as it'll be, just not as tall
         p.riseTarget = p.up ? 1.05 : pr > 0 ? 0.08 + 0.92 * pr : 0;   // a band at the floor, rising to the top as you lock
       }
-    },
-    /** a missed arrow reached a part that's up: flash it where it struck (world point) */
-    shieldHit(name, at) {
-      const p = parts[name];
-      if (!p || !p.up) return;
-      p.hit = 1;
-      p.mat.uniforms.uHitAt.value.copy(at).sub(CENTER).setLength(R);
     },
     /** an arrow (siege.js "arrow" event): flies launch -> landAt; blocked = stopped at the dome */
     volley({ part = "drums", h, launch, landAt, blocked }) {

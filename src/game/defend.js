@@ -10,9 +10,7 @@
  *        group simply comes round again on the next pass
  *   Infinity  the whole section in one go
  * Sections in order: drums, bass, treble (you turn to face each).
- * The SHIELD has three sections — the drums done, the bass bottom row done,
- * the treble bottom row done — each cutting the town's damage by a third.
- * The top rows are the cannons.
+ * The drums build the SHIELD (siege.js holds its life); bass and treble are the guns.
  *
  * Pure: the engine is told hits and the time; it reports what happened.
  * Times are song-relative: a note's time in pass k = k * loopBeats + beat (beats).
@@ -26,9 +24,6 @@ export const LIFE = {              // per run damage: a miss hurts you and the t
   gentle: { miss: 3, heal: 3 }, normal: { miss: 5, heal: 2 }, harsh: { miss: 8, heal: 1 },
 };
 const sectionOf = (lane) => (lane.startsWith("bass") ? "bass" : lane.startsWith("treble") ? "treble" : "drums");
-const rowOf = (lane) => { const n = +lane.split(" ")[1]; return n >= 9 ? "top" : "bottom"; };
-export const shieldPartOf = (lane) => (sectionOf(lane) === "drums" ? "drums" : rowOf(lane) === "bottom" ? sectionOf(lane) + " bottom" : null);
-export const SHIELD_PARTS = ["drums", "bass bottom", "treble bottom"];
 
 export class Defend {
   /**
@@ -55,14 +50,6 @@ export class Defend {
   sectionNotes(s = this.section) { return this.notes.filter((n) => n.section === s).sort((a, b) => a.beat - b.beat); }
   unlocked(s = this.section) { return this.sectionNotes(s).filter((n) => !this.locked.has(n.id)); }
   progress(s) { const all = this.sectionNotes(s); return all.length ? all.filter((n) => this.locked.has(n.id)).length / all.length : 1; }
-
-  /** how far a shield part is built: 0..1 (1 = up) */
-  partProgress(part) { const ns = this.notes.filter((n) => shieldPartOf(n.lane) === part); return ns.length ? ns.filter((n) => this.locked.has(n.id)).length / ns.length : 0; }
-
-  /** which shield parts are up (each = a third off the town's damage) */
-  shield() {
-    return SHIELD_PARTS.filter((p) => { const ns = this.notes.filter((n) => shieldPartOf(n.lane) === p); return ns.length > 0 && ns.every((n) => this.locked.has(n.id)); });
-  }
 
   /** the notes arrows fly for right now (the song's own beats) */
   offered() {
@@ -135,11 +122,9 @@ export class Defend {
   }
 
   _lock(ids, hits) {
-    const before = this.shield();
     for (const id of ids) this.locked.add(id);
     this._chunk = null;
     this.events.push({ type: "lock", notes: ids.map((id) => this.notes[id]), hits });
-    for (const p of this.shield()) if (!before.includes(p)) this.events.push({ type: "shield", part: p, up: this.shield().length });
     this._skipEmpty();
   }
 
@@ -149,9 +134,4 @@ export class Defend {
       this.sectionIdx++;
     }
   }
-
-  _dist(a, b) { const d = Math.abs(a - b) % this.loopBeats; return Math.min(d, this.loopBeats - d); }
 }
-
-/** damage to the town from a miss, after the shield: each part up takes a third off */
-export const townDamage = (miss, shieldUp) => miss * Math.max(0, 1 - shieldUp / 3);

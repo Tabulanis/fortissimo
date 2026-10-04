@@ -1,5 +1,6 @@
 import assert from "node:assert";
-import { SONG, ROUNDS, partArrows, isShown, buildUp, EASY_STEP_NOTES } from "../src/game/stages.js";
+import { ROUNDS, partArrows, songOf } from "../src/game/stages.js";
+const SONG = ROUNDS[0];
 
 const laneIndexByName = (name) => ({
   hat: 0, snare: 1, crash: 2, kick: 3, "tom low": 4, "tom high": 5,
@@ -8,7 +9,6 @@ const laneIndexByName = (name) => ({
 // six parts: four drum parts, then bass, then treble
 assert.strictEqual(SONG.parts.length, 6, "six parts");
 assert.deepStrictEqual(SONG.parts.map((p) => p.mode), ["drums", "drums", "drums", "drums", "bass", "treble"]);
-assert.deepStrictEqual(SONG.parts[0].show, [3, 1], "part 1 shows exactly lanes 3 and 1");
 
 // part 1 (groove: kick on 1, 3, and-of-3) over two bars from 0.5 with bar 4, beat 1
 const kicks = partArrows(SONG.parts[0].part, laneIndexByName, 0.5, 4, 1, 0.5, 8.5);
@@ -27,11 +27,6 @@ for (let i = 0; i < hatWant.length; i++) {
   assert.strictEqual(hats[i].laneIdx, 0, `hat ${i} is lane 0`);
   assert.ok(Math.abs(hats[i].time - hatWant[i]) < 1e-9, `hat ${i} at ${hatWant[i]}`);
 }
-
-// visibility
-assert.strictEqual(isShown(SONG, 0, 0), false, "part 1 hides the hat");
-assert.strictEqual(isShown(SONG, 0, 3), true, "part 1 shows the kick");
-assert.strictEqual(isShown(SONG, 99, 0), true, "past the last part, everything is shown");
 
 // three rounds, four parts each
 assert.strictEqual(ROUNDS.length, 3, "three rounds");
@@ -62,36 +57,11 @@ for (const p of ROUNDS[1].parts) {
   }
 }
 
-// EASY build-up: hats split into the on-beat core + the in-between add-on; tiny parts stay whole
-{
-  const easy = buildUp(ROUNDS[0]);
-  const hatParts = easy.parts.filter((p) => p.part.some((n) => n.lane === "hat"));
-  assert.deepStrictEqual(hatParts.map((p) => p.part.map((n) => n.beat)), [[0, 1, 2, 3], [0.5, 2.5, 3.5]], "hats: core then add-on");
-  assert.ok(hatParts[1].addOn && hatParts[1].label.endsWith("add"));
-  const kick = easy.parts.find((p) => p.part.some((n) => n.lane === "kick"));
-  assert.deepStrictEqual(kick.part.map((n) => n.beat), [0, 2, 2.5], "kick stays whole (its add-on would be one note)");
-  // nothing lost, nothing added: the same notes, just taught in more steps
-  const all = (r) => r.parts.flatMap((p) => p.part.map((n) => `${n.lane}@${n.beat}`)).sort();
-  for (const r of ROUNDS) assert.deepStrictEqual(all(buildUp(r)), all(r), `${r.name}: same notes`);
-  // modes keep their order: every drums step before bass before treble
-  const order = easy.parts.map((p) => p.mode);
-  assert.ok(order.lastIndexOf("drums") < order.indexOf("bass") && order.lastIndexOf("bass") < order.indexOf("treble"));
-}
-// EASY melody: no more than four notes per step, most important first
+// the engine plays a built-in round as one SONG: every note, looped over its longest part
 for (const r of ROUNDS) {
-  const easy = buildUp(r);
-  for (const kind of ["bass", "treble"]) {
-    const steps = easy.parts.filter((p) => p.mode === kind);
-    assert.ok(steps.every((p) => p.part.length <= EASY_STEP_NOTES), `${r.name} ${kind}: <= 4 notes per step`);
-    const whole = r.parts.find((p) => p.mode === kind).part.map((n) => `${n.lane}@${n.beat}`).sort();
-    assert.deepStrictEqual(steps.flatMap((p) => p.part.map((n) => `${n.lane}@${n.beat}`)).sort(), whole, `${r.name} ${kind}: the steps add up to the whole line`);
-  }
-}
-{
-  // round 1's treble (8 notes on beats 0..7): bar downbeats and beat 3s first
-  const t = buildUp(ROUNDS[0]).parts.filter((p) => p.mode === "treble");
-  assert.deepStrictEqual(t.map((p) => p.part.map((n) => n.beat)), [[0, 2, 4, 6], [1, 3, 5, 7]]);
-  const r3 = buildUp(ROUNDS[2]).parts.filter((p) => p.mode === "treble");
-  assert.deepStrictEqual(r3.map((p) => p.part.length), [4, 4, 4, 3], "round 3's 15-note treble: 4 + 4 + 4 + 3");
+  const s = songOf(r);
+  assert.strictEqual(s.notes.length, r.parts.reduce((n, p) => n + p.part.length, 0), `${r.name}: every note`);
+  assert.strictEqual(s.bars, Math.max(...r.parts.map((p) => p.bars)), `${r.name}: the longest part's bars`);
+  assert.ok(s.bpm > 0);
 }
 console.log("stages: all passed");

@@ -1,7 +1,7 @@
 /* hackbeat.js — a round's SONG lives in a Hackbeat project. Pure, no DOM.
  *
  * ONE FILE PER ROUND, ONE FULL SONG (owner, 2026-10-02): every track plays
- * together; the game decides how to teach it (lesson.js). Tracks are matched by
+ * together; the game decides what you play (run.js, defend.js). Tracks are matched by
  * NAME, any order, any case — one track per sample:
  *   drums     "Bass drum" (or "kick"), "snare", "hihat" (or "hat"), "crash"
  *             (+ optional "tom low", "tom high")
