@@ -110,3 +110,15 @@ console.log("defend ok");
   assert.strictEqual(d.locked.size, 0, "Hard keeps nothing without the whole pattern");
   console.log("groups ok");
 }
+
+// EASY groups never ask for two hits at once (owner: 1, 2, 3); Medium may, at most two
+{
+  const song = { bars: 1, notes: [0, 1, 2, 3].flatMap((b) => [{ lane: "kick", beat: b }, { lane: "hat", beat: b }, { lane: "snare", beat: b + 0.5 }]) };
+  const d = new Defend(song, { lockSize: 3, keep: "any" });
+  const beats = d.offered().map((n) => n.beat);
+  assert.strictEqual(new Set(beats).size, beats.length, `Easy: no two at once (${beats})`);
+  const m = new Defend(song, { lockSize: 3, keep: "half" });
+  const counts = {}; for (const n of m.offered()) counts[n.beat] = (counts[n.beat] || 0) + 1;
+  assert.ok(Object.values(counts).every((c) => c <= 2), "Medium: never more than two at once");
+  console.log("one-at-a-time ok");
+}

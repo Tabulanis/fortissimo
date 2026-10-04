@@ -98,7 +98,10 @@ export class Defend {
         // song — the backbone first (kick and snare, then hats, then crash and toms)
         const tier = Math.min(...open.map((n) => laneRank(n.lane))) + 0.9;
         const byTime = [...open].sort((a, b) => wait(a) - wait(b)), pick = [], lanes = new Set();
-        const take = (ok) => { for (const n of byTime) { if (pick.length >= size) return; if (!pick.includes(n) && ok(n)) { pick.push(n); lanes.add(n.lane); } } };
+        // EASY plays a group ONE AT A TIME — 1, 2, 3, never two at once (owner); Medium may
+        // have two together (never more: two hands in VR — the song itself is capped at two, run.js)
+        const apart = (n) => this.keep !== "any" || !pick.some((m) => Math.abs(m.beat - n.beat) < 0.03);
+        const take = (ok) => { for (const n of byTime) { if (pick.length >= size) return; if (!pick.includes(n) && apart(n) && ok(n)) { pick.push(n); lanes.add(n.lane); } } };
         take((n) => laneRank(n.lane) <= tier && !lanes.has(n.lane));   // the backbone, one per drum
         take((n) => !lanes.has(n.lane));                                // then other drums
         take(() => true);                                               // a repeat only if there's no other way
