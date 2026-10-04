@@ -34,11 +34,17 @@ varying vec3 vN; varying vec3 vV; varying vec2 vUv; varying vec3 vP;
 void main() {
   vec3 d = normalize(vP);
   vec2 base = vec2(atan(d.z, d.x) / 6.2831853 + 0.5, asin(clamp(d.y, -1.0, 1.0)) / 3.1415927 + 0.5);
+#ifdef CHEAP
+  // potato: one swirl, turning, no warp and no second layer
+  vec3 main = texture2D(uTex, base + vec2(uTime * 0.03, 0.0)).rgb;
+  vec3 bright = main;
+#else
   vec2 w = vec2(sin(base.y * 14.0 + uTime * 0.9) + sin(base.x * 23.0 - uTime * 0.6),
                 cos(base.x * 17.0 + uTime * 0.7) + sin(base.y * 9.0 - uTime * 1.1)) * 0.012;
   vec3 main = texture2D(uTex, base + w + vec2(uTime * 0.03, 0.0)).rgb;
   vec2 w2 = vec2(cos(base.y * 11.0 - uTime * 0.8), sin(base.x * 19.0 + uTime * 0.5)) * 0.016;
   vec3 bright = texture2D(uTexB, vec2(1.0 - base.x, base.y) + w2 + vec2(-uTime * 0.02, 0.0)).rgb;
+#endif
   float lm = dot(main, vec3(0.299, 0.587, 0.114)), lb = dot(bright, vec3(0.299, 0.587, 0.114));
   float swell = 0.55 + 0.45 * sin(uTime * 0.35 + base.x * 6.2831853);      // the bright layer ebbs and swells round the dome
   vec3 sw = main * 1.3 + bright * swell * 1.1 + main * bright * 2.2;       // brighter where they cross
@@ -58,7 +64,7 @@ void main() {
   gl_FragColor = vec4(mix(sw * 1.5, uColor, 0.2) + uColor * (0.5 * rim + hit + 0.5 * edge), a);
 }`;
 
-export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null } = {}) {
+export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null, cheap = false } = {}) {
   const group = new THREE.Group();
   group.position.copy(CENTER);
   scene.add(group);
@@ -73,7 +79,7 @@ export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null 
   const parts = {};
   for (const [name, mid] of Object.entries(SECTORS)) {
     const mat = new THREE.ShaderMaterial({
-      vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      vertexShader: VERT, fragmentShader: FRAG, defines: cheap ? { CHEAP: 1 } : {}, transparent: true, depthWrite: false, side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
       uniforms: { uColor: { value: new THREE.Color(0x58c8ff) }, uStrength: { value: 0 }, uTime: { value: 0 }, uHit: { value: 0 }, uHitAt: { value: new THREE.Vector3() }, uTex: { value: swirl }, uTexB: { value: swirlBright }, uRise: { value: 0 } },
     });

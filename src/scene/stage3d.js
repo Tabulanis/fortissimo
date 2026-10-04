@@ -91,7 +91,9 @@ const _eWhite = new THREE.Color(0xffffff);
  */
 export function createStage3D(canvas, layout, colors, opts = {}) {
   let skyMatRef = null;   // the sky dome's material (clouds animate on it)
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  const TIER = ["high", "medium", "low", "lowest", "potato"].includes(opts.tier) ? opts.tier : "high";
+  // no multisampling below medium: it multiplies every pixel's cost on a weak GPU
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: TIER === "high" || TIER === "medium" });
   renderer.shadowMap.enabled = true;                 // the foreground lantern casts shadows
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   // GRAPHICS LEVEL — the game chooses it (auto-measured per device, or Settings):
@@ -101,17 +103,23 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   //   low     tablets / weak GPUs: NO effect chain (drawn directly), no
   //           shadows, no fire lights, a simple shiny pool (sky reflection, no
   //           mirror), fewer particles, 1x pixels
-  //   lowest  low + 0.7x render resolution
-  const TIER = ["high", "medium", "low", "lowest"].includes(opts.tier) ? opts.tier : "high";
+  //   lowest  low + 0.7x render resolution, textures at most 512 px
+  //   potato  lowest + half resolution, a cheap shield, a small fire, no decoy arrows
+  //           (owner, 2026-10-03: the tablet "can barely play it")
   const MOBILE = TIER !== "high";                     // medium and below
-  const LOW = TIER === "low" || TIER === "lowest";
+  const LOW = TIER === "low" || TIER === "lowest" || TIER === "potato";
+  const POTATO = TIER === "potato";
+  // SMALL TEXTURES (owner, 2026-10-03: "cut the size for textures in lowest mode to 512"):
+  // lowest and potato load public/small/ instead — every texture and model image at most
+  // 512 px (tools/make-small-assets.py makes them). Every loader here uses the default manager.
+  THREE.DefaultLoadingManager.setURLModifier((url) => (TIER === "lowest" || POTATO) && /^\/(textures|models)\//.test(url) ? "/small" + url : url);
   {
     const gl = renderer.getContext();
     const dbg = gl.getExtension("WEBGL_debug_renderer_info");
     bootlog("renderer", { gpu: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "?", maxTex: gl.getParameter(gl.MAX_TEXTURE_SIZE),
       webgl2: renderer.capabilities.isWebGL2, tier: TIER });
   }
-  renderer.setPixelRatio(TIER === "lowest" ? 0.7 : LOW ? 1 : MOBILE ? Math.min(window.devicePixelRatio || 1, 1.5) : (window.devicePixelRatio || 1));
+  renderer.setPixelRatio(POTATO ? 0.5 : TIER === "lowest" ? 0.7 : LOW ? 1 : MOBILE ? Math.min(window.devicePixelRatio || 1, 1.5) : (window.devicePixelRatio || 1));
   // VR: the headset is the camera, the controllers hold the sticks
   renderer.xr.enabled = true;
   // FILM LOOK: ACES filmic tone mapping (the Unreal Engine curve) — bright fire
@@ -334,7 +342,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   composer.addPass(fxPass);
   } else camera.layers.enable(FX_LAYER);   // drawn directly: the main camera sees the glowing effects too
   // THE FIRE: one particle simulation for every flame, ember and smoke wisp
-  const fireSim = createFire(scene, { layer: FX_LAYER, ...(LOW ? { maxFire: TIER === "lowest" ? 1500 : 2500, maxSmoke: 400 } : MOBILE ? { maxFire: 6000, maxSmoke: 1500 } : {}) });
+  const fireSim = createFire(scene, { layer: FX_LAYER, ...(LOW ? { maxFire: POTATO ? 500 : TIER === "lowest" ? 1500 : 2500, maxSmoke: POTATO ? 80 : 400 } : MOBILE ? { maxFire: 6000, maxSmoke: 1500 } : {}) });
   let fireT = performance.now(), fireDt = 0;
   if (composer) {
   gtao = new GTAOPass(scene, camera, canvas.clientWidth || 1280, canvas.clientHeight || 720);
@@ -567,7 +575,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     return new THREE.CanvasTexture(c);
   })();
   // THE DEFENSE you build by playing: the shield dome and the cannons (defense.js)
-  const defense = createDefense(scene, { fireTexture, layer: FX_LAYER, glowLayer: SHIELD_LAYER });
+  const defense = createDefense(scene, { fireTexture, layer: FX_LAYER, glowLayer: SHIELD_LAYER, cheap: POTATO });
   // THE ARMY down the courts (troops.js): fwd = down the court a station faces, right = across it
   const courtOf = (side) => { const yaw = STATIONS[side].yaw, fx = -Math.sin(yaw), fz = -Math.cos(yaw);
     return { fwd: new THREE.Vector3(fx, 0, fz), right: new THREE.Vector3(-fz, 0, fx) }; };
@@ -1916,7 +1924,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       camera.quaternion.setFromEuler(_eul.set(PITCH0 + look.y * LOOK_PITCH, st.yaw - look.x * LOOK_YAW, 0, "YXZ"));
     }
     updateGhostHands(heardNow, ghosts);
-    updateDecoys(heardNow);
+    if (!POTATO) updateDecoys(heardNow);   // potato: no decoy volleys
     _frameNo++;
     updateHands(performance.now());
     updateFireLights(performance.now());
@@ -2410,7 +2418,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         hand.rest.copy(HAND_RESTS[name][h]);
         if (!hand.active && !vrOn()) { hand.group.position.copy(hand.rest); hand.group.quaternion.setFromUnitVectors(UP, restDir); }
       });
-    }, get station() { return station; }, melodyStations, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; },
+    }, get station() { return station; }, melodyStations, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */

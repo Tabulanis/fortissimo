@@ -16,8 +16,9 @@ f.onload = async () => {
     const s = w.__gr.stage3d, up = { progress: 1, up: true };
     s.setShield({ drums: up, bass: up, treble: up });
     await wait(3000);
+    say("info_sf", JSON.stringify({ tier: s.tier, maxTexture: s.debugTextures() }));
     say("shot_sf", await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png")))));
   } catch (e) { say("err_sf", e.message); }
 };
-f.src = "/?quality=high";
+f.src = "/?quality=" + (location.hash.slice(1) || "high");
 </script>

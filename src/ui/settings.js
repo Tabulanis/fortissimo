@@ -64,7 +64,8 @@ export function createSettings({ onChange, onRestart } = {}) {
           <option value="high">High — every effect</option>
           <option value="medium">Medium — phones</option>
           <option value="low">Low — no effects (tablets)</option>
-          <option value="lowest">Lowest — no effects, lower resolution</option>
+          <option value="lowest">Lowest — no effects, lower resolution, small textures</option>
+          <option value="potato">Potato — half resolution, bare minimum (weak tablets)</option>
         </select></div>
       <div class="row"><span>Auto-correct <span class="note">(record hits on the beat)</span></span>
         <input type="checkbox" data-k="autoCorrect"></div>
