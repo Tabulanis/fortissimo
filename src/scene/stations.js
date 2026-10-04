@@ -75,42 +75,58 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
   // from the muzzle (defense.js). Same target shape as a bar: top / normal / radius.
   const cannonMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, metalness: 0.85, roughness: 0.35, emissive: 0x000000 });
   const carriageMat = new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.75 });
+  // the BUTTON you hit (owner, 2026-10-03): in front of a mortar, at the back of a cannon —
+  // the gun's strike point (top / normal / radius) sits on its cap
+  const buttonMat = new THREE.MeshStandardMaterial({ color: 0x4a0c06, metalness: 0.3, roughness: 0.5, emissive: 0x000000 });
+  const buttonRim = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, metalness: 0.85, roughness: 0.35 });
+  const fuseMat = new THREE.MeshStandardMaterial({ color: 0x2a1c12, roughness: 0.9 });
+  function makeButton(rg, x, z) {
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.046, 0.014, 20), buttonRim);
+    rim.position.set(x, 0.007, z);
+    const capMat = buttonMat.clone();   // its own: it lights red on its own
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.034, 0.016, 20), capMat);
+    cap.position.set(x, 0.021, z);
+    for (const m of [rim, cap]) { m.castShadow = true; m.receiveShadow = true; rg.add(m); }
+    const p = new THREE.Vector3(x, 0.03, z); p.mat = capMat;
+    return p;
+  }
   // MORTARS on the bottom row: short and wide, angled up and a little outward, lobbing high
   function makeMortar(rg, i, z) {
     const mat = cannonMat.clone();
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, 0.05, 16), carriageMat);
-    base.position.set(s * 0.1, 0.025, z);
+    base.position.set(s * 0.13, 0.025, z);
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.062, 0.17, 16), mat);
     barrel.rotation.z = -s * 0.35;   // up, leaning out
-    barrel.position.set(s * 0.12, 0.13, z);
+    barrel.position.set(s * 0.15, 0.13, z);
     const lip = new THREE.Mesh(new THREE.TorusGeometry(0.054, 0.01, 8, 18), mat);
     lip.position.set(0, 0.085, 0); lip.rotation.x = Math.PI / 2;
     barrel.add(lip);
     for (const m of [base, barrel]) { m.castShadow = true; m.receiveShadow = true; rg.add(m); }
     const lab = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(labels[i]), transparent: true, depthWrite: false }));
     lab.scale.setScalar(0.085);
-    lab.position.set(s * 0.0, 0.17, z);
+    lab.position.set(s * 0.0, 0.1, z);
     rg.add(lab);
+    const btn = makeButton(rg, s * 0.0, z);
     rg.updateMatrixWorld(true);
-    const top = new THREE.Vector3(s * 0.06, 0.06, z).applyMatrix4(rg.matrixWorld);
+    const top = btn.clone().applyMatrix4(rg.matrixWorld), buttonMat = btn.mat;
     const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(rg.quaternion);
     const muzzle = barrel.localToWorld(new THREE.Vector3(0, 0.1, 0));
-    return { mesh: barrel, mat, label: lab, top, normal, radius: 0.08, len: 0.17, row: 0, mortar: true, muzzle };
+    return { mesh: barrel, mat, label: lab, top, normal, radius: 0.05, len: 0.17, row: 0, mortar: true, muzzle, buttonMat };
   }
   function makeCannon(rg, i, z) {
     const mat = cannonMat.clone();   // its own: it lights up on its own
     const carriage = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.05, 0.12), carriageMat);
-    carriage.position.set(s * 0.09, 0.025, z);
+    carriage.position.set(s * 0.13, 0.025, z);
     const wheelGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.015, 14);
     for (const dz of [-0.065, 0.065]) {
       const w = new THREE.Mesh(wheelGeo, carriageMat);
       w.rotation.x = Math.PI / 2;
-      w.position.set(s * 0.12, 0.03, z + dz);
+      w.position.set(s * 0.16, 0.03, z + dz);
       rg.add(w);
     }
     const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.045, 0.3, 16), mat);
     barrel.rotation.z = -s * (Math.PI / 2 - 0.25);   // the narrow end out and up
-    barrel.position.set(s * 0.17, 0.1, z);
+    barrel.position.set(s * 0.21, 0.1, z);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.033, 0.008, 8, 18), mat);
     ring.position.set(0, 0.15, 0);
     ring.rotation.x = Math.PI / 2;
@@ -119,13 +135,20 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
     // its key floats just above the breech, always facing you (the barrel hid a flat one)
     const lab = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(labels[i]), transparent: true, depthWrite: false }));
     lab.scale.setScalar(0.085);
-    lab.position.set(s * 0.0, 0.16, z);
+    lab.position.set(s * 0.0, 0.1, z);
     rg.add(lab);
+    const btn = makeButton(rg, s * 0.0, z);
     rg.updateMatrixWorld(true);
-    const top = new THREE.Vector3(s * 0.06, 0.06, z).applyMatrix4(rg.matrixWorld);
+    const top = btn.clone().applyMatrix4(rg.matrixWorld), buttonMat = btn.mat;
     const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(rg.quaternion);
     const muzzle = barrel.localToWorld(new THREE.Vector3(0, 0.17, 0));
-    return { mesh: barrel, mat, label: lab, top, normal, radius: 0.07, len: 0.17, row: 1, cannon: true, muzzle };
+    const touch = barrel.localToWorld(new THREE.Vector3(0, -0.13, 0)).addScaledVector(normal, 0.045);   // the touch-hole, on top of the breech: where the fuse starts
+    // the fuse cord, touch-hole down to the button: the spark burns along it
+    const a = rg.worldToLocal(touch.clone()), c = btn.clone(), cord = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, a.distanceTo(c), 6), fuseMat);
+    cord.position.copy(a).add(c).multiplyScalar(0.5);
+    cord.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), a.clone().sub(c).normalize());
+    rg.add(cord);
+    return { mesh: barrel, mat, label: lab, top, normal, radius: 0.05, len: 0.17, row: 1, cannon: true, muzzle, touch, buttonMat };
   }
   // rows: bottom = bars 0-7 (near, low), top = bars 8-15 (behind, raised and
   // tilted toward the player). Within a row, left -> right as you face the

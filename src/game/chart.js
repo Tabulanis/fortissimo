@@ -9,16 +9,16 @@ export const LAYOUT = {
     { name: "crash", key: "e", drum: "crash" },
   ],
   bottom: [
-    { name: "kick", key: "z", drum: "kick" },
-    { name: "tom low", key: "x", drum: "tomLow" },
-    { name: "tom high", key: "c", drum: "tomHigh" },
+    { name: "kick", key: "a", drum: "kick" },
+    { name: "tom low", key: "s", drum: "tomLow" },
+    { name: "tom high", key: "d", drum: "tomHigh" },
   ],
 };
 
 // Lanes 4-5 (r/t and v/b) join later; reserved here so indices stay stable.
 export const KEYS = {
   top: ["q", "w", "e", "r", "t"],
-  bottom: ["z", "x", "c", "v", "b"],
+  bottom: ["a", "s", "d", "f", "g"],
 };
 
 // Beats are quarter notes; 16 beats = 4 bars.

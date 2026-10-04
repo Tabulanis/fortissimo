@@ -1223,7 +1223,10 @@ function frame() {
       }
       if (heardNow > hint.end + 0.4) hint = null;
     }
-    stage3d.update(heardNow, buildUpcoming(heardNow), ghostHits);
+    // arrows for the drums; the guns get their own cues (a fuse, a falling shell) — arrows can't pass the shield
+    const up = buildUpcoming(heardNow);
+    stage3d.setGunCues(defend ? up.filter((u) => u.laneIdx >= 6) : []);
+    stage3d.update(heardNow, defend ? up.filter((u) => u.laneIdx < 6) : up, ghostHits);
     if (defend) tickDefend(heardNow); else tickBell(heardNow);
   } else {
     // before Start: keep the courtyard (and its drums) visible, no arrows
