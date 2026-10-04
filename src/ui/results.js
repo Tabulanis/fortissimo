@@ -1,4 +1,5 @@
-/* results.js — the end-of-round panel: grade, accuracy, timing tendency.
+/* results.js — the end-of-round panel: ACCURACY first (owner, 2026-10-03: it's about
+ * getting 100%), then the grade and timing tendency.
  * show({ round, title, stats, last, run, onNext, onMenu }); Enter or the button continues.
  * run: { name, mult } — the run's preset and score multiplier: score = accuracy x multiplier. */
 
@@ -30,8 +31,8 @@ export function createResults() {
       card.innerHTML = `
         <div style="font-size:14px; letter-spacing:2px; opacity:0.7; ${failed ? "color:#ff8a7a; opacity:1" : ""}">${round.toUpperCase()} ${failed ? "— FAILED" : "COMPLETE"}</div>
         <div style="font-size:18px; margin-top:4px; opacity:0.85">${title}</div>
-        <div style="font-size:96px; font-weight:800; line-height:1.1; margin:14px 0 4px; color:${GRADE_COLOR[stats.grade] || "#fff"}">${stats.grade}</div>
-        <div style="font-size:28px; font-weight:600">${stats.accuracy}% accuracy</div>
+        <div style="font-size:88px; font-weight:800; line-height:1.1; margin:14px 0 0; color:${GRADE_COLOR[stats.grade] || "#fff"}">${stats.accuracy}%</div>
+        <div style="font-size:20px; font-weight:600; letter-spacing:1px">${stats.accuracy >= 100 ? "💯 PERFECT!" : `accuracy · grade ${stats.grade} · chase the 100%`}</div>
         ${run ? `<div style="margin-top:8px; font-size:22px; color:#ffd27a">Score ${Math.round(stats.accuracy * run.mult * 10)}
           <span style="font-size:14px; opacity:0.75">(${run.name} ×${run.mult.toFixed(2)})</span></div>` : ""}
         <div style="margin-top:14px; font-size:15px; line-height:1.7; opacity:0.85">

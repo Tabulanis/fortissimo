@@ -2,7 +2,7 @@
 <iframe id="f" style="width:1000px;height:700px;border:0"></iframe>
 <script type="module">
 const out = [], wait = (ms) => new Promise((r) => setTimeout(r, ms));
-localStorage.removeItem("gr.run");
+localStorage.removeItem("gr.run2");
 const f = document.getElementById("f"); f.src = "/?quality=low";
 f.onload = async () => {
   const w = f.contentWindow, d = w.document;

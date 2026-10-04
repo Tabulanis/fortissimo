@@ -9,7 +9,7 @@ f.onload = async () => {
   w.addEventListener("error", (e) => out.push("JSERROR " + e.message));
   const shot = async (name) => { out.push(`[${name}] ` + d.getElementById("gr-menu")?.innerText.replace(/\s+/g, " ").slice(0, 300)); };
   try {
-    w.localStorage.removeItem("gr.run"); w.localStorage.removeItem("gr.level");
+    w.localStorage.removeItem("gr.run2"); w.localStorage.removeItem("gr.level");
     await wait(3500);
     await shot("title");
     d.querySelector("#gr-menu [data-a=play]").click(); await wait(200);
@@ -23,7 +23,7 @@ f.onload = async () => {
     await wait(5000);
     const G = w.__gr.game;
     out.push("game: " + JSON.stringify(G.backInfo()) + " | hud: " + (d.body.innerText.match(/(Level [0-9]+|Custom) ×[0-9.]+/) || ["?"])[0]);
-    out.push("saved run: " + w.localStorage.getItem("gr.run"));
+    out.push("saved run: " + w.localStorage.getItem("gr.run2"));
   } catch (e) { out.push("ERROR " + e.message + " " + e.stack); }
   fetch("http://127.0.0.1:8899/menu", { method: "POST", body: out.join("\n") });
 };

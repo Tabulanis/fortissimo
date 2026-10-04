@@ -3,8 +3,8 @@
 <script type="module">
 const out = [], wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const lockQ = new URLSearchParams(location.search).get("lock");
-if (lockQ) localStorage.setItem("gr.run", JSON.stringify({ hitbox: 0.07, tempo: 1, patterns: "full", lock: lockQ === "all" ? "all" : +lockQ, damage: "normal" }));
-else localStorage.removeItem("gr.run");   // Easy: lock size 1
+if (lockQ) localStorage.setItem("gr.run2", JSON.stringify({ hitbox: 0.07, tempo: 1, patterns: "full", lock: lockQ === "all" ? "all" : +lockQ, damage: "normal" }));
+else localStorage.removeItem("gr.run2");   // Easy: lock size 1
 const KEY = { hat: "q", snare: "w", crash: "e", kick: "z", "tom low": "x", "tom high": "c" };
 for (const k of ["bass", "treble"]) "asdfghjkqwertyui".split("").forEach((c, i) => (KEY[`${k} ${i + 1}`] = c));
 const f = document.getElementById("f"); f.src = "/?quality=low";

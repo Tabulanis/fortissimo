@@ -16,23 +16,24 @@
  */
 
 export const PRESETS = {
-  easy:   { hitbox: 0.14, tempo: 1, patterns: "easy",   lock: 1,        damage: "gentle" },
-  medium: { hitbox: 0.11, tempo: 1, patterns: "medium", lock: 3,        damage: "normal" },
-  hard:   { hitbox: 0.07, tempo: 1, patterns: "full",   lock: 8,        damage: "normal" },
-  expert: { hitbox: 0.04, tempo: 1, patterns: "full",   lock: Infinity, damage: "harsh" },
+  easy:   { hitbox: 0.25, tempo: 1, patterns: "easy",   lock: 1,        damage: "gentle" },
+  medium: { hitbox: 0.25, tempo: 1, patterns: "medium", lock: 3,        damage: "normal" },
+  hard:   { hitbox: 0.25, tempo: 1, patterns: "full",   lock: 8,        damage: "normal" },
+  expert: { hitbox: 0.25, tempo: 1, patterns: "full",   lock: Infinity, damage: "harsh" },
 };
 // THE DIFFICULTY SLIDER (owner, 2026-10-03): 10 levels, each a full set of modifiers;
-// the old four presets sit on it at 3, 5, 7 and 10
+// the old four presets sit on it at 3, 5, 7 and 10. The HITBOX is ±250 ms at every level
+// (owner: "ginormous"): anything near the note counts — the score is how CLOSE (chase 100%)
 export const LEVELS = [
-  { hitbox: 0.20, tempo: 1, patterns: "easy",   lock: 1,        damage: "gentle" },   // 1
-  { hitbox: 0.17, tempo: 1, patterns: "easy",   lock: 1,        damage: "gentle" },   // 2
+  { hitbox: 0.25, tempo: 0.8, patterns: "easy",   lock: 1,        damage: "gentle" },   // 1  slower
+  { hitbox: 0.25, tempo: 0.9, patterns: "easy",   lock: 1,        damage: "gentle" },   // 2
   PRESETS.easy,                                                                        // 3
-  { hitbox: 0.12, tempo: 1, patterns: "medium", lock: 1,        damage: "normal" },   // 4
+  { hitbox: 0.25, tempo: 1,   patterns: "medium", lock: 1,        damage: "normal" },   // 4
   PRESETS.medium,                                                                      // 5
-  { hitbox: 0.09, tempo: 1, patterns: "medium", lock: 3,        damage: "normal" },   // 6
+  { hitbox: 0.25, tempo: 1,   patterns: "full",   lock: 3,        damage: "normal" },   // 6
   PRESETS.hard,                                                                        // 7
-  { hitbox: 0.06, tempo: 1, patterns: "full",   lock: 8,        damage: "harsh" },    // 8
-  { hitbox: 0.05, tempo: 1, patterns: "full",   lock: Infinity, damage: "harsh" },    // 9
+  { hitbox: 0.25, tempo: 1,   patterns: "full",   lock: 8,        damage: "harsh" },    // 8
+  { hitbox: 0.25, tempo: 1.1, patterns: "full",   lock: 8,        damage: "harsh" },    // 9  faster
   PRESETS.expert,                                                                      // 10
 ];
 export const LEVEL_NAMES = ["Sprout", "Seedling", "Easy", "Steady", "Medium", "Brisk", "Hard", "Fierce", "Brutal", "Expert"];
@@ -72,7 +73,6 @@ export function normalize(cfg = {}) {
 export function scoreMultiplier(cfg) {
   const c = normalize(cfg);
   const parts = {
-    hitbox: Math.min(1.15, Math.max(0.5, 1 - (c.hitbox - 0.08) * 2.5)),   // 0.04 -> x1.10, 0.14 -> x0.85, 0.25 -> x0.58
     tempo: 1 + (c.tempo - 1) * 0.8,                                       // 0.75x -> x0.80, 1.25x -> x1.20
     patterns: { easy: 0.7, medium: 0.85, full: 1 }[c.patterns],
     lock: { 1: 0.8, 3: 0.95, 8: 1.05 }[c.lock] ?? 1.15,                 // all at once: x1.15

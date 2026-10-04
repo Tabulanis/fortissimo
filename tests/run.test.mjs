@@ -12,12 +12,12 @@ assert.strictEqual(normalize({ hitbox: 9, tempo: 0 }).hitbox, 0.25, "clamped");
 const m = (c) => scoreMultiplier(c).total;
 assert.ok(m(PRESETS.easy) < m(PRESETS.medium) && m(PRESETS.medium) < m(PRESETS.hard) && m(PRESETS.hard) < m(PRESETS.expert), `${["easy", "medium", "hard", "expert"].map((k) => m(PRESETS[k]))}`);
 assert.ok(m({ ...PRESETS.hard, tempo: 1.25 }) > m(PRESETS.hard), "faster pays more");
-assert.ok(m({ ...PRESETS.hard, hitbox: 0.2 }) < m(PRESETS.hard), "a bigger hitbox pays less");
 assert.ok(m({ ...PRESETS.hard, lock: 1 }) < m(PRESETS.hard), "a smaller lock size pays less");
 assert.ok(m({ ...PRESETS.hard, damage: "harsh" }) > m(PRESETS.hard), "harsher damage pays more");
 
-// judging follows the hitbox and keep
-assert.strictEqual(judgeFor(PRESETS.easy).window, 0.14);
+// judging follows the hitbox
+assert.strictEqual(judgeFor(PRESETS.easy).window, 0.25);
+assert.strictEqual(judgeFor({ ...PRESETS.easy, hitbox: 0.1 }).window, 0.1);
 assert.strictEqual(normalize({ lock: "all" }).lock, Infinity, "saved 'all' comes back as Infinity");
 
 // pattern difficulty: easy = beats and half-beats; medium drops fast sixteenth runs and off-grid notes; full = all
@@ -56,5 +56,6 @@ console.log("run ok — Dope notes to play easy/medium/full:", counts.join("/"),
   for (let i = 1; i < 10; i++) assert.ok(m(LEVELS[i]) > m(LEVELS[i - 1]), `level ${i + 1} pays more than ${i}`);
   assert.deepStrictEqual(["easy", "medium", "hard", "expert"].map((k) => levelOf(PRESETS[k])), [3, 5, 7, 10]);
   assert.strictEqual(levelOf({ ...LEVELS[4], hitbox: 0.2 }), 0, "custom");
+  assert.ok(LEVELS.every((c) => c.hitbox === 0.25), "the ginormous hitbox at every level");
   console.log("levels ok");
 }

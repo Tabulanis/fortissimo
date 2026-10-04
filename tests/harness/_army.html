@@ -4,7 +4,7 @@
 // THE ARMY: skip the drums, let soldiers march in, shell them (TABS ragdolls); then skip to the boss
 const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-localStorage.removeItem("gr.run");
+localStorage.removeItem("gr.run2");
 const f = document.getElementById("f");
 f.onload = async () => {
   const w = f.contentWindow, d = w.document;

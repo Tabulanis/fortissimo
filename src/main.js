@@ -51,7 +51,8 @@ const ctx2d = chart.getContext("2d");
 const SET = loadSettings();         // saved settings (Esc / gear)
 // THE RUN (run.js, owner 2026-10-03, Beat Saber style): chosen in the start menu —
 // hitbox, tempo, pattern difficulty, notes per step, keep. Saved between visits.
-const RUN = (() => { try { return normalize(JSON.parse(localStorage.getItem("gr.run") || "null") || {}); } catch { return normalize({}); } })();
+// gr.run2: the run settings since the ±250 ms hitbox (2026-10-03) — the old ones (gr.run) are left behind
+const RUN = (() => { try { return normalize(JSON.parse(localStorage.getItem("gr.run2") || "null") || {}); } catch { return normalize({}); } })();
 let BPM = 80;   // set at Start: the song's own tempo x the run's tempo
 // levels unlock one by one: finishing level N opens N + 1
 const UNLOCKED_KEY = "gr.unlocked";
@@ -1267,7 +1268,7 @@ roundsReady.then(() => {
     level: +(localStorage.getItem("gr.level") || 0),
     run: RUN, startAt: at,
     onStart: (level, run) => {
-      try { localStorage.setItem("gr.run", JSON.stringify({ ...run, lock: run.lock === Infinity ? "all" : run.lock })); localStorage.setItem("gr.level", level); } catch { /* not remembered */ }
+      try { localStorage.setItem("gr.run2", JSON.stringify({ ...run, lock: run.lock === Infinity ? "all" : run.lock })); localStorage.setItem("gr.level", level); } catch { /* not remembered */ }
       Object.assign(RUN, run);
       roundIdx = level;
       buildLessons();
