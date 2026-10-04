@@ -21,6 +21,26 @@ export const PRESETS = {
   hard:   { hitbox: 0.07, tempo: 1, patterns: "full",   lock: 8,        damage: "normal" },
   expert: { hitbox: 0.04, tempo: 1, patterns: "full",   lock: Infinity, damage: "harsh" },
 };
+// THE DIFFICULTY SLIDER (owner, 2026-10-03): 10 levels, each a full set of modifiers;
+// the old four presets sit on it at 3, 5, 7 and 10
+export const LEVELS = [
+  { hitbox: 0.20, tempo: 1, patterns: "easy",   lock: 1,        damage: "gentle" },   // 1
+  { hitbox: 0.17, tempo: 1, patterns: "easy",   lock: 1,        damage: "gentle" },   // 2
+  PRESETS.easy,                                                                        // 3
+  { hitbox: 0.12, tempo: 1, patterns: "medium", lock: 1,        damage: "normal" },   // 4
+  PRESETS.medium,                                                                      // 5
+  { hitbox: 0.09, tempo: 1, patterns: "medium", lock: 3,        damage: "normal" },   // 6
+  PRESETS.hard,                                                                        // 7
+  { hitbox: 0.06, tempo: 1, patterns: "full",   lock: 8,        damage: "harsh" },    // 8
+  { hitbox: 0.05, tempo: 1, patterns: "full",   lock: Infinity, damage: "harsh" },    // 9
+  PRESETS.expert,                                                                      // 10
+];
+export const LEVEL_NAMES = ["Sprout", "Seedling", "Easy", "Steady", "Medium", "Brisk", "Hard", "Fierce", "Brutal", "Expert"];
+/** which level (1..10) a config IS, or 0 for custom */
+export function levelOf(cfg) {
+  const i = LEVELS.findIndex((p) => Math.abs(p.hitbox - cfg.hitbox) < 1e-3 && Math.abs(p.tempo - cfg.tempo) < 1e-3 && p.patterns === cfg.patterns && p.lock === cfg.lock && p.damage === cfg.damage);
+  return i + 1;
+}
 export const PRESET_NAMES = { easy: "Easy", medium: "Medium", hard: "Hard", expert: "Expert", custom: "Custom" };
 export const LIMITS = { hitbox: [0.03, 0.25], tempo: [0.6, 1.4] };
 export const LOCKS = [1, 3, 8, Infinity];

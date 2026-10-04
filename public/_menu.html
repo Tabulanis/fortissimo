@@ -1,12 +1,13 @@
 <!doctype html><body style="margin:0">
-<iframe id="f" src="/?quality=low" style="width:1100px;height:760px;border:0"></iframe>
+<iframe id="f" style="width:1100px;height:760px;border:0"></iframe>
 <script type="module">
 const out = [], shots = {}, wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const f = document.getElementById("f");
 f.onload = async () => {
   const w = f.contentWindow, d = w.document;
+  if (w.location.href === "about:blank") return;   // the frame's blank start, before the game loads
   w.addEventListener("error", (e) => out.push("JSERROR " + e.message));
-  const shot = async (name) => { const h = await import("https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/+esm").catch(() => null); out.push(`[${name}] ` + d.getElementById("gr-menu")?.innerText.replace(/\s+/g, " ").slice(0, 300)); };
+  const shot = async (name) => { out.push(`[${name}] ` + d.getElementById("gr-menu")?.innerText.replace(/\s+/g, " ").slice(0, 300)); };
   try {
     w.localStorage.removeItem("gr.run"); w.localStorage.removeItem("gr.level");
     await wait(3500);
@@ -14,16 +15,17 @@ f.onload = async () => {
     d.querySelector("#gr-menu [data-a=play]").click(); await wait(200);
     await shot("levels");
     d.querySelector("#gr-menu .level").click(); await wait(200);
-    await shot("setup (Easy)");
-    d.querySelector("#gr-menu [data-p=hard]").click(); await wait(100);
+    await shot("setup (Level 3)");
+    { const s = d.querySelector("#gr-menu [data-a=diff]"); s.value = 7; s.dispatchEvent(new w.Event("input")); } await wait(100);
     const t = d.querySelector("#gr-menu [data-k=tempo]"); t.value = 1.25; t.dispatchEvent(new w.Event("input")); await wait(100);
-    await shot("setup (Hard, tempo 1.25)");
+    await shot("setup (Level 7, tempo 1.25)");
     d.querySelector("#gr-menu [data-a=start]").click();
     await wait(5000);
     const G = w.__gr.game;
-    out.push("game: " + JSON.stringify(G.backInfo()) + " | hud: " + (d.body.innerText.match(/(Easy|Medium|Hard|Expert|Custom) ×[0-9.]+/) || ["?"])[0]);
+    out.push("game: " + JSON.stringify(G.backInfo()) + " | hud: " + (d.body.innerText.match(/(Level [0-9]+|Custom) ×[0-9.]+/) || ["?"])[0]);
     out.push("saved run: " + w.localStorage.getItem("gr.run"));
   } catch (e) { out.push("ERROR " + e.message + " " + e.stack); }
   fetch("http://127.0.0.1:8899/menu", { method: "POST", body: out.join("\n") });
 };
+f.src = "/?quality=low";
 </script>

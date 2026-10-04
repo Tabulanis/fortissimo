@@ -23,7 +23,8 @@ import { Loops } from "./game/loops.js";
 import { ROUNDS, partArrows, isShown, buildUp } from "./game/stages.js";
 import { loadRoundFiles } from "./game/roundfiles.js";
 import { lessonParts, sectionProgress, backLevel, finishedLanes } from "./game/lesson.js";
-import { normalize, judgeFor, simplifyNotes, scoreMultiplier, presetOf, PRESET_NAMES } from "./game/run.js";
+import { normalize, judgeFor, simplifyNotes, scoreMultiplier, levelOf } from "./game/run.js";
+const runName = (r) => { const lv = levelOf(r); return lv ? `Level ${lv}` : "Custom"; };
 import { createMenu } from "./ui/menu.js";
 import { Defend, townDamage, LIFE } from "./game/defend.js";
 import { gradeRound } from "./game/grade.js";
@@ -177,7 +178,7 @@ let roundOffsets = [];          // every guided hit this round: seconds off its 
 const results = createResults();
 const hudUI = createHud({ onBell: ringBell, onHint: () => playHint() });
 let autoCorrect = SET.autoCorrect;   // A toggles; also in settings
-function showDifficulty() { hudUI.setDifficulty(`${PRESET_NAMES[presetOf(RUN)]} ×${scoreMultiplier(RUN).total}${autoCorrect ? " · Auto ✓" : ""}`); }
+function showDifficulty() { hudUI.setDifficulty(`${runName(RUN)} ×${scoreMultiplier(RUN).total}${autoCorrect ? " · Auto ✓" : ""}`); }
 showDifficulty();
 const settingsUI = createSettings({
   onChange: (k, v) => {
@@ -367,7 +368,7 @@ function failRun(why) {
   hudUI.say(`${why}…`, "bad", 4000);
   setTimeout(() => results.show({
     round: song().name, title: why, stats: gradeRound(roundOffsets, judgeDiff().window), last: false, failed: true,
-    run: { name: PRESET_NAMES[presetOf(RUN)], mult: scoreMultiplier(RUN).total },
+    run: { name: runName(RUN), mult: scoreMultiplier(RUN).total },
     onNext: () => { try { sessionStorage.setItem("gr.menuAt", "setup"); } catch { /* menu from the top */ } location.reload(); },
     onMenu: () => { try { sessionStorage.setItem("gr.menuAt", "levels"); } catch { /* fine */ } location.reload(); },
   }), 1400);
@@ -426,7 +427,7 @@ function endRound() {
   };
   results.show({
     round: song().name, title: song().title, stats, last: lastRound(),
-    run: { name: PRESET_NAMES[presetOf(RUN)], mult: scoreMultiplier(RUN).total },
+    run: { name: runName(RUN), mult: scoreMultiplier(RUN).total },
     onNext: () => { if (lastRound()) { stageMessage(); return; } toMenu("setup", roundIdx + 1); },
     onMenu: () => toMenu("levels"),
   });

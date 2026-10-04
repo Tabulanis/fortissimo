@@ -47,3 +47,14 @@ console.log("run ok — Dope notes to play easy/medium/full:", counts.join("/"),
   assert.strictEqual(r.play.length + r.backing.length, notes.length, "nothing lost");
   console.log("two hands ok");
 }
+
+// the 10-level slider: every level its own config, harder pays more, presets on 3/5/7/10
+{
+  const { LEVELS, levelOf } = await import("../src/game/run.js");
+  assert.strictEqual(LEVELS.length, 10);
+  LEVELS.forEach((c, i) => assert.strictEqual(levelOf(c), i + 1, `level ${i + 1} is found`));
+  for (let i = 1; i < 10; i++) assert.ok(m(LEVELS[i]) > m(LEVELS[i - 1]), `level ${i + 1} pays more than ${i}`);
+  assert.deepStrictEqual(["easy", "medium", "hard", "expert"].map((k) => levelOf(PRESETS[k])), [3, 5, 7, 10]);
+  assert.strictEqual(levelOf({ ...LEVELS[4], hitbox: 0.2 }), 0, "custom");
+  console.log("levels ok");
+}

@@ -1,12 +1,12 @@
 /* menu.js — the start menu (owner, 2026-10-03, Beat Saber style):
  *   PLAY -> pick a LEVEL (rounds unlock one by one) -> set up the RUN -> Start.
- * The run: a preset (Easy / Medium / Hard / Expert) or Custom, with the
+ * The run: a DIFFICULTY slider, 1-10 (each level a full set of modifiers), or Custom, with the
  * modifiers — hitbox, tempo, patterns, lock size, damage — and the score
  * multiplier they're worth, live. The last run is remembered.
  *
  * createMenu({ levels: [{name, title, bpm}], unlocked, level, run, startAt, onStart(level, run) })
  * onStart is called inside the Start click (a user gesture: the audio may start there). */
-import { PRESETS, PRESET_NAMES, LIMITS, presetOf, normalize, scoreMultiplier } from "../game/run.js";
+import { LEVELS, LEVEL_NAMES, LIMITS, levelOf, normalize, scoreMultiplier } from "../game/run.js";
 
 const CSS = `
 #gr-menu { position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center;
@@ -22,9 +22,10 @@ const CSS = `
 #gr-menu .big { display:block; width:100%; font-size:22px; padding:16px; margin-top:8px; background:rgba(255,160,80,0.28); }
 #gr-menu .level { display:flex; justify-content:space-between; align-items:center; width:100%; margin:6px 0; text-align:left; }
 #gr-menu .level .t { opacity:0.7; font-size:14px; }
-#gr-menu .presets { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:14px; }
-#gr-menu .presets button { padding:10px 4px; font-size:15px; }
-#gr-menu .presets button.on { background:rgba(255,170,70,0.55); border-color:#ffc070; }
+#gr-menu .diff { margin:4px 0 14px; }
+#gr-menu .diff .name { text-align:center; font-size:22px; font-weight:700; color:#ffd27a; margin-bottom:6px; }
+#gr-menu .diff input { height:28px; }
+#gr-menu .diff .ends { display:flex; justify-content:space-between; font-size:12px; opacity:0.55; }
 #gr-menu .row { display:grid; grid-template-columns:110px 1fr 74px; align-items:center; gap:10px; margin:10px 0; font-size:15px; }
 #gr-menu .row .v { text-align:right; font-variant-numeric:tabular-nums; opacity:0.85; font-size:14px; }
 #gr-menu input[type=range] { width:100%; accent-color:#ffb050; }
@@ -70,7 +71,9 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
     const L = levels[lvl] || {};
     card.innerHTML = `
       <h2>${L.name || "Level"}${L.title ? " — " + L.title : ""}</h2>
-      <div class="presets">${["easy", "medium", "hard", "expert"].map((k) => `<button data-p="${k}">${PRESET_NAMES[k]}</button>`).join("")}</div>
+      <div class="diff"><div class="name"></div>
+        <input type="range" data-a="diff" min="1" max="10" step="1">
+        <div class="ends"><span>1 · gentle</span><span>10 · expert</span></div></div>
       <div class="custom"></div>
       <div class="row"><span>Hitbox</span><input type="range" data-k="hitbox" min="${LIMITS.hitbox[0]}" max="${LIMITS.hitbox[1]}" step="0.005"><span class="v" data-v="hitbox"></span></div>
       <div class="row"><span>Tempo</span><input type="range" data-k="tempo" min="${LIMITS.tempo[0]}" max="${LIMITS.tempo[1]}" step="0.05"><span class="v" data-v="tempo"></span></div>
@@ -91,15 +94,16 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
       el("lock").value = cfg.lock === Infinity ? "all" : String(cfg.lock); el("damage").value = cfg.damage;
       card.querySelector("[data-v=hitbox]").textContent = `${ms(cfg.hitbox)}`;
       card.querySelector("[data-v=tempo]").textContent = L.bpm ? `${Math.round(L.bpm * cfg.tempo)} bpm` : `×${cfg.tempo.toFixed(2)}`;
-      const p = presetOf(cfg);
-      card.querySelectorAll("[data-p]").forEach((b) => b.classList.toggle("on", b.dataset.p === p));
-      card.querySelector(".custom").textContent = p === "custom" ? `Custom · hitbox ${hitboxWord(cfg.hitbox)}` : "";
+      const lv = levelOf(cfg);
+      if (lv) card.querySelector("[data-a=diff]").value = lv;
+      card.querySelector(".diff .name").textContent = lv ? `Level ${lv} — ${LEVEL_NAMES[lv - 1]}` : "Custom";
+      card.querySelector(".custom").textContent = lv ? "" : `Custom · hitbox ${hitboxWord(cfg.hitbox)}`;
       const m = scoreMultiplier(cfg);
       card.querySelector(".mult").textContent = `Score ×${m.total.toFixed(2)}`;
       card.querySelector(".multparts").textContent = Object.entries(m.parts).filter(([, v]) => Math.abs(v - 1) > 0.005)
         .map(([k, v]) => `${k} ×${v.toFixed(2)}`).join(" · ");
     };
-    card.querySelectorAll("[data-p]").forEach((b) => (b.onclick = () => { cfg = normalize({ ...PRESETS[b.dataset.p] }); paint(); }));
+    card.querySelector("[data-a=diff]").oninput = (e) => { cfg = normalize({ ...LEVELS[+e.target.value - 1] }); paint(); };
     el("hitbox").oninput = () => { cfg.hitbox = +el("hitbox").value; paint(); };
     el("tempo").oninput = () => { cfg.tempo = +el("tempo").value; paint(); };
     el("patterns").onchange = () => { cfg.patterns = el("patterns").value; paint(); };
