@@ -93,25 +93,31 @@ const ids = (ns) => ns.map((n) => n.lane[0] + n.at);
 }
 console.log("defend ok (stream)");
 
-// BONUS notes fill the waits: a thin section never leaves more than maxGap beats empty;
-// they score but lock nothing, and missing one doesn't break a pattern
+// FILLERS ARE THE SONG: a long wait is filled with the section's own notes — locked ones replayed
+// (bonus: score, lock nothing), or notes from a later layer brought forward (real: they lock)
 {
-  const thin = { bars: 2, notes: [{ lane: "treble 1", beat: 0 }, { lane: "treble 9", beat: 6 }] };
-  const d = new Defend(thin, { keep: "any" }); d.windowBeats = 8; d.graceBeats = 0.3; d.missFrom = 0; d.now = 0;
-  const w = d.offered();
-  assert.ok(w.length >= 4, `filled in (${w.length} in flight)`);
-  for (let i = 1; i < w.length; i++) assert.ok(w[i].at - w[i - 1].at <= STREAM.any.maxGap + 1e-9, `never more than ${STREAM.any.maxGap} beats of nothing`);
-  const bonus = w.filter((n) => n.bonus), real = w.filter((n) => !n.bonus);
-  assert.ok(bonus.length && real.length === 2 && bonus.every((n) => n.lane.startsWith("treble") && n.lane !== real[0].lane), "fillers on OTHER treble guns");
-  assert.ok(w.every((n, i) => !i || n.lane !== w[i - 1].lane), "no two in a row on the same gun");
-  assert.equal(d.hit(bonus[0].id), "bonus");
-  assert.ok(!d.locked.has(bonus[0].id) && d.drain().some((e) => e.type === "bonusHit"), "a bonus hit locks nothing");
-  assert.equal(d.progress("treble"), 0);
-  // Medium: a missed filler leaves the run alone
-  const m = new Defend(thin, { lockSize: 2, keep: "half" }); m.windowBeats = 8; m.graceBeats = 0.3; m.missFrom = 0; m.now = 0;
-  const mw = m.offered(), firstReal = mw.find((n) => !n.bonus), firstBonus = mw.find((n) => n.bonus && n.at > firstReal.at);
-  m.hit(firstReal.id); m.drain();
-  m.now = firstBonus.at + 1; m.tick();
-  assert.ok(!m.drain().some((e) => e.type === "chunkFail"), "a missed bonus note doesn't break the pattern");
-  console.log("bonus ok");
+  // the strong-beat layer is just treble 9 on 0 and 12 (a 12-beat wait); treble 1 (the tune) sits on the off-beats
+  const song = { bars: 4, notes: [...[1, 3, 5, 7, 9, 11, 13, 15].map((b) => ({ lane: "treble 1", beat: b, midi: 72 })), { lane: "treble 9", beat: 0 }, { lane: "treble 9", beat: 12 }] };
+  const d = new Defend(song, { keep: "any" }); d.windowBeats = 16; d.graceBeats = 0.3; d.missFrom = 0; d.now = 0;
+  // the long wait is filled by the tune, brought forward (real)
+  let w = d.offered();
+  assert.ok(w.some((n) => n.lane === "treble 9") && w.some((n) => n.lane === "treble 1" && !n.bonus), `the song fills its own gaps (${ids(w)})`);
+  for (let i = 1; i < w.length; i++) assert.ok(w[i].at - w[i - 1].at <= STREAM.any.maxGap + 1e-9, "never a long wait");
+  assert.ok(w.every((n) => !n.bonus), "nothing locked yet: the fillers are real notes, brought forward");
+  // once the tune is locked, its notes come back as replays (bonus) in the gaps — same lane, same pitch
+  const d2 = new Defend(song, { keep: "any" }); d2.windowBeats = 16; d2.graceBeats = 0.3; d2.missFrom = 0; d2.now = 0;
+  for (const n of d2.notes) if (n.lane === "treble 1") d2.locked.add(n.id);
+  w = d2.offered();
+  const bonus = w.filter((n) => n.bonus);
+  assert.ok(bonus.length >= 2 && bonus.every((n) => n.lane === "treble 1" && n.midi === 72), `the band's notes replayed as fillers (${ids(w)})`);
+  assert.ok(bonus.every((n, i) => !i || n.at - bonus[i - 1].at >= 2 - 1e-9), "fillers never closer than 2 beats");
+  assert.equal(d2.hit(bonus[0].id), "bonus");
+  assert.ok(d2.drain().some((e) => e.type === "bonusHit") && d2.progress("treble") === 8 / 10, "a replay scores but locks nothing");
+  // a missed replay doesn't break a Medium pattern
+  const m = new Defend(song, { lockSize: 2, keep: "half" }); m.windowBeats = 16; m.graceBeats = 0.3; m.missFrom = 0; m.now = 0;
+  for (const n of m.notes) if (n.lane === "treble 1") m.locked.add(n.id);
+  const mw = m.offered(), real = mw.find((n) => !n.bonus), rep = mw.find((n) => n.bonus && n.at > real.at);
+  m.hit(real.id); m.drain(); m.now = rep.at + 1; m.tick();
+  assert.ok(!m.drain().some((e) => e.type === "chunkFail"), "a missed replay leaves the pattern alone");
+  console.log("fillers ok");
 }

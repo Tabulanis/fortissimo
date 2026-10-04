@@ -33,13 +33,10 @@ export const LIFE = {              // per run damage: a miss hurts you and the t
 /** the stream's density per keep rule: gap = beats between notes, together = at most this many at one beat */
 export const STREAM = { any: { gap: 2, together: 1, maxGap: 4 }, half: { gap: 0.5, together: 2, maxGap: 2 }, none: { gap: 0, together: 2, maxGap: 3 } };   // Easy: every 2 beats (owner, 2026-10-04: one a beat "came a bit fast")
 const FILL_STEP = 2;   // fillers never closer than this (beats) — fewer of them (owner)
-// filler MOTIFS (owner: "a fun pattern, not 1 2 3 4"): steps from the next real note's lane, in
-// the section's lane order — bars are scale degrees, so +2 is a third, +4 a fifth, +8 the top row
-const MOTIFS = [[2, 4, 2], [8, 0, 8, 0], [3, 2, 1], [4, 2, 6, 2], [2, 0, 4, 0], [1, 3, 1]];
-// maxGap: the stream never leaves you waiting longer than this (owner, 2026-10-04) — a thin
-// stretch of the song gets BONUS notes on the section's other drums / guns: in key (a bar plays
-// its own note), they fire the guns and score like any hit, but lock nothing (they're not the song)
-const BAR_LANES = (sec) => Array.from({ length: 16 }, (_, i) => `${sec} ${i + 1}`);
+// FILLERS ARE THE SONG (owner, 2026-10-04): a long wait is filled with the section's notes
+// that fall in it — already-locked ones replayed (bonus: they score, lock nothing), and before
+// anything's locked, the song's own notes from a later layer (real: they lock)
+// maxGap: the stream never leaves you waiting longer than this (owner, 2026-10-04): see FILL below
 // how much an instrument carries the song (lower = sooner): the drums' backbone first
 const LANE_RANK = { kick: 0, snare: 0.3, hat: 3.5, crash: 3.8, "tom low": 4, "tom high": 4 };
 const laneRank = (lane) => LANE_RANK[lane] ?? 0;
@@ -64,8 +61,6 @@ export class Defend {
     this.missFrom = -Infinity;        // set by the game: misses count from here (a breath after Start)
     this._plans = new Map();          // "section:k" -> note ids streamed on pass k (fixed once the window reaches it)
     this._bonus = [];                 // the filler notes made so far (ids continue after the song's)
-    this._lanes = {};                 // per section: the lanes bonus notes may use
-    for (const s of SECTIONS) this._lanes[s] = s === "drums" ? [...new Set(this.notes.filter((n) => n.section === s).map((n) => n.lane))] : BAR_LANES(s);
     this._done = new Set();           // "id@k": that occurrence was hit, or counted as a miss
     this._run = [];                   // Medium / Hard: the hits of the pattern under way
     this.events = [];                 // what happened since the last drain()
@@ -88,7 +83,14 @@ export class Defend {
     let layer = open;
     if (this.keep !== "none" && open.length) {
       if (this.section === "drums") { const t = Math.min(...open.map((n) => laneRank(n.lane))) + 0.9; layer = open.filter((n) => laneRank(n.lane) <= t); }
-      else { const t = Math.min(...open.map((n) => beatWeight(n.beat))) + 1; layer = open.filter((n) => beatWeight(n.beat) <= t); }
+      else {
+        let rows = open;
+        if (this.keep === "any" && this.section === "bass") {   // EASY at bass: one row at a time (owner) — mortars first, then the cannons; the boss (treble) uses both
+          const pick = open.filter((n) => +n.lane.split(" ")[1] < 9);
+          rows = pick.length ? pick : open;
+        }
+        const t = Math.min(...rows.map((n) => beatWeight(n.beat))) + 1; layer = rows.filter((n) => beatWeight(n.beat) <= t);
+      }
     }
     const { gap, together, maxGap } = STREAM[this.keep] || STREAM.none;
     const cands = [...layer].sort((a, b) => a.beat - b.beat || laneRank(a.lane) - laneRank(b.lane) || a.id - b.id);
@@ -99,29 +101,28 @@ export class Defend {
       if (n.beat - last < gap - 1e-6) continue;
       plan.push(n); last = n.beat; at = 1;
     }
-    // FILL the long waits: bonus notes every FILL_STEP across any gap over maxGap, as a MOTIF
-    // played off the lane of the real note that ends the gap (the one before it at the loop's end)
-    const lanes = this._lanes[this.section] || [], filled = [];
-    let prev = null, gapNo = 0;
-    const fill = (from, to, homeLane) => {
-      const motif = MOTIFS[(((k + gapNo++) % MOTIFS.length) + MOTIFS.length) % MOTIFS.length], home = Math.max(0, lanes.indexOf(homeLane));
-      let j = 0;
-      for (let b = from + FILL_STEP; b <= to - Math.max(gap, 1) + 1e-6 && lanes.length; b += FILL_STEP, j++) {
-        let li = (home + motif[j % motif.length]) % lanes.length, lane = lanes[li];
-        if (lane === (prev && prev.lane) || lane === homeLane) { li = (li + 1) % lanes.length; lane = lanes[li]; }   // never the same lane twice running
-        const id = this.notes.length + this._bonus.length;
-        const bn = { lane, beat: b, id, section: this.section, bonus: true };
-        this._bonus.push(bn); filled.push(bn); prev = bn;
+    // FILL the long waits with THE SONG: its notes in the gap, locked ones replayed (bonus),
+    // unlocked ones from later layers brought forward (real) — every FILL_STEP at most
+    const inPlan = new Set(plan.map((n) => n.id)), filled = [], promoted = [];
+    const all = this.sectionNotes();
+    const fill = (from, to) => {
+      const cands = all.filter((n) => !inPlan.has(n.id) && n.beat > from + 1e-6 && n.beat < to - 1e-6)
+        .sort((a, b) => a.beat - b.beat || (this.locked.has(b.id) ? 1 : 0) - (this.locked.has(a.id) ? 1 : 0));   // the locked (the band's) first at a beat
+      let last = from;
+      for (const n of cands) {
+        if (n.beat - last < FILL_STEP - 1e-6 || to - n.beat < Math.max(gap, 1) - 1e-6) continue;
+        last = n.beat; inPlan.add(n.id);
+        if (this.locked.has(n.id)) { const id = this.notes.length + this._bonus.length; const bn = { ...n, id, src: n.id, bonus: true }; this._bonus.push(bn); filled.push(bn); }
+        else promoted.push(n);
       }
     };
     const L = this.loopBeats;
     for (let i = 0; i <= plan.length; i++) {
       const a = i ? plan[i - 1] : null, b = i < plan.length ? plan[i] : null;
       const from = a ? a.beat : -FILL_STEP, to = b ? b.beat : L;   // from the loop's start, and out to its end
-      if (to - from > maxGap + 1e-6) fill(from, to, (b || a || plan[0] || { lane: lanes[0] }).lane);
-      if (b) prev = b;
+      if (to - from > maxGap + 1e-6) fill(from, to);
     }
-    const ids = [...plan, ...filled].sort((a, b) => a.beat - b.beat).map((n) => n.id);
+    const ids = [...plan, ...promoted, ...filled].sort((a, b) => a.beat - b.beat).map((n) => n.id);
     this._plans.set(key, ids);
     return ids;
   }

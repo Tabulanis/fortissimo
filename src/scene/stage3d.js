@@ -767,6 +767,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         const nb = dt > 0 ? Math.ceil(dt / beatDur) : 0, ns = nb <= 3 ? nb : 0;
         if (ns !== k.n) { k.n = ns; if (ns) k.num.material.map = COUNT_N[ns]; }
         k.num.visible = ns > 0 && dt > 0;
+        k.num.material.opacity = Math.min(1, dt / (0.5 * beatDur));   // fades out, gone at 0
         if (k.num.visible) { const dcam = _cp.distanceTo(camera.position); k.num.position.copy(_cp); k.num.position.y += 0.45 + 0.012 * dcam; k.num.scale.setScalar(0.07 * Math.max(1.2, dcam)); }
       }
       // the BUTTON lights red, fading in to full on the beat, then out fast (owner, 2026-10-03)
@@ -2245,6 +2246,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       const nLeft = dt > 0 ? Math.ceil(dt / beatDur) : 0, nShow = nLeft <= 3 ? nLeft : 0;
       if (nShow !== e.numN) { e.numN = nShow; if (nShow) e.num.material.map = COUNT_N[nShow]; }
       e.num.visible = nShow > 0;
+      e.num.material.opacity = Math.min(1, dt / (0.5 * beatDur));   // the 1 fades out, gone at 0 (owner)
       if (nShow) { e.num.position.copy(e.group.position); e.num.position.y += 0.22 + 0.012 * e.group.position.distanceTo(camera.position); e.num.scale.setScalar(0.07 * Math.max(1.2, e.group.position.distanceTo(camera.position))); }
       // FIRE: the head pours flame into the simulation as it flies (world-space
       // head = group position + 0.3 m along the heading). Far arrows emit
