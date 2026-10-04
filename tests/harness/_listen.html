@@ -1,0 +1,42 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" src="/" style="width:1200px;height:800px;border:0"></iframe>
+<script type="module">
+const out = [], log = (k, v) => out.push(k + ": " + (typeof v === "string" ? v : JSON.stringify(v)));
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  w.addEventListener("error", (e) => log("JSERROR", e.message));
+  try {
+    await wait(3000);
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(4000);
+    const G = w.__gr.game;
+    log("song bars / bpm beat", [G.song().bars, +G.clock.beatDur.toFixed(3)]);
+    const an = G.ctx.createAnalyser(); an.fftSize = 2048; G.mixer.hackbeat.connect(an);
+    const buf = new Float32Array(2048);
+    const peakFor = async (ms) => { let p = 0; const t = w.performance.now(); while (w.performance.now() - t < ms) { an.getFloatTimeDomainData(buf); for (const v of buf) p = Math.max(p, Math.abs(v)); await wait(20); } return +p.toFixed(3); };
+    log("output peak, 3 s with no Listen", await peakFor(3000));
+    const one = async (label, extra) => {
+      const ls = G.laneSound({ name: "kick", drum: 3 });
+      G.pool.noteOn({ channel: 99, midi: 60, baseNote: 60, ...ls, velocity: 0.8, when: G.ctx.currentTime + 0.05, ...extra });
+      log(label, await peakFor(600));
+    };
+    await one("ONE kick through its Hackbeat chain", {});
+    const raw = G.ctx.createGain(); raw.connect(G.mixer.hackbeat);
+    await one("ONE kick straight into the bus (no chain)", { destination: raw });
+    w.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    const h0 = G.hint, n0 = G.ctx.currentTime;
+    const firstIn = Math.min(...h0.notes.map((n) => n.time)) - n0;
+    log("Listen pressed; first note due in", +firstIn.toFixed(2));
+    log("output peak BEFORE the first note", await peakFor(Math.max(0, firstIn * 1000 - 200)));
+    log("output peak DURING the hint (4 s)", await peakFor(4000));
+    for (const k of []) {
+      w.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+      const now = G.ctx.currentTime, h = G.hint;
+      log(`press ${k + 1}: notes / first note in (s) / ends in (s)`, h ? [h.notes.length, +(Math.min(...h.notes.map((n) => n.time)) - now).toFixed(2), +(h.end - now).toFixed(2)] : "no hint");
+      await wait(1500);
+    }
+  } catch (e) { log("ERROR", e.message + " " + e.stack); }
+  fetch("http://127.0.0.1:8899/listen", { method: "POST", body: out.join("\n") });
+};
+</script>

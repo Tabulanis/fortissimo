@@ -1,0 +1,20 @@
+<!doctype html><body><script type="module">
+import { createMixer } from "/src/audio/mixer.js";
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body: String(body) });
+try {
+  const SR = 48000, oc = new OfflineAudioContext(2, SR * 1.0, SR);
+  const m = createMixer(oc);
+  const click = oc.createBuffer(1, 48, SR); const d = click.getChannelData(0);
+  for (let i = 0; i < 48; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / 48);   // a 1 ms snare-ish tick
+  const src = oc.createBufferSource(); src.buffer = click; src.connect(m.lane("snare")); src.start(0.1);
+  const out = await oc.startRendering();
+  const L = out.getChannelData(0), R = out.getChannelData(1);
+  const pk = (t0, t1) => { let p = 0; for (let i = Math.round(t0 * SR); i < Math.round(t1 * SR); i++) p = Math.max(p, Math.abs(L[i]), Math.abs(R[i])); return p; };
+  const db = (x) => (20 * Math.log10(x + 1e-9)).toFixed(1);
+  const dry = pk(0.1, 0.103);
+  const rows = [["dry hit", 0, 3], ["columns ~40ms", 37, 43], ["side wall ~54ms", 51, 57], ["flutter ~107ms", 104, 111], ["gap before slap ~250ms", 245, 262], ["far-wall slap ~271ms", 267, 275], ["late tail 700-900ms", 700, 900]]
+    .map(([n, a, b]) => `${n.padEnd(24)} ${db(pk(0.1 + a / 1000, 0.1 + b / 1000) / dry)} dB`);
+  say("rev", rows.join("\n") + `\nclipped: ${pk(0, 1) >= 1}`);
+} catch (e) { say("harnesserror", e.stack || e); }
+say("done", "ok");
+</script></body>
