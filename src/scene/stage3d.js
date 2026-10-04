@@ -428,7 +428,11 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const drumLabels = [];
   const drumLabelMats = [];
   // the countdown numbers: fat, a thick dark outline and a ring, warming 3 yellow -> 2 orange -> 1 red
-  const COUNT_TEX = [["3", "#ffe45a"], ["2", "#ffa53a"], ["1", "#ff4a3a"]].map(([d, col]) => {
+  // the countdown numbers: fat, a thick dark outline and a ring — 1 red, 2 orange, 3 yellow;
+  // 4-9 pale (only shown small, for the NEXT strike queued on the same target)
+  const COUNT_COL = { 1: "#ff4a3a", 2: "#ffa53a", 3: "#ffe45a" };
+  const COUNT_N = [null, ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => {
+    const d = String(n), col = COUNT_COL[n] || "#e8dccb";
     const c = document.createElement("canvas"); c.width = c.height = 128;
     const g = c.getContext("2d");
     g.beginPath(); g.arc(64, 64, 54, 0, Math.PI * 2);
@@ -438,7 +442,26 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     g.lineJoin = "round"; g.lineWidth = 16; g.strokeStyle = "#1a0802"; g.strokeText(d, 64, 70);
     g.fillStyle = col; g.fillText(d, 64, 70);
     const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; return tx;
-  });
+  })];
+  /** a countdown spot: the next strike's 3-2-1, and a small number beside it when another is queued */
+  const makeCount = (at, size) => {
+    const mk = () => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: COUNT_N[1], transparent: true, depthWrite: false, depthTest: false, fog: false }));
+      s.renderOrder = 20; s.layers.set(FX_LAYER); s.visible = false; scene.add(s); return s; };
+    return { main: mk(), side: mk(), at: at.clone(), size, n: 0, n2: 0, t: 0 };
+  };
+  const _cdRight = new THREE.Vector3();
+  /** dt1, dt2: seconds to the next and the following strike on this target (Infinity: none) */
+  function showCount(c, dt1, dt2, heardNow) {
+    const n = dt1 / beatDur <= 3 ? Math.ceil(dt1 / beatDur) : 0;
+    const n2 = n && dt2 / beatDur <= 9 ? Math.max(n + 1, Math.ceil(dt2 / beatDur)) : 0;
+    if (n !== c.n) { c.n = n; c.t = heardNow; if (n) c.main.material.map = COUNT_N[n]; }
+    if (n2 !== c.n2) { c.n2 = n2; if (n2) c.side.material.map = COUNT_N[Math.min(9, n2)]; }
+    c.main.visible = n > 0; c.side.visible = n2 > 0;
+    if (!n) return;
+    const s = c.size * (1 + 0.45 * Math.exp(-9 * (heardNow - c.t)));   // pops in on its beat
+    c.main.scale.setScalar(s); c.main.position.copy(c.at);
+    if (n2) { _cdRight.setFromMatrixColumn(camera.matrixWorld, 0); c.side.scale.setScalar(c.size * 0.62); c.side.position.copy(c.at).addScaledVector(_cdRight, c.size * 0.85); c.side.position.y -= c.size * 0.15; }
+  }
   const countdown = [];   // per drum: { s: sprite, n: the number showing, at: when it changed }
   const labelGeo = new THREE.PlaneGeometry(0.2, 0.2);   // ~half a 0.19-0.2 m drumhead
   const labelTex = (key) => {
@@ -477,12 +500,11 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     drumLabelMats.push(labelMat);
     // COUNTDOWN (owner, 2026-10-03: "telling when to hit the drums is really hard"):
     // a big outlined 3, 2, 1 just above the letter, one per beat; the hit is the beat after 1
-    const cd = new THREE.Sprite(new THREE.SpriteMaterial({ map: COUNT_TEX[0], transparent: true, depthWrite: false, depthTest: false, fog: false }));
-    cd.renderOrder = 20; cd.visible = false;
-    if (LANES3D[i].upright) cd.position.set(LANES3D[i].x, LANES3D[i].y + 0.2, LANES3D[i].z + LANES3D[i].depth / 2 + 0.06);
-    else cd.position.set(LANES3D[i].x, LANES3D[i].y + LANES3D[i].depth / 2 + 0.24, LANES3D[i].z);
-    scene.add(cd);
-    countdown.push({ s: cd, n: 0, at: 0 });
+    // smaller, and just UNDER the drum (owner, 2026-10-03)
+    const cdAt = LANES3D[i].upright ? new THREE.Vector3(LANES3D[i].x, LANES3D[i].y - LANES3D[i].radius + 0.01, LANES3D[i].z + LANES3D[i].depth / 2 + 0.05)
+      : new THREE.Vector3(LANES3D[i].x, LANES3D[i].y + LANES3D[i].depth / 2 - 0.03, LANES3D[i].z + LANES3D[i].radius + 0.06);   // on the head's front rim
+    countdown.push(makeCount(cdAt, 0.12));
+
     const mat = new THREE.MeshStandardMaterial({
       color,
       emissive: 0x000000,
@@ -648,13 +670,10 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   /** each drum's next note: 3, 2, 1 over the last three beats before it, popping as it changes */
   function updateCountdown(heardNow, upcoming) {
     for (let i = 0; i < countdown.length; i++) {
-      let next = Infinity;
-      for (const u of upcoming) if (u.laneIdx === i && u.time > heardNow && u.time < next) next = u.time;
-      const left = (next - heardNow) / beatDur, n = left <= 3 && drumVisible[i] ? Math.ceil(left) : 0;
-      const c = countdown[i];
-      if (n !== c.n) { c.n = n; c.at = heardNow; if (n) c.s.material.map = COUNT_TEX[3 - n]; }
-      c.s.visible = n > 0;
-      if (n) c.s.scale.setScalar(0.21 * (1 + 0.5 * Math.exp(-9 * (heardNow - c.at))));   // pops in on its beat
+      let a = Infinity, b = Infinity;   // the next two strikes on this drum
+      for (const u of upcoming) if (u.laneIdx === i && u.time > heardNow) { if (u.time < a) { b = a; a = u.time; } else if (u.time < b) b = u.time; }
+      if (!drumVisible[i]) a = b = Infinity;
+      showCount(countdown[i], a - heardNow, b - heardNow, heardNow);
     }
   }
   function updateBeatKick(heardNow) {
@@ -679,12 +698,12 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   function updateGunCues(heardNow) {
     let fi = 0, si = 0;
     const FUSE_S = cueSpan(), DROP_S = cueSpan();
-    for (const name of ["bass", "treble"]) for (const b of (melodyStations[name] ? melodyStations[name].bars : [])) if (b.buttonMat) { b._red = 0; b._cdNext = Infinity; }
+    for (const name of ["bass", "treble"]) for (const b of (melodyStations[name] ? melodyStations[name].bars : [])) if (b.buttonMat) { b._red = 0; b._cdNext = Infinity; b._cdNext2 = Infinity; }
     for (const c of gunCuesTest || gunCues) {
       const dt = c.time - heardNow, name = c.laneIdx < 6 + BARS ? "bass" : "treble";
       const b = melodyStations[name] && melodyStations[name].bars[(c.laneIdx - 6) % BARS];
       if (!b || !drumVisible[c.laneIdx]) continue;
-      if (dt > 0) b._cdNext = Math.min(b._cdNext, dt);   // its countdown follows the nearest note
+      if (dt > 0) { if (dt < b._cdNext) { b._cdNext2 = b._cdNext; b._cdNext = dt; } else if (dt < b._cdNext2) b._cdNext2 = dt; }   // its countdown: the next two
       // the BUTTON lights red, fading in to full on the beat, then out fast (owner, 2026-10-03)
       if (b.buttonMat) {
         const span = b.cannon ? FUSE_S : DROP_S;
@@ -712,17 +731,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     for (const name of ["bass", "treble"]) for (const b of (melodyStations[name] ? melodyStations[name].bars : [])) {
       if (!b.buttonMat) continue;
       b.buttonMat.emissive.setRGB(2.6 * b._red, 0.1 * b._red, 0.04 * b._red);   // dark red -> bright red
-      // the same 3, 2, 1 as the drums, a little smaller, just above the button (owner, 2026-10-03)
-      const left = b._cdNext / beatDur, n = left <= 3 ? Math.ceil(left) : 0;
-      if (n && !b._cd) {
-        b._cd = new THREE.Sprite(new THREE.SpriteMaterial({ map: COUNT_TEX[0], transparent: true, depthWrite: false, depthTest: false, fog: false }));
-        b._cd.renderOrder = 20; b._cd.layers.set(FX_LAYER); b._cd.position.copy(b.top); b._cd.position.y += 0.2;   // straight up, over its key letter (the tilted row's normal leans at the camera)
-        scene.add(b._cd); b._cdN = 0;
-      }
-      if (!b._cd) continue;
-      if (n !== b._cdN) { b._cdN = n; b._cdAt = heardNow; if (n) b._cd.material.map = COUNT_TEX[3 - n]; }
-      b._cd.visible = n > 0;
-      if (n) b._cd.scale.setScalar((b.mortar ? 0.1 : 0.13) * (1 + 0.5 * Math.exp(-9 * (heardNow - b._cdAt))));
+      // the same countdown as the drums, smaller, just under the button (owner, 2026-10-03)
+      if (!b._cd) { const at = b.top.clone(); at.y -= 0.07; b._cd = makeCount(at, b.mortar ? 0.07 : 0.085); }
+      showCount(b._cd, b._cdNext, b._cdNext2, heardNow);
     }
     for (; fi < fuseSparks.length; fi++) { fuseSparks[fi].head.visible = false; for (const t of fuseSparks[fi].trail) t.visible = false; }
     for (; si < dropShells.length; si++) { dropShells[si].m.visible = false; dropShells[si].glint.visible = false; }
@@ -2493,7 +2504,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     /** the guns' timing cues: [{laneIdx, time}] — fuses on cannons, falling shells into mortars */
     setGunCues: (cues) => { gunCues = cues; },
     debugGunCues: (cues) => { gunCuesTest = cues; },
-    debugCountdown: () => countdown.map((c) => c.n),
+    debugCountdown: () => countdown.map((c) => c.n), debugCountdown2: () => countdown.map((c) => c.n2),
     debugGunInfo: () => ({ sparks: fuseSparks.filter((f) => f.head.visible).map((f) => [f.head.position.toArray().map((v) => +v.toFixed(3)), +f.head.scale.x.toFixed(3), f.head.layers.mask]), shells: dropShells.filter((d) => d.m.visible).length }),
     debugShieldGlowAmount: (v) => { if (shieldMix) shieldMix.uniforms.amount.value = v; },   // harness
     debugShieldOnly: (on) => { shieldOnly = !!on; },

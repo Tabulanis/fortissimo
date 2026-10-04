@@ -86,15 +86,24 @@ export class Defend {
     }
     if (!this._chunk) {
       const size = this.lockSize === Infinity ? open.length : this.lockSize;
-      // Easy / Medium still REVEAL THE SONG: groups draw from the backbone first (kick and
-      // snare, then hats, then crash and toms); Hard plays the real sequence as it comes
-      let pool = open;
-      if (this.keep !== "none") { const tier = Math.min(...open.map((n) => laneRank(n.lane))) + 0.9; pool = open.filter((n) => laneRank(n.lane) <= tier); }
       // in song order from the first notes that come round AFTER the lead — so a new group
       // never has to wait a whole loop for its warning; notes left behind come back next time round
       const target = this.nowBeat + this.leadBeats, L = this.loopBeats;
       const wait = (n) => (((n.beat - target) % L) + L) % L;
-      const ids = [...pool].sort((a, b) => wait(a) - wait(b)).slice(0, size).map((n) => n.id);
+      let ids;
+      if (this.keep === "none") ids = [...open].sort((a, b) => wait(a) - wait(b)).slice(0, size).map((n) => n.id);   // Hard: the real sequence
+      else {
+        // Easy / Medium: every note of a group on a DIFFERENT drum or gun (owner, 2026-10-03:
+        // no double strikes in the queue unless there's no other way), still revealing the
+        // song — the backbone first (kick and snare, then hats, then crash and toms)
+        const tier = Math.min(...open.map((n) => laneRank(n.lane))) + 0.9;
+        const byTime = [...open].sort((a, b) => wait(a) - wait(b)), pick = [], lanes = new Set();
+        const take = (ok) => { for (const n of byTime) { if (pick.length >= size) return; if (!pick.includes(n) && ok(n)) { pick.push(n); lanes.add(n.lane); } } };
+        take((n) => laneRank(n.lane) <= tier && !lanes.has(n.lane));   // the backbone, one per drum
+        take((n) => !lanes.has(n.lane));                                // then other drums
+        take(() => true);                                               // a repeat only if there's no other way
+        ids = pick.sort((a, b) => wait(a) - wait(b)).map((n) => n.id);
+      }
       this._chunk = { ids, next: 0, hits: [] };
     }
     const ids = new Set(this._chunk.ids);

@@ -17,10 +17,10 @@ f.onload = async () => {
     let last = "", shot = false, stuck = 0;
     const t0 = performance.now();
     while (performance.now() - t0 < 12000) {
-      const now = G.ctx.getOutputTimestamp().contextTime, cd = s.debugCountdown().join("");
+      const now = G.ctx.getOutputTimestamp().contextTime, cd = s.debugCountdown().join("") + "/" + s.debugCountdown2().join("");
       if (cd !== last) { const up = G.upcoming().filter((u) => u.laneIdx < 6)[0]; log.push(`${now.toFixed(2)} [${cd}] next note ${up ? up.time.toFixed(2) + " lane " + up.laneIdx : "-"}`); last = cd; }
       if (!shot && cd.includes("2")) { shot = true; say("shot_count", await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png"))))); }
-      if (shot && !stuck && cd === "000000") stuck = performance.now();
+      if (shot && !stuck && cd.startsWith("000000")) stuck = performance.now();
       if (stuck > 0 && performance.now() - stuck > 200) { stuck = -1; say("shot_stuck", await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png"))))); }
       await wait(20);
     }
