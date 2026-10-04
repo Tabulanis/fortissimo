@@ -3,8 +3,8 @@
  * No bell, no turns: the song runs, arrows come in on the notes you still
  * need, and hitting them LOCKS them — locked notes keep playing (ghosts) and
  * build things you can see. One dial sets the difficulty, the LOCK SIZE:
- *   1    Easy — the song's most important unlocked notes are offered, spaced
- *        out (at least MIN_GAP_S apart); any one you hit locks on the spot
+ *   1    Easy — ONE note at a time, picked to reveal the song (backbone first,
+ *        then echoes of what's locked); any one you hit locks on the spot
  *   N    the next N notes of the song, in order: hit them all, in order, on
  *        one pass and they lock together; a miss or a wrong note and that
  *        group simply comes round again on the next pass
@@ -23,6 +23,10 @@ export const MAX_OFFER = 1;        // lock size 1: ONE note at a time (owner, 20
 export const LIFE = {              // per run damage: a miss hurts you and the town, a hit heals both
   gentle: { miss: 3, heal: 3 }, normal: { miss: 5, heal: 2 }, harsh: { miss: 8, heal: 1 },
 };
+// how much an instrument carries the song (lower = sooner): the drums' backbone first;
+// bars all count the same (their beat does the sorting)
+const LANE_RANK = { kick: 0, snare: 0.3, hat: 3.5, crash: 3.8, "tom low": 4, "tom high": 4 };   // the snare's backbeat outranks a hat on the beat: "boom-tak" first
+const laneRank = (lane) => LANE_RANK[lane] ?? 0;
 const sectionOf = (lane) => (lane.startsWith("bass") ? "bass" : lane.startsWith("treble") ? "treble" : "drums");
 
 export class Defend {
@@ -62,10 +66,16 @@ export class Defend {
       if (this._single != null && !this.locked.has(this._single) && this.notes[this._single].section === this.section) return [this.notes[this._single]];
       let best = null, bestScore = Infinity;
       const target = this.nowBeat + this.leadBeats;
+      // REVEAL THE SONG (owner, 2026-10-03): the backbone first (kick and snare before
+      // hats, crash and toms; strong beats before off-beats), and ECHOES — a note whose
+      // instrument already plays that spot in another bar — so a repeating groove
+      // forms early and the song is recognisable long before it's all locked
+      const echo = new Set([...this.locked].map((id) => { const m = this.notes[id]; return m.lane + "@" + ((m.beat % 4) + 4) % 4; }));
       for (const n of open) {
         if (n.id === this._avoid && open.length > 1) continue;   // just missed: something else first
         const wait = (((n.beat - target) % this.loopBeats) + this.loopBeats) % this.loopBeats;
-        const score = wait + beatWeight(n.beat);
+        const echoes = echo.has(n.lane + "@" + ((n.beat % 4) + 4) % 4);
+        const score = wait + beatWeight(n.beat) + 1.5 * laneRank(n.lane) - (echoes ? 2 : 0);
         if (score < bestScore - 1e-9) { bestScore = score; best = n; }
       }
       this._single = best ? best.id : null;

@@ -35,7 +35,7 @@ export const ARMY = {
   soldierEvery: 2.2,    // s between soldiers (bass); the boss's escort comes half as often
   soldierDps: 3,        // shield damage per second, each soldier at the wall
   bossSpeed: 0.55,
-  bossDps: 9,
+  bossDps: 5,           // play-tested 2026-10-03: at 9 the boss + escort broke the shield and took the town 99 -> 31 against a robot hitting every note
   bossHpPerNote: 2,     // the boss's life: 2 hits per treble note you'll play
   blast: 2.6,           // m: a shell kills soldiers this close
   lanes: 4.6,           // m either side of the court's middle (some walk past either side of the guns)
@@ -166,7 +166,7 @@ export class Siege {
       } else if (dt > 0) {
         const dmg = (e.kind === "boss" ? ARMY.bossDps : ARMY.soldierDps) * dt;
         if (this.standing) this.damageShield(dmg);
-        else this.events.push({ type: "wallHit", enemy: e, dmg });   // no shield: it reaches the town
+        else this.events.push({ type: "wallHit", enemy: e, dmg: dmg * 0.5 });   // no shield: it reaches the town (half: the town has walls too)
       }
     }
     for (let i = this.shells.length - 1; i >= 0; i--) {
