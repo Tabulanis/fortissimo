@@ -31,7 +31,11 @@ export const LIFE = {              // per run damage: a miss hurts you and the t
   gentle: { miss: 3, heal: 3 }, normal: { miss: 5, heal: 2 }, harsh: { miss: 8, heal: 1 },
 };
 /** the stream's density per keep rule: gap = beats between notes, together = at most this many at one beat */
-export const STREAM = { any: { gap: 2, together: 1, maxGap: 3 }, half: { gap: 0.5, together: 2, maxGap: 1 }, none: { gap: 0, together: 2, maxGap: 2 } };   // Easy: every 2 beats (owner, 2026-10-04: one a beat "came a bit fast")
+export const STREAM = { any: { gap: 2, together: 1, maxGap: 4 }, half: { gap: 0.5, together: 2, maxGap: 2 }, none: { gap: 0, together: 2, maxGap: 3 } };   // Easy: every 2 beats (owner, 2026-10-04: one a beat "came a bit fast")
+const FILL_STEP = 2;   // fillers never closer than this (beats) — fewer of them (owner)
+// filler MOTIFS (owner: "a fun pattern, not 1 2 3 4"): steps from the next real note's lane, in
+// the section's lane order — bars are scale degrees, so +2 is a third, +4 a fifth, +8 the top row
+const MOTIFS = [[2, 4, 2], [8, 0, 8, 0], [3, 2, 1], [4, 2, 6, 2], [2, 0, 4, 0], [1, 3, 1]];
 // maxGap: the stream never leaves you waiting longer than this (owner, 2026-10-04) — a thin
 // stretch of the song gets BONUS notes on the section's other drums / guns: in key (a bar plays
 // its own note), they fire the guns and score like any hit, but lock nothing (they're not the song)
@@ -95,15 +99,16 @@ export class Defend {
       if (n.beat - last < gap - 1e-6) continue;
       plan.push(n); last = n.beat; at = 1;
     }
-    // FILL the gaps: bonus notes on the beat grid, on a different lane from their neighbours
-    const lanes = this._lanes[this.section] || [], step = Math.max(gap, 1), filled = [];
-    let prev = null, pick = (k * 7 + plan.length) % Math.max(1, lanes.length);
-    const fill = (from, to, nextLane) => {
-      // bonus notes every `step` beats across the gap, none closer than `gap` to the note that ends it
-      for (let b = from + step; b <= to - Math.max(gap, 0.5) + 1e-6 && lanes.length; b += step) {
-        let lane = lanes[pick % lanes.length];
-        for (let tries = 0; tries < lanes.length && (lane === (prev && prev.lane) || lane === nextLane); tries++) lane = lanes[++pick % lanes.length];
-        pick++;
+    // FILL the long waits: bonus notes every FILL_STEP across any gap over maxGap, as a MOTIF
+    // played off the lane of the real note that ends the gap (the one before it at the loop's end)
+    const lanes = this._lanes[this.section] || [], filled = [];
+    let prev = null, gapNo = 0;
+    const fill = (from, to, homeLane) => {
+      const motif = MOTIFS[(((k + gapNo++) % MOTIFS.length) + MOTIFS.length) % MOTIFS.length], home = Math.max(0, lanes.indexOf(homeLane));
+      let j = 0;
+      for (let b = from + FILL_STEP; b <= to - Math.max(gap, 1) + 1e-6 && lanes.length; b += FILL_STEP, j++) {
+        let li = (home + motif[j % motif.length]) % lanes.length, lane = lanes[li];
+        if (lane === (prev && prev.lane) || lane === homeLane) { li = (li + 1) % lanes.length; lane = lanes[li]; }   // never the same lane twice running
         const id = this.notes.length + this._bonus.length;
         const bn = { lane, beat: b, id, section: this.section, bonus: true };
         this._bonus.push(bn); filled.push(bn); prev = bn;
@@ -112,8 +117,8 @@ export class Defend {
     const L = this.loopBeats;
     for (let i = 0; i <= plan.length; i++) {
       const a = i ? plan[i - 1] : null, b = i < plan.length ? plan[i] : null;
-      const from = a ? a.beat : -step, to = b ? b.beat : L;   // from the loop's start, and out to its end
-      if (to - from > maxGap + 1e-6) fill(from, to, b && b.lane);
+      const from = a ? a.beat : -FILL_STEP, to = b ? b.beat : L;   // from the loop's start, and out to its end
+      if (to - from > maxGap + 1e-6) fill(from, to, (b || a || plan[0] || { lane: lanes[0] }).lane);
       if (b) prev = b;
     }
     const ids = [...plan, ...filled].sort((a, b) => a.beat - b.beat).map((n) => n.id);
