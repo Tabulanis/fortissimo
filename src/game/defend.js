@@ -40,6 +40,7 @@ const FILL_STEP = 2;   // fillers never closer than this (beats) — fewer of th
 // how much an instrument carries the song (lower = sooner): the drums' backbone first
 const LANE_RANK = { kick: 0, snare: 0.3, hat: 3.5, crash: 3.8, "tom low": 4, "tom high": 4 };
 const laneRank = (lane) => LANE_RANK[lane] ?? 0;
+const rankOf = (n) => LANE_RANK[n.sound || n.lane] ?? 0;   // a stand-in ranks as the instrument it plays (kit.js)
 const sectionOf = (lane) => (lane.startsWith("bass") ? "bass" : lane.startsWith("treble") ? "treble" : "drums");
 
 export class Defend {
@@ -83,13 +84,13 @@ export class Defend {
     let layer = open;
     if (this.keep !== "none" && open.length) {
       if (this.section === "drums") {   // the groove first: kick, snare AND hat together (owner: "bdrum snare hihat"), crash and toms after
-        const lo = Math.min(...open.map((n) => laneRank(n.lane))), t = lo < 3 ? 3.6 : lo + 0.9;
-        layer = open.filter((n) => laneRank(n.lane) <= t);
+        const lo = Math.min(...open.map(rankOf)), t = lo < 3 ? 3.6 : lo + 0.9;
+        layer = open.filter((n) => rankOf(n) <= t);
       }
       else layer = open;   // the guns: both rows from the start (owner, 2026-10-04: "we need top and bottom or you die fast") — see PHRASES below
     }
     const { gap, together, maxGap } = STREAM[this.keep] || STREAM.none;
-    const cands = [...layer].sort((a, b) => a.beat - b.beat || laneRank(a.lane) - laneRank(b.lane) || a.id - b.id);
+    const cands = [...layer].sort((a, b) => a.beat - b.beat || rankOf(a) - rankOf(b) || a.id - b.id);
     // FLOW (owner, 2026-10-04: "too many bdrum bdrum bdrum"): walk the song; each next hit is the
     // earliest note a gap on, but within a beat of slack prefer one on a DIFFERENT instrument from
     // the last — kick snare hat, snare kick snare — still the song's own notes at their own times

@@ -638,7 +638,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     LG.coilMat.emissive.setRGB(0.1 * S.shown, 0.35 * S.shown, 1.0 * S.shown);
     LG.orbMat.emissiveIntensity = 0.03 + 1.6 * S.shown + (bolting ? 2.0 : 0);   // chrome at rest; lit by charge, not a white-out (the bloom channel doubles it)
     const bars = melodyStations.treble.bars;
-    for (let k = PER_ROW; k < BARS; k++) { crystalPulse[k] *= Math.exp(-dt * 6); if (bars[k].crystal && !bars[k].stub) bars[k].mat.emissiveIntensity = 0.6 + 4 * (bars[k]._cueGlow || 0) + 3.5 * crystalPulse[k] + 0.4 * S.shown; }
+    for (let k = PER_ROW; k < BARS; k++) { crystalPulse[k] *= Math.exp(-dt * 6); if (bars[k].crystal && !bars[k].stub) bars[k].mat.emissiveIntensity = 0.25 + 1.3 * (bars[k]._cueGlow || 0) + 1.5 * crystalPulse[k] + 0.2 * S.shown; }   // gentler (owner: the glow was too strong)
     for (const a of arcs) { const age = S.now - a.t0; if (age > 0.25) { a.line.visible = false; continue; } a.line.visible = true; jag(a.line, a.from, LG.pos, 0.25); a.line.material.opacity = 1 - age / 0.25; }
     for (const b of bolts3) { if (!bolting) { b.visible = false; continue; } b.visible = true; jag(b, S.from, S.to, 1.4); b.material.opacity = 1 - boltAge / 0.35; }
     strikeFlash.visible = bolting;

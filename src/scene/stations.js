@@ -112,7 +112,7 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
   }
   // CRYSTALS (owner, 2026-10-04): at the TREBLE station the top row is crystals, not cannons —
   // hitting one charges the LIGHTNING GUN behind the station; charged, it strikes the boss
-  const crystalMat = new THREE.MeshStandardMaterial({ color: 0x9fd4ff, metalness: 0.1, roughness: 0.15, emissive: 0x2a6fd0, emissiveIntensity: 0.9, transparent: true, opacity: 0.92 });
+  const crystalMat = new THREE.MeshStandardMaterial({ color: 0x9fd4ff, metalness: 0.1, roughness: 0.15, emissive: 0x2a6fd0, emissiveIntensity: 0.25, transparent: true, opacity: 0.92 });
   function makeCrystal(rg, i, z, big = 1) {   // big: the BOSS's two crystals are large (owner, 2026-10-04)
     const mat = crystalMat.clone();   // its own: it flares when struck
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.09 * big, 0.1 * big, 0.04, 8), carriageMat);
@@ -230,7 +230,7 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
     const orbMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1.0, roughness: 0.04, envMapIntensity: 1.8, emissive: 0x3a8cff, emissiveIntensity: 0.03 });   // CHROME
     const orb = new THREE.Mesh(new THREE.SphereGeometry(0.17, 32, 24), orbMat); orb.position.y = 1.42;
     for (const m of [post, ...rings, orb]) { m.castShadow = true; g.add(m); }
-    g.position.set(s * (rowNear[1] + 0.55), 0, BAR_MID_Z + s * ((PER_ROW - 1) / 2 * PITCH + 0.45));   // past the right-hand end of the rack
+    g.position.set(s * (rowNear[1] + 0.55), 0, BAR_MID_Z);   // in the middle, behind the crystals, and small (owner)
     group.add(g); g.updateMatrixWorld(true);
     lightning = { group: g, orb, orbMat, coilMat, rings, pos: orb.getWorldPosition(new THREE.Vector3()) };
   }

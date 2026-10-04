@@ -23,6 +23,7 @@ import { ROUNDS, partArrows, songOf } from "./game/stages.js";
 import { loadRoundFiles } from "./game/roundfiles.js";
 import { backLevel } from "./game/backing.js";
 import { normalize, judgeFor, simplifyNotes, scoreMultiplier, levelOf } from "./game/run.js";
+import { fillKit } from "./game/kit.js";
 const runName = (r) => { const lv = levelOf(r); return lv ? `Level ${lv}` : "Custom"; };
 import { createMenu } from "./ui/menu.js";
 import { Defend, LIFE } from "./game/defend.js";
@@ -118,24 +119,19 @@ const lastRound = () => roundIdx >= LESSONS.length - 1;
 // mortars of the same column (pitch kept) — the two crystals aren't song notes: the mortar fire CHARGES
 // them, and you hit one when it's READY (THE LIGHTNING, below)
 const toCrystals = (n) => { const m = /^treble (\d+)$/.exec(n.lane); if (!m || +m[1] < 9) return n; return { ...n, lane: `treble ${+m[1] - 8}` }; };
-// ALL SIX DRUMS (owner, 2026-10-04): every drum stands; when a song leaves some out, its busiest
-// drum lends every third of its notes to the empty ones, in turn — easy songs get the whole kit
+// FILL THE KIT (owner, 2026-10-04; kit.js): every empty drum / gun slot stands in for one of the
+// song's busiest instruments in its group, playing that instrument's sound, the notes dealt round
 const DRUM_LANES = [...LAYOUT.top, ...LAYOUT.bottom].map((l) => l.name);
-function spreadDrums(notes) {
-  const count = Object.fromEntries(DRUM_LANES.map((l) => [l, 0]));
-  for (const n of notes) if (n.lane in count) count[n.lane]++;
-  const missing = DRUM_LANES.filter((l) => !count[l]);
-  if (!missing.length) return notes;
-  const busiest = DRUM_LANES.reduce((a, b) => (count[b] > count[a] ? b : a));
-  if (count[busiest] < 8) return notes;
-  let k = 0, i = 0;
-  return [...notes].sort((a, b) => a.beat - b.beat).map((n) => (n.lane === busiest && (i++ % 3 === 1) ? { ...n, lane: missing[k++ % missing.length] } : n));
-}
+const ROW_LANES = (kind, lo) => Array.from({ length: 8 }, (_, i) => `${kind} ${lo + i}`);
+const KIT_GROUPS = [DRUM_LANES, ROW_LANES("bass", 1), ROW_LANES("bass", 9), ROW_LANES("treble", 1)];   // treble's top row is the crystals
 function buildLessons() {
   LESSONS = SONGS.map((s) => {
-    const notes = spreadDrums(s.notes.map(toCrystals));
+    const { notes, aliases } = fillKit(s.notes.map(toCrystals), KIT_GROUPS);
+    const sounds = { ...(s.sounds || {}) };
+    for (const [standIn, owner] of Object.entries(aliases)) if (sounds[owner]) sounds[standIn] = sounds[owner];   // a stand-in plays its owner's sample
     const { play, backing } = simplifyNotes(notes, RUN.patterns);
-    return { ...s, notes, playNotes: play, backingNotes: backing };
+    bootlog("kit", { song: s.name, standIns: aliases });
+    return { ...s, notes, sounds, aliases, playNotes: play, backingNotes: backing };
   });
 }
 buildLessons();
@@ -621,7 +617,8 @@ function laneSound(ln, midi) {
     return { ...hb, buffer: baked(s.path, s.track) || buf, destination: phoneTrack(s.track, mixer.hackbeat, "hits", null) || laneDest(ln) };
   }
   if (buf) return { ...hb, buffer: buf, destination: hbTrack(s.track, mixer.hackbeat, "hits") || laneDest(ln) };
-  return { buffer: ln.kind ? melodyVoices[ln.kind][ln.slot] : drums[ln.drum], midi: 60, baseNote: 60, destination: laneDest(ln), settings: hbVoice(null) };
+  const owner = song().aliases && song().aliases[ln.name], oln = owner && KEYMAP_BY_LANE[owner] ? KEYMAP_BY_LANE[owner].ln : ln;   // a stand-in: its owner's built-in sound
+  return { buffer: oln.kind ? melodyVoices[oln.kind][oln.slot] : drums[oln.drum], midi: 60, baseNote: 60, destination: laneDest(ln), settings: hbVoice(null) };
 }
 /* a slot's shaped INSTRUMENT VOICE from Hackbeat, else a plain one-shot */
 // PLAIN: Hackbeat's own playback — the sample as recorded, no tone filter,
