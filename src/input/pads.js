@@ -8,8 +8,9 @@
    DRUMS   upper row  LB = hat    Y = snare      RB = crash
            lower row  A = kick    X = tom low    RT = tom high
    BARS    (bass / treble, two rows of 8)
-           D-pad (left down right up) + X A B Y = the 8 guns of the BOTTOM row;
-           hold LT = the same 8 play the TOP row (owner, 2026-10-04: back to the trigger)
+           D-pad (left down right up) + X A B Y = the 8 COLUMNS of guns; the game
+           fires whichever gun of the column is due (owner, 2026-10-04: no row
+           switch). Hold LT to force the top row, RT the bottom (free play).
    every mode: View = LISTEN (the whole section),
            either thumbstick = look around a little (screen mode)
 
@@ -27,9 +28,9 @@ export const GM_DRUMS = {
 
 // standard-mapping gamepad button -> lane (or "hint")
 export const PAD_BUTTONS = { 4: "hat", 3: "snare", 5: "crash", 0: "kick", 2: "tom low", 7: "tom high", 8: "hint" };
-// melody: standard-mapping button -> bar 0..7 of the bottom row (+8 with LT held = the top row)
+// melody: standard-mapping button -> column 0..7 (the game picks the row)
 export const MELODY_BUTTONS = { 14: 0, 13: 1, 15: 2, 12: 3, 2: 4, 0: 5, 1: 6, 3: 7 };
-export const ROW_SHIFT = 6;   // LT: hold for the top row
+export const FORCE_TOP = 6, FORCE_BOTTOM = 7;   // LT / RT: force a row
 export const HINT_BUTTON = 8;   // View: LISTEN to the whole section, every mode
 
 /** Pure: one MIDI message -> {lane, force} | null */
@@ -77,10 +78,10 @@ export function createPads({ onHit, onStatus, onMelody, onHint, melodyMode = () 
         const prev = was.get(gp.index) || [];
         const now = gp.buttons.map((b) => b.pressed || b.value > 0.5);
         if (melodyMode()) {
-          // the guns: D-pad + face buttons = the bottom row, LT held = the top row; View listens
-          const top = now[ROW_SHIFT] ? 8 : 0;
-          for (const [i, slot] of Object.entries(MELODY_BUTTONS)) {
-            if (now[i] && !prev[i]) onMelody && onMelody(slot + top, 1, performance.now());
+          // the guns: D-pad + face buttons = the 8 columns; LT / RT force a row; View listens
+          const force = now[FORCE_TOP] ? "top" : now[FORCE_BOTTOM] ? "bottom" : null;
+          for (const [i, col] of Object.entries(MELODY_BUTTONS)) {
+            if (now[i] && !prev[i]) onMelody && onMelody(col, 1, performance.now(), force);
           }
           if (now[HINT_BUTTON] && !prev[HINT_BUTTON]) onHint && onHint();
         } else for (const [i, what] of Object.entries(PAD_BUTTONS)) {

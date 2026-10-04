@@ -79,15 +79,15 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
   // the gun's strike point (top / normal / radius) sits on its cap
   const buttonMat = new THREE.MeshStandardMaterial({ color: 0x4a0c06, metalness: 0.3, roughness: 0.5, emissive: 0x000000 });
   const buttonRim = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, metalness: 0.85, roughness: 0.35 });
-  const fuseMat = new THREE.MeshStandardMaterial({ color: 0x2a1c12, roughness: 0.9 });
-  function makeButton(rg, x, z) {
+  function makeButton(rg, x, z, h = 0) {   // h: on a pedestal this tall (the shared column buttons stand clear of the mortars)
+    if (h > 0) { const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, h, 12), carriageMat); ped.position.set(x, h / 2, z); ped.castShadow = true; rg.add(ped); }
     const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.046, 0.014, 20), buttonRim);
-    rim.position.set(x, 0.007, z);
+    rim.position.set(x, h + 0.007, z);
     const capMat = buttonMat.clone();   // its own: it lights red on its own
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.034, 0.016, 20), capMat);
-    cap.position.set(x, 0.021, z);
+    cap.position.set(x, h + 0.021, z);
     for (const m of [rim, cap]) { m.castShadow = true; m.receiveShadow = true; rg.add(m); }
-    const p = new THREE.Vector3(x, 0.03, z); p.mat = capMat;
+    const p = new THREE.Vector3(x, h + 0.03, z); p.mat = capMat;
     return p;
   }
   // MORTARS on the bottom row: short and wide, angled up and a little outward, lobbing high
@@ -104,11 +104,8 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
     for (const m of [base, barrel]) { m.castShadow = true; m.receiveShadow = true; rg.add(m); }
     const lab = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(labels[i]), transparent: true, depthWrite: false }));
     lab.scale.setScalar(0.085);
-    lab.position.set(s * 0.0, 0.1, z);
-    rg.add(lab);
-    const btn = makeButton(rg, s * 0.0, z);
     rg.updateMatrixWorld(true);
-    const top = btn.clone().applyMatrix4(rg.matrixWorld), buttonMat = btn.mat;
+    const top = new THREE.Vector3(), buttonMat = null;   // set to the column's shared button below
     const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(rg.quaternion);
     const muzzle = barrel.localToWorld(new THREE.Vector3(0, 0.1, 0));
     return { mesh: barrel, mat, label: lab, top, normal, radius: 0.05, len: 0.17, row: 0, mortar: true, muzzle, buttonMat };
@@ -128,11 +125,8 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
     for (const m of [base, ...prisms]) { m.castShadow = true; m.receiveShadow = true; rg.add(m); }
     const lab = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(labels[i]), transparent: true, depthWrite: false }));
     lab.scale.setScalar(0.085);
-    lab.position.set(s * 0.0, 0.1, z);
-    rg.add(lab);
-    const btn = makeButton(rg, s * 0.0, z);
     rg.updateMatrixWorld(true);
-    const top = btn.clone().applyMatrix4(rg.matrixWorld), buttonMat = btn.mat;
+    const top = new THREE.Vector3(), buttonMat = null;   // set to the column's shared button below
     const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(rg.quaternion);
     const muzzle = prisms[0].localToWorld(new THREE.Vector3(0, 0.13, 0));   // the tall crystal's tip
     return { mesh: prisms[0], mat, label: lab, top, normal, radius: 0.05, len: 0.17, row: 1, crystal: true, muzzle, buttonMat };
@@ -159,19 +153,11 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
     // its key floats just above the breech, always facing you (the barrel hid a flat one)
     const lab = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(labels[i]), transparent: true, depthWrite: false }));
     lab.scale.setScalar(0.085);
-    lab.position.set(s * 0.0, 0.1, z);
-    rg.add(lab);
-    const btn = makeButton(rg, s * 0.0, z);
     rg.updateMatrixWorld(true);
-    const top = btn.clone().applyMatrix4(rg.matrixWorld), buttonMat = btn.mat;
+    const top = new THREE.Vector3(), buttonMat = null;   // set to the column's shared button below
     const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(rg.quaternion);
     const muzzle = barrel.localToWorld(new THREE.Vector3(0, 0.17, 0));
     const touch = barrel.localToWorld(new THREE.Vector3(0, -0.13, 0)).addScaledVector(normal, 0.045);   // the touch-hole, on top of the breech: where the fuse starts
-    // the fuse cord, touch-hole down to the button: the spark burns along it
-    const a = rg.worldToLocal(touch.clone()), c = btn.clone(), cord = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, a.distanceTo(c), 6), fuseMat);
-    cord.position.copy(a).add(c).multiplyScalar(0.5);
-    cord.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), a.clone().sub(c).normalize());
-    rg.add(cord);
     return { mesh: barrel, mat, label: lab, top, normal, radius: 0.05, len: 0.17, row: 1, cannon: true, muzzle, touch, buttonMat };
   }
   // rows: bottom = bars 0-7 (near, low), top = bars 8-15 (behind, raised and
@@ -189,12 +175,30 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
     return g;
   });
   const zLo = BAR_MID_Z - (PER_ROW - 1) / 2 * PITCH - BAR_W / 2 - 0.05, zHi = BAR_MID_Z + (PER_ROW - 1) / 2 * PITCH + BAR_W / 2 + 0.05;
+  // ONE BUTTON PER COLUMN (owner, 2026-10-04): it sits in the middle, behind the mortar and under
+  // the raised cannon, and serves BOTH guns of its column — the game picks which one fires
+  const BTN_X = (rowNear[1] - rowNear[0]) + 0.06, BTN_H = 0.26, rg0 = rowGroups[0];   // up on a pedestal: clear of the mortars, under the raised cannons
+  const shared = [];
+  for (let j = 0; j < PER_ROW; j++) {
+    const z = BAR_MID_Z + s * (j - (PER_ROW - 1) / 2) * PITCH;
+    const btn = makeButton(rg0, s * BTN_X, z, BTN_H);
+    rg0.updateMatrixWorld(true);
+    shared.push({ top: btn.clone().applyMatrix4(rg0.matrixWorld), mat: btn.mat, normal: new THREE.Vector3(0, 1, 0).applyQuaternion(rg0.quaternion), z });
+  }
+  // a gun's key letter stands at the shared button: the bottom gun's low in front, the top gun's higher behind
+  // the bottom gun's key letter stands over the shared button; the top gun's sits on the cannon itself (behind the rack's edge it hid)
+  const labelAt = (i, lab) => { const row = i < PER_ROW ? 0 : 1, z = shared[i % PER_ROW].z;
+    if (row) { lab.position.set(s * 0.0, 0.1, z); rowGroups[1].add(lab); } else { lab.position.set(s * (BTN_X - 0.07), BTN_H + 0.1, z); rg0.add(lab); } };
   for (let i = 0; i < BARS; i++) {
     const row = i < PER_ROW ? 0 : 1, j = i % PER_ROW;
     const z = BAR_MID_Z + s * (j - (PER_ROW - 1) / 2) * PITCH;
     const rg = rowGroups[row];
     // every bar is a GUN (owner, 2026-10-03): cannons on the top row, mortars on the bottom
-    bars.push(row === 1 ? (kind === "treble" ? makeCrystal(rg, i, z) : makeCannon(rg, i, z)) : makeMortar(rg, i, z));
+    const b = row === 1 ? (kind === "treble" ? makeCrystal(rg, i, z) : makeCannon(rg, i, z)) : makeMortar(rg, i, z);
+    const sh = shared[j];
+    b.top = sh.top; b.normal = sh.normal; b.buttonMat = sh.mat; b.column = j;
+    labelAt(i, b.label);
+    bars.push(b);
   }
   // THE LIGHTNING GUN (treble): a coil on a post behind the crystals, an orb on top that fills with charge
   let lightning = null;

@@ -223,7 +223,7 @@ function stageMessage() {
   hudUI.setPart(`${song().name} · ${sec} ${pct}%`);
   const topName = sec === "treble" ? "crystals (charge the lightning gun)" : "cannons";
   const how = sec === "drums" ? (IS_TOUCH ? "tap the drums" : "top Q W E · bottom A S D") : IS_TOUCH ? "tap the buttons"
-    : padConnected ? `D-pad + X A B Y = mortars · hold LT for the ${topName}` : `mortars A S D F G H J K · ${topName} Q W E R T Y U I`;
+    : padConnected ? "D-pad + X A B Y = the 8 columns (the game picks the gun)" : `mortars A S D F G H J K · ${topName} Q W E R T Y U I`;
   const rule = RUN.lock === 1 ? "every note you hit locks"
     : RUN.keep === "any" ? `groups of ${RUN.lock === Infinity ? "the whole section" : RUN.lock}: every note you hit locks`
     : RUN.keep === "half" ? `groups of ${RUN.lock === Infinity ? "the whole section" : RUN.lock}, in order — break it and half of your hits still lock`
@@ -307,6 +307,25 @@ function showShield() {
   const st = siege && siege.broken ? { progress: 0, up: false } : { progress: defend.progress("drums"), up: defend.progress("drums") >= 1 };
   stage3d.setShield({ drums: st, bass: st, treble: st });
 }
+// ONE BUTTON PER COLUMN (owner, 2026-10-04): a press on a gun column fires whichever of its two
+// guns has a note due nearest the press; nothing due: the row the stream is on (else the bottom).
+// rowForce "top" / "bottom" (the pad's LT / RT) overrides, for free play.
+function resolveGun(idx, press, rowForce = null) {
+  const base = idx < 6 + BARS ? 6 : 6 + BARS, col = (idx - 6) % PER_ROW_GUNS;
+  const bottom = base + col, top = base + PER_ROW_GUNS + col;
+  if (rowForce === "top") return KEYMAP_BY_IDX[top];
+  if (rowForce === "bottom") return KEYMAP_BY_IDX[bottom];
+  let best = null, bestD = Infinity, rowNext = null, nextAt = Infinity;
+  if (defend) for (const n of defend.offered()) {
+    const i = LANE_INDEX[n.lane], t = clock.first + n.at * clock.beatDur;
+    if (i >= base && i < base + 2 * PER_ROW_GUNS && t < nextAt) { nextAt = t; rowNext = i >= base + PER_ROW_GUNS ? top : bottom; }   // the stream's current row
+    if (i !== bottom && i !== top) continue;
+    const d = Math.abs(t - press);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return KEYMAP_BY_IDX[best != null && bestD <= 0.6 ? best : rowNext != null ? rowNext : bottom];
+}
+const PER_ROW_GUNS = 8;
 // a gun fires: siege.js aims the shell at the enemy nearest the wall (it lands where they'll be)
 function fireGun(idx, lane, at) {
   const side = lane.startsWith("bass") ? "bass" : "treble";
@@ -436,9 +455,9 @@ for (const e of Object.values(KEYMAP)) KEYMAP_BY_LANE[e.ln.name] = e;
 const MELODY_LETTERS = [..."ASDFGHJK", ..."QWERTYUI"];
 const MELODY_KEYS = Object.fromEntries(MELODY_LETTERS.map((c, i) => [c.toLowerCase(), i]));
 // the pad: the same 8 buttons for both rows (hold LT = top row); drawn as D-pad arrows / face letters
-// the pad (owner, 2026-10-04): D-pad + X A B Y = the bottom row; hold LT = the top row (drawn "LT" over the button)
+// the pad (owner, 2026-10-04): D-pad + X A B Y = the 8 COLUMNS; the game picks the row — one label per column
 const PAD_ROW = ["dL", "dD", "dR", "dU", "X", "A", "B", "Y"];
-const PAD_LABELS = [...PAD_ROW, ...PAD_ROW.map((b) => "LT:" + b)];
+const PAD_LABELS = [...PAD_ROW, ...Array(8).fill("")];
 const NO_LABELS = Array(16).fill("");   // tablets: no letters anywhere (owner, 2026-10-04) — unless a controller is plugged in
 const MELODY_ENTRY = { bass: [], treble: [] };
 for (const kind of ["bass", "treble"]) {
@@ -933,12 +952,12 @@ function onKey(e) {
 const pads = createPads({
   melodyMode: () => isMelody(),
   onHint: () => playHint(),
-  onMelody: (slot, force, ts) => {
+  onMelody: (col, force, ts, rowForce) => {
     if (armed && !clock) { beginCount(); return; }
     if (!ctx || !drums || !pool || !clock) return;
     const o = ctx.getOutputTimestamp();
     const press = o.contextTime + (ts - o.performanceTime) / 1000 - calibration;
-    const entry = MELODY_ENTRY[partMode()][slot];
+    const entry = resolveGun(MELODY_ENTRY[partMode()][col].idx, press, rowForce);
     hitLane(entry.idx, entry.ln, press, force);
   },
   onHit: (laneName, force, ts) => {
@@ -966,10 +985,10 @@ for (const e of Object.values(KEYMAP)) KEYMAP_BY_IDX[e.idx] = e;
 for (const kind of ["bass", "treble"]) for (const e of MELODY_ENTRY[kind]) KEYMAP_BY_IDX[e.idx] = e;
 stage3d.setVrHitHandler((idx, force, ms) => {
   if (!ctx || !drums || !pool || !clock) return;
-  const entry = KEYMAP_BY_IDX[idx];
+  const o = ctx.getOutputTimestamp(), press = o.contextTime + (ms - o.performanceTime) / 1000 - calibration;
+  const entry = idx >= 6 ? resolveGun(idx, press) : KEYMAP_BY_IDX[idx];   // a gun column's one button: the game picks the gun
   if (!entry) return;
-  const o = ctx.getOutputTimestamp();
-  hitLane(entry.idx, entry.ln, o.contextTime + (ms - o.performanceTime) / 1000 - calibration, force);
+  hitLane(entry.idx, entry.ln, press, force);
 });
 stage3d.addVrButton();
 
@@ -1261,9 +1280,9 @@ stage.addEventListener("pointerdown", (e) => {
     return;
   }
   e.preventDefault();
-  const entry = KEYMAP_BY_IDX[lane];
   // the touch's own timestamp, on the heard audio clock (like a key press)
   const o = ctx.getOutputTimestamp();
+  const entry = lane >= 6 ? resolveGun(lane, o.contextTime + (e.timeStamp - o.performanceTime) / 1000 - calibration) : KEYMAP_BY_IDX[lane];   // a gun column's one button
   const force = e.pointerType === "pen" && e.pressure > 0 ? 0.4 + 0.6 * e.pressure : 1;
   hitLane(entry.idx, entry.ln, o.contextTime + (e.timeStamp - o.performanceTime) / 1000 - calibration, force);
 });

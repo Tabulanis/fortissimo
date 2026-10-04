@@ -123,7 +123,7 @@ export class Defend {
         if (++rowCount >= PHRASE) { rowWant ^= 1; rowCount = 0; callSwitch = true; }
       }
       let at = 1;   // together: two hands at most, a different instrument each
-      for (let j = i; j < cands.length && cands[j].beat <= last + 1e-6; j++) { const n = cands[j]; if (n !== pick && Math.abs(n.beat - last) < 1e-6 && at < together && n.lane !== pick.lane) { plan.push(n); used[n.lane] = n.beat; at++; } }
+      for (let j = i; j < cands.length && cands[j].beat <= last + 1e-6; j++) { const n = cands[j]; if (n !== pick && Math.abs(n.beat - last) < 1e-6 && at < together && n.lane !== pick.lane && (!guns || rowOf(n) === rowOf(pick))) { plan.push(n); used[n.lane] = n.beat; at++; } }
       while (i < cands.length && cands[i].beat <= last + 1e-6) i++;
     }
     plan.sort((a, b) => a.beat - b.beat);

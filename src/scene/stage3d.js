@@ -742,9 +742,12 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         b._red = Math.max(b._red, dt >= 0 ? red * (0.55 + 0.45 * beatKick) : red);   // a notch brighter on each beat
       }
     }
-    for (const name of ["bass", "treble"]) for (const b of (melodyStations[name] ? melodyStations[name].bars : [])) {
-      if (!b.buttonMat) continue;
-      b.buttonMat.emissive.setRGB(2.6 * b._red, 0.1 * b._red, 0.04 * b._red);   // dark red -> bright red
+    for (const name of ["bass", "treble"]) {
+      const bars = melodyStations[name] ? melodyStations[name].bars : [];
+      for (let j = 0; j < PER_ROW && j < bars.length; j++) {   // one button per column: it glows for whichever gun is due
+        const r = Math.max(bars[j]._red || 0, bars[j + PER_ROW] ? bars[j + PER_ROW]._red || 0 : 0);
+        if (bars[j].buttonMat) bars[j].buttonMat.emissive.setRGB(2.6 * r, 0.1 * r, 0.04 * r);   // dark red -> bright red
+      }
     }
   }
   const _fireA = new THREE.Color(1.0, 0.95, 0.75), _fireB = new THREE.Color(1.0, 0.5, 0.12),

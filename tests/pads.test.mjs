@@ -20,11 +20,11 @@ for (const l of lanes) {
 }
 console.log("pads: all passed");
 
-// every controller button does ONE thing (owner): LT only switches rows, no bell
+// the guns on a pad: 8 buttons = 8 columns, the game picks the row; LT / RT only force a row
 {
-  const { MELODY_BUTTONS, ROW_SHIFT } = await import("../src/input/pads.js");
-  assert.ok(!(ROW_SHIFT in PAD_BUTTONS) && !(ROW_SHIFT in MELODY_BUTTONS), "LT is only the row switch");
-  assert.deepStrictEqual(Object.values(MELODY_BUTTONS).sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 7], "D-pad + X A B Y cover the 8 guns of a row");
+  const { MELODY_BUTTONS, FORCE_TOP, FORCE_BOTTOM } = await import("../src/input/pads.js");
+  assert.deepStrictEqual(Object.values(MELODY_BUTTONS).sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 7], "D-pad + X A B Y are the 8 columns");
+  assert.ok(!(FORCE_TOP in MELODY_BUTTONS) && !(FORCE_BOTTOM in MELODY_BUTTONS), "the triggers aren't columns");
   assert.ok(!Object.values(PAD_BUTTONS).includes("bell"), "no bell button");
 }
 console.log("pads one-job ok");
