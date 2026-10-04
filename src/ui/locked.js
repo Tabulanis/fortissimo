@@ -41,23 +41,6 @@ const CSS = `
 `;
 
 let styleAdded = false;
-export function showLocked(text = "LOCKED!") {
-  if (!styleAdded) {
-    const st = document.createElement("style");
-    st.textContent = CSS;
-    document.head.appendChild(st);
-    styleAdded = true;
-  }
-  document.getElementById("gr-locked")?.remove();   // a quick second lock restarts the slam
-  const root = document.createElement("div");
-  root.id = "gr-locked";
-  root.className = "gr-locked";
-  const rot = (Math.random() * 10 - 5).toFixed(1) + "deg";   // never quite straight: it HIT the glass
-  root.innerHTML = `<div class="ring"></div><div class="word" style="--rot:${rot}">${text}</div>`;
-  document.body.appendChild(root);
-  setTimeout(() => root.remove(), 2100);
-}
-
 /* STAMPED ON THE TARGET (owner, 2026-10-03): the same slam, but on the drum or
    bar itself — every hit stamps its accuracy (0-100%), a lock stamps LOCKED!.
    x, y: the target on screen (CSS px). size: font px. ms: how long it lives. */

@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { midiToHit, GM_DRUMS, MIDI_BELL_NOTE, PAD_BUTTONS } from "../src/input/pads.js";
+import { midiToHit, GM_DRUMS, PAD_BUTTONS } from "../src/input/pads.js";
 
 // note-on on channel 10 (0x99), GM kick 36 at full force
 assert.deepStrictEqual(midiToHit([0x99, 36, 127]), { lane: "kick", force: 1 });
@@ -12,8 +12,6 @@ assert.strictEqual(midiToHit([0x99, 36, 0]), null);
 assert.strictEqual(midiToHit([0x89, 36, 100]), null);
 // unmapped note ignored
 assert.strictEqual(midiToHit([0x99, 20, 100]), null);
-// cowbell rings the bell
-assert.deepStrictEqual(midiToHit([0x99, MIDI_BELL_NOTE, 90]), { bell: true });
 // every lane is reachable from MIDI and from a controller
 const lanes = ["kick", "snare", "hat", "crash", "tom low", "tom high"];
 for (const l of lanes) {
@@ -22,15 +20,14 @@ for (const l of lanes) {
 }
 console.log("pads: all passed");
 
-// every controller button does ONE thing (owner, 2026-10-03): no trigger shift, B is never the bell
+// every controller button does ONE thing (owner, 2026-10-03): no trigger shift, no bell
 {
-  const { MELODY_BUTTONS, MELODY_BELL, pairSlots } = await import("../src/input/pads.js");
+  const { MELODY_BUTTONS, pairSlots } = await import("../src/input/pads.js");
   assert.ok(!(6 in MELODY_BUTTONS), "no LT row shift at the guns");
   // D-pad = the mortars (bars 0-7), X A B Y = the cannons (bars 8-15), two neighbours each
   const cover = (btns) => btns.flatMap((b) => pairSlots(MELODY_BUTTONS[b])).sort((a, b) => a - b);
   assert.deepStrictEqual(cover([14, 13, 15, 12]), [0, 1, 2, 3, 4, 5, 6, 7], "D-pad covers the mortars");
   assert.deepStrictEqual(cover([2, 0, 1, 3]), [8, 9, 10, 11, 12, 13, 14, 15], "face buttons cover the cannons");
-  assert.ok(PAD_BUTTONS[1] === undefined && !MELODY_BELL.includes(1), "B is not the bell");
-  assert.deepStrictEqual(Object.entries(PAD_BUTTONS).filter(([, v]) => v === "bell").map(([k]) => +k), [9], "the bell is Menu only");
+  assert.ok(!Object.values(PAD_BUTTONS).includes("bell"), "no bell button");
 }
 console.log("pads one-job ok");

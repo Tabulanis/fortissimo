@@ -12,7 +12,7 @@
            X A B Y (same order: left down right up) = the CANNONS, the top row
            (owner, 2026-10-03: no trigger shift). 4 buttons for 8 guns: each
            button covers two neighbours — the game fires whichever is due
-   every mode: Menu = ring the ghost bell, View = LISTEN (the whole section),
+   every mode: View = LISTEN (the whole section),
            either thumbstick = look around a little (screen mode)
 
    Calls back with (laneName, force 0..1, timeStamp in performance.now() ms). */
@@ -26,27 +26,24 @@ export const GM_DRUMS = {
   41: "tom low", 43: "tom low", 45: "tom low",
   47: "tom high", 48: "tom high", 50: "tom high",
 };
-export const MIDI_BELL_NOTE = 56;   // cowbell rings the ghost bell
 
-// standard-mapping gamepad button -> lane (or "bell")
-export const PAD_BUTTONS = { 4: "hat", 3: "snare", 5: "crash", 0: "kick", 2: "tom low", 7: "tom high", 9: "bell", 8: "hint" };
+// standard-mapping gamepad button -> lane (or "hint")
+export const PAD_BUTTONS = { 4: "hat", 3: "snare", 5: "crash", 0: "kick", 2: "tom low", 7: "tom high", 8: "hint" };
 // melody: standard-mapping button -> a PAIR of guns: D-pad = mortar pairs 0-3 (bars 0-7), face = cannon pairs 4-7 (bars 8-15)
 export const MELODY_BUTTONS = { 14: 0, 13: 1, 15: 2, 12: 3, 2: 4, 0: 5, 1: 6, 3: 7 };
 /** the two bars (0..15) a melody button's pair covers */
 export const pairSlots = (pair) => [2 * pair, 2 * pair + 1];
-export const MELODY_BELL = [9];
 export const HINT_BUTTON = 8;   // View: LISTEN to the whole section, every mode
 
-/** Pure: one MIDI message -> {lane, force} | {bell: true} | null */
+/** Pure: one MIDI message -> {lane, force} | null */
 export function midiToHit(data) {
   const [status, note, vel] = data;
   if ((status & 0xf0) !== 0x90 || !vel) return null;      // note-on with velocity only
-  if (note === MIDI_BELL_NOTE) return { bell: true };
   const lane = GM_DRUMS[note];
   return lane ? { lane, force: vel / 127 } : null;
 }
 
-export function createPads({ onHit, onBell, onStatus, onMelody, onHint, melodyMode = () => false } = {}) {
+export function createPads({ onHit, onStatus, onMelody, onHint, melodyMode = () => false } = {}) {
   const status = { midi: [], pads: [] };
   const look = { x: 0, y: 0 };
   const report = () => onStatus && onStatus(status);
@@ -60,9 +57,7 @@ export function createPads({ onHit, onBell, onStatus, onMelody, onHint, melodyMo
           status.midi.push(input.name);
           input.onmidimessage = (ev) => {
             const h = midiToHit(ev.data);
-            if (!h) return;
-            if (h.bell) onBell && onBell();
-            else onHit && onHit(h.lane, h.force, ev.timeStamp);
+            if (h && onHit) onHit(h.lane, h.force, ev.timeStamp);
           };
         }
         report();
@@ -85,16 +80,14 @@ export function createPads({ onHit, onBell, onStatus, onMelody, onHint, melodyMo
         const prev = was.get(gp.index) || [];
         const now = gp.buttons.map((b) => b.pressed || b.value > 0.5);
         if (melodyMode()) {
-          // the guns: D-pad = mortars, face buttons = cannons, a pair each; Menu rings the bell, View listens
+          // the guns: D-pad = mortars, face buttons = cannons, a pair each; View listens
           for (const [i, pair] of Object.entries(MELODY_BUTTONS)) {
             if (now[i] && !prev[i]) onMelody && onMelody(pairSlots(pair), 1, performance.now());
           }
-          for (const i of MELODY_BELL) if (now[i] && !prev[i]) onBell && onBell();
           if (now[HINT_BUTTON] && !prev[HINT_BUTTON]) onHint && onHint();
         } else for (const [i, what] of Object.entries(PAD_BUTTONS)) {
           if (now[i] && !prev[i]) {
-            if (what === "bell") onBell && onBell();
-            else if (what === "hint") onHint && onHint();
+            if (what === "hint") onHint && onHint();
             // analogue triggers report how far they're pulled: use it as force
             else onHit && onHit(what, Math.max(0.6, gp.buttons[i].value || 1), performance.now());
           }

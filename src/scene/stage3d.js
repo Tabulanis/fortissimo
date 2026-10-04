@@ -1717,7 +1717,6 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const vrOn = () => renderer.xr.isPresenting;
   let vrLastStick = null;        // which hand made the last VR hit (for its flash)
   let onVrHit = null;            // (laneIdx, force 0..1, timeMs on performance.now())
-  let onVrBell = null;
   let frameT = 0;                // this frame's time (XR frame time in a session)
   const vrHits = createVrHits(Array.from({ length: N_T }, (_, i) => ({
     center: { x: drumFace[i].x, y: drumFace[i].y, z: drumFace[i].z },
@@ -1782,11 +1781,6 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         if (act && act.pulse) act.pulse(0.25 + 0.75 * hit.force, 18);
         if (onVrHit) onVrHit(hit.head, hit.force, hit.time);
       }
-      // A / X (face button 4 on xr-standard) rings the ghost bell
-      const b = vrPads[h] && vrPads[h].buttons[4];
-      const down = !!(b && b.pressed);
-      if (down && !hand.btnWas && onVrBell) onVrBell();
-      hand.btnWas = down;
     }
   }
   /** the game's frame loop: runs on the screen normally and on the headset in VR */
@@ -2354,7 +2348,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       });
     }, get station() { return station; }, melodyStations, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; },
     /** look input, each -1..1: x = right, y = up (screen mode only) */
-    setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; }, setVrBellHandler: (fn) => { onVrBell = fn; },
+    setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */
     /** debug: arrows in flight per lane, and which drums are shown */
     // per lane: how much of an arrow's flight the camera sees right now (0..1), and whether its launch is on screen

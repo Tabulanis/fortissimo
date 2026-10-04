@@ -18,7 +18,6 @@ import { LAYOUT, CHART } from "./game/chart.js";
 import { Ghosts } from "./game/ghosts.js";
 import { SessionLog } from "./game/session.js";
 import { createStage3D } from "./scene/stage3d.js";
-import { Bell } from "./game/bell.js";
 import { Loops } from "./game/loops.js";
 import { ROUNDS, partArrows, isShown, buildUp } from "./game/stages.js";
 import { loadRoundFiles } from "./game/roundfiles.js";
@@ -30,7 +29,7 @@ import { Defend, townDamage, LIFE } from "./game/defend.js";
 import { Siege } from "./game/siege.js";
 import { gradeRound } from "./game/grade.js";
 import { createResults } from "./ui/results.js";
-import { showLocked, showStamp } from "./ui/locked.js";
+import { showStamp } from "./ui/locked.js";
 import { createHud } from "./ui/hud.js";
 import { createMixer } from "./audio/mixer.js";
 import { loadSettings, createSettings } from "./ui/settings.js";
@@ -102,7 +101,6 @@ const LANE_INDEX = {};                    // lane name -> target 0..37
 // melody bars: "bass 1".."bass 16" -> 6..21, "treble 1".."treble 16" -> 22..37
 for (let k = 0; k < BARS; k++) { LANE_INDEX[`bass ${k + 1}`] = 6 + k; LANE_INDEX[`treble ${k + 1}`] = 6 + BARS + k; }
 let stageIdx = 0;
-let bell = null;                          // created when the clock starts
 let loops = null;                         // locked measures, replayed exactly as played
 // 3 ROUNDS in the same arena; each ends with an accuracy grade
 let roundIdx = 0;
@@ -178,7 +176,7 @@ function joinBacking() {
 let audioStarted = false;   // Start pressed and the audio graph exists (the page lays out its HUD before that)
 let roundOffsets = [];          // every guided hit this round: seconds off its note, null = off-chart
 const results = createResults();
-const hudUI = createHud({ onBell: ringBell, onHint: () => playHint() });
+const hudUI = createHud({ onHint: () => playHint() });
 let autoCorrect = SET.autoCorrect;   // A toggles; also in settings
 function showDifficulty() { hudUI.setDifficulty(`${runName(RUN)} ×${scoreMultiplier(RUN).total}${autoCorrect ? " · Auto ✓" : ""}`); }
 showDifficulty();
@@ -219,19 +217,7 @@ function judgeGraphics(measured) {
   setTimeout(() => location.reload(), 1200);
 }
 
-// where a hit is RECORDED: snapped onto its note (or, with no notes to follow,
-// the nearest eighth) when auto-correct is on and it landed inside the box
-function autoCorrectHit(press, vel, j, free) {
-  if (!autoCorrect || !clock) return { t: press, velocity: vel };
-  const box = judgeDiff().window;
-  if (!free && j && Math.abs(j.offset) <= box) return { t: j.time, velocity: Math.max(vel, 0.95) };
-  if (free) {
-    const g = nearestOnGrid(clock.first, clock.beatDur / 2, press);   // eighth notes
-    if (Math.abs(g.offset) <= box) return { t: g.time, velocity: vel };
-  }
-  return { t: press, velocity: vel };
-}
-// LIFE: you and the town, 100 each; a miss hurts both (the town less with the shield up), a hit heals both
+// LIFE: you and the town, 100 each; a drum miss and an arrow that gets through hurt both, a hit heals both
 const life = { you: 100, town: 100, over: false };
 hudUI.setLife(100, 100);
 hudUI.setShield(0);
@@ -247,44 +233,14 @@ function applyStage() {
 
 // the standing instruction for where you are in the song
 function stageMessage() {
-  if (defend) {
-    if (defend.done) { hudUI.setPart(`${song().name} done`); return; }
-    const sec = defend.section, pct = Math.round(defend.progress(sec) * 100);
-    hudUI.setPart(`${song().name} · ${sec} ${pct}%`);
-    const how = sec === "drums" ? (IS_TOUCH ? "tap the drums" : "the drum keys") : IS_TOUCH ? "tap the bars"
-      : padConnected ? "D-pad + X A B Y · hold LT for the top row" : "A S D F G H J K · top row Q W E R T Y U I";
-    const rule = RUN.lock === 1 ? "every arrow you hit locks" : RUN.lock === Infinity ? "hit them ALL, in order, to lock the section" : `hit the next ${RUN.lock}, in order, to lock them`;
-    hudUI.say(`${sec === "drums" ? "Drums" : sec === "bass" ? "Bass — turned right" : "Treble — turned left"}: ${how} — ${rule}`);
-    return;
-  }
-  if (bell && bell.state !== "idle") return;   // the bell's own messages win while it works
-  hudUI.setPart(songDone() ? (lastRound() ? "Free play" : `${song().name} done`)
-    : `${song().name} · ${song().parts[stageIdx].label} of ${song().parts.length}`);
-  if (songDone() && !lastRound()) {
-    hudUI.say(`${song().name} complete!`, "good");
-  } else if (songDone()) {
-    hudUI.say("Song complete! Play anything — ring the bell 🔔 to add a measure", "good");
-  } else {
-    const m = partMode(), bars = partBars();
-    const take = bars > 1 ? ` (${bars}-bar take)` : "";
-    if (m !== "drums") {
-      const where = m === "bass" ? "Bass — turned right" : "Treble — turned left";
-      const how = IS_TOUCH ? "tap the bars" : padConnected ? "D-pad + X A B Y · hold LT for the top row" : "keys A S D F G H J K · top row Q W E R T Y U I";
-      hudUI.say(`${where}: ${how}${take}. Got it? Ring the bell 🔔 ${padConnected ? "(Menu)" : IS_TOUCH ? "" : "(Space)"}`);
-    } else {
-      hudUI.say(IS_TOUCH ? "Follow the arrows — tap the drums. Got it? Tap the bell 🔔"
-        : "Follow the arrows. Got it? Ring the bell 🔔 (Space)");
-    }
-  }
-}
-
-function ringBell() {
-  if (defend) return;   // no bell in the core loop: the game is always listening
-  if (!bell || !ctx) { hudUI.say("Press Start first", "bad", 1500); return; }
-  if (bell.state !== "idle") return;
-  bell.ring(ctx.getOutputTimestamp().contextTime, partBars());
-  hudUI.setBellState("armed");
-  hudUI.say("Get ready — recording starts on the next bar…");
+  if (!defend) return;   // before Start: the menu is up
+  if (defend.done) { hudUI.setPart(`${song().name} done`); return; }
+  const sec = defend.section, pct = Math.round(defend.progress(sec) * 100);
+  hudUI.setPart(`${song().name} · ${sec} ${pct}%`);
+  const how = sec === "drums" ? (IS_TOUCH ? "tap the drums" : "top Q W E · bottom A S D") : IS_TOUCH ? "tap the buttons"
+    : padConnected ? "D-pad = mortars · X A B Y = cannons" : "mortars A S D F G H J K · cannons Q W E R T Y U I";
+  const rule = RUN.lock === 1 ? "every note you hit locks" : RUN.lock === Infinity ? "hit them ALL, in order, to lock the section" : `hit the next ${RUN.lock}, in order, to lock them`;
+  hudUI.say(`${sec === "drums" ? "Drums" : sec === "bass" ? "Bass — turned right" : "Treble — turned left"}: ${how} — ${rule}`);
 }
 
 // THE CORE LOOP, every frame: an offered note whose moment went by unhit is a
@@ -396,45 +352,6 @@ function failRun(why) {
   }), 1400);
 }
 
-// called every frame: has a recorded measure finished?
-function tickBell(heardNow) {
-  if (!bell) return;
-  const free = mode === "free" || songDone();
-  const r = bell.tick(heardNow, { part: currentPart(), diff: judgeDiff(), free });
-  hudUI.setBellState(bell.state);
-  if (bell.state === "recording" && !r) hudUI.say("● Recording this measure…");
-  if (!r) return;
-  if (r.locked) {
-    // a bar-by-bar step (Easy): it was learned as a 1-bar loop; it plays in ITS bar of the song
-    const placed = partObj();
-    if (placed && placed.atBar != null) {
-      const L = placed.phraseBars, barDur = 4 * clock.beatDur;
-      r.layer = { bars: L, startBar: Math.ceil(r.layer.startBar / L) * L,
-        hits: r.layer.hits.map((h) => ({ ...h, pos: h.pos + placed.atBar * barDur })) };
-    }
-    loops.add(r.layer);
-    // the scheduler may already be past this loop's first notes (it looks
-    // 0.1 s ahead) — schedule the new layer's notes up to that point now
-    if (ctx && pool) {
-      const one = new Loops(4 * clock.beatDur); one.add(r.layer);
-      for (const e of one.events(ctx.currentTime, scheduledUntil, clock.first)) {
-        const entry = KEYMAP_BY_LANE[e.lane];
-        if (!entry) continue;
-        pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...laneSound(entry.ln, e.midi),
-          velocity: e.velocity * 0.85, when: e.time });
-      }
-    }
-    const wasGuided = !songDone();
-    if (wasGuided) stageIdx++;
-    applyStage();
-    hudUI.say(`Locked in! ✨ (${r.judge.matched}/${r.judge.total})`, "good");
-    showLocked();   // the big slam
-    setTimeout(stageMessage, 2500);   // then back to the standing instruction (it used to go blank)
-    if (wasGuided && songDone()) setTimeout(endRound, 1600);   // the band plays the full song a moment, then the grade
-  } else {
-    hudUI.say(`Not quite (${r.judge.matched}/${r.judge.total}) — keep playing, it's still listening`, "bad");
-  }
-}
 applyStage();
 
 // end of a round: the grade, then the next round in the same arena (fresh song,
@@ -719,14 +636,12 @@ function makeStartButton() {
     clock = startClock(ctx, {
       bpm: BPM,
       onBeat: (time, n) => {
-        const active = bell && bell.state !== "idle";
-        if (active) setTimeout(() => hudUI.tick(), Math.max(0, (time - ctx.currentTime) * 1000));
         pool.noteOn({
           channel: 0,
-          midi: active ? 84 : 72,          // the bell ticks brighter while it counts / records
+          midi: 72,
           baseNote: 60,
           buffer: drums.click,
-          velocity: active ? 0.9 : 0.35,
+          velocity: 0.35,
           when: time,
           destination: mixer.metronome,
           settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }),
@@ -734,7 +649,6 @@ function makeStartButton() {
       },
     });
 
-    bell = new Bell({ first: clock.first, beatDur: clock.beatDur });
     loops = new Loops(4 * clock.beatDur);
     ghosts = loops;   // the scheduler below replays loop layers
     addBacking();
@@ -742,7 +656,6 @@ function makeStartButton() {
     stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat
     siege = new Siege({ miss: (LIFE[RUN.damage] || LIFE.normal).miss, beatDur: clock.beatDur });
     defendFrom = clock.first + Math.ceil((ctx.currentTime + 1.5 - clock.first) / (4 * clock.beatDur)) * 4 * clock.beatDur;   // misses count from the next bar after a breath
-    hudUI.hideBell();
     defend.nowBeat = (((ctx.currentTime - clock.first) / clock.beatDur) % defend.loopBeats + defend.loopBeats) % defend.loopBeats;
     defend.leadBeats = leadFor() / clock.beatDur;   // so even the first note comes just after its lead
     defend.drain();
@@ -920,12 +833,6 @@ function onKey(e) {
     return;
   }
 
-  if (e.key === " ") {
-    e.preventDefault();
-    ringBell();
-    return;
-  }
-
   if (e.shiftKey && e.key.toLowerCase() === "a") {   // auto-correct on/off
     e.preventDefault();
     autoCorrect = !autoCorrect;
@@ -991,7 +898,6 @@ const pads = createPads({
     const o = ctx.getOutputTimestamp();
     hitLane(entry.idx, entry.ln, o.contextTime + (ts - o.performanceTime) / 1000 - calibration, force);
   },
-  onBell: () => ringBell(),
   onStatus: (st) => {
     // a controller in hand: the bars show its buttons instead of keyboard letters
     padConnected = st.pads.length > 0;
@@ -1013,7 +919,6 @@ stage3d.setVrHitHandler((idx, force, ms) => {
   const o = ctx.getOutputTimestamp();
   hitLane(entry.idx, entry.ln, o.contextTime + (ms - o.performanceTime) / 1000 - calibration, force);
 });
-stage3d.setVrBellHandler(() => ringBell());
 stage3d.addVrButton();
 
 function hitLane(idx, lane, press, padVel = 1) {
@@ -1064,7 +969,6 @@ function hitLane(idx, lane, press, padVel = 1) {
   // AUTO-CORRECT (quantize): a hit inside the scoring box for its note is
   // RECORDED on the exact beat at full strength; the live sound still fired
   // the instant you hit. Outside the box it's recorded exactly as played.
-  if (bell) bell.add({ lane: lane.name, midi, ...autoCorrectHit(press, vel, j, free) });
 
   // the player IS the instrument: play immediately, on this lane's channel
   pool.noteOn({
@@ -1258,7 +1162,7 @@ function frame() {
     lastUp = up;
     stage3d.setGunCues(defend ? up.filter((u) => u.laneIdx >= 6) : []);
     stage3d.update(heardNow, defend ? up.filter((u) => u.laneIdx < 6) : up, ghostHits);
-    if (defend) tickDefend(heardNow); else tickBell(heardNow);
+    if (defend) tickDefend(heardNow);
   } else {
     // before Start: keep the courtyard (and its drums) visible, no arrows
     stage3d.update(0, []);
@@ -1373,7 +1277,7 @@ window.addEventListener("resize", resize);
 stage3d.setLoop(frame);
 // test hook (the harness robot reads the song state through this)
 if (window.__gr) window.__gr.game = {
-  get clock() { return clock; }, get ctx() { return ctx; }, get bell() { return bell; },
+  get clock() { return clock; }, get ctx() { return ctx; },
   get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; },
   setBackLevel: (v) => { for (const g of Object.values(backGain)) g.gain.value = v; },   // harness: backgrounds at full
   get defend() { return defend; }, get siege() { return siege; }, get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,
