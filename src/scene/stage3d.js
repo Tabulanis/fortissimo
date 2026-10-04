@@ -1602,20 +1602,18 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     firelights.push({ glow, radius: TARGET(i).radius, base: hexToColor(laneHex(i)).clone() });
   }
 
-  // BAR FRAMES: a glowing outline traced round each bar's top, the bars'
-  // version of the drums' charge light (a drum-sized glow is lost on a bar)
-  const barFrames = [];
+  // BUTTON FRAMES: a glowing outline round each column's shared button (owner, 2026-10-04: one
+  // box per column, not a mortar's and a cannon's stacked) — the guns' version of the drums' charge light
+  const barFrames = [];   // PER_ROW per station: the bottom-row bar carries its column's frame
   for (const kind of ["bass", "treble"]) {
-    for (const b of melodyStations[kind].bars) {
-      const hx = b.len / 2, hz = b.radius, pad = 0.028, gap = 0.006;
+    for (const b of melodyStations[kind].bars.slice(0, PER_ROW)) {
+      const hx = b.radius + 0.01, hz = b.radius + 0.01, pad = 0.028, gap = 0.006;
       const shape = new THREE.Shape([[-hx - pad, -hz - pad], [hx + pad, -hz - pad], [hx + pad, hz + pad], [-hx - pad, hz + pad]].map(([x, y]) => new THREE.Vector2(x, y)));
       shape.holes.push(new THREE.Path([[-hx - gap, -hz - gap], [-hx - gap, hz + gap], [hx + gap, hz + gap], [hx + gap, -hz - gap]].map(([x, y]) => new THREE.Vector2(x, y))));
       const frame = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({
         color: hexToColor(BAR_HEX[kind]), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
-      // lie on the bar's face, tilted with it (the top row faces the player)
-      b.mesh.updateWorldMatrix(true, false);
-      frame.quaternion.copy(b.mesh.getWorldQuaternion(new THREE.Quaternion()))
-        .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2));
+      // flat on the button's face
+      frame.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), b.normal);
       frame.position.copy(b.top).addScaledVector(b.normal, 0.004);
       frame.layers.set(FX_LAYER);
       frame.visible = false;
@@ -2231,7 +2229,11 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       const r = rings[lane];
       const fl = firelights[lane];
       r.mesh.visible = false;
-      const frame = lane >= 6 ? barFrames[lane - 6] : null;
+      // a gun column has ONE button: its bottom lane draws the glow for both rows; the top lane draws nothing
+      const gunK = lane >= 6 ? (lane - 6) % BARS : -1;
+      if (gunK >= PER_ROW) { if (fl) fl.glow.visible = false; continue; }
+      if (gunK >= 0) { const topLane = lane + PER_ROW; pending[lane] = Math.max(pending[lane], pending[topLane]); previewAt[lane] = Math.max(previewAt[lane], previewAt[topLane]); }
+      const frame = lane >= 6 ? barFrames[(lane >= 6 + BARS ? PER_ROW : 0) + gunK] : null;
       // the RED cue: the target itself warms to red as its arrow arrives, reddest on the beat
       const mat = drumMat[lane];
       if (mat && mat.color && !mat.userData.base) mat.userData.base = mat.color.clone();

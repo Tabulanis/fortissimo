@@ -250,20 +250,9 @@ function tickDefend(heardNow) {
     lv[i] = Math.max(lv[i] || 0, Math.min(1, Math.max(0, 1 - (t - heardNow) / APPROACH_S)));
   }
   stage3d.setPending(lv);
-  // SWITCH (owner, 2026-10-04): at the guns the stream runs three on one row, then three on the
-  // other — the first note of a new row calls it out as it reaches its 3 mark
-  for (const n of defend.offered()) {
-    if (!n.switch) continue;
-    const key = n.id + "@" + n.k, t = clock.first + n.at * clock.beatDur;
-    if (switchShown.has(key) || t - heardNow > 3 * clock.beatDur) continue;
-    switchShown.add(key);
-    const i = LANE_INDEX[n.lane], p = i != null && stage3d.drumScreen(i), top = +n.lane.split(" ")[1] >= 9;
-    if (p) showStamp(top ? "▲ SWITCH" : "▼ SWITCH", p.x, p.y - 70, { size: 34, color: top ? "#9fe6ff" : "#ffd27a", ms: 1300 });
-  }
   tickSiege(heardNow);
   defendEvents();
 }
-const switchShown = new Set();   // "id@pass": SWITCH calls already made
 // THE SIEGE (owner, 2026-10-03): arrows rain in the whole time. The shield rises with
 // the drums; under its height they're zapped, over it they hurt you and the town.
 // Once it's full it has its own life; broken, it drops until locks heal it back.

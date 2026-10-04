@@ -63,7 +63,6 @@ export class Defend {
     this._bonus = [];                 // the filler notes made so far (ids continue after the song's)
     this._done = new Set();           // "id@k": that occurrence was hit, or counted as a miss
     this._run = [];                   // Medium / Hard: the hits of the pattern under way
-    this._switch = new Set();         // "id@k": the first note of a new row phrase at the guns (SWITCH)
     this.events = [];                 // what happened since the last drain()
     this._skipEmpty();
   }
@@ -98,11 +97,10 @@ export class Defend {
     const SLACK = gap >= 1 ? 1 : 0.5;
     let last = -Infinity, i = 0;
     const used = {};   // lane -> the beat it was last picked at: the instrument left alone longest goes next
-    // PHRASES at the guns (owner, 2026-10-04): three on the bottom row, SWITCH, three on the top,
-    // SWITCH... — so both rows (soldiers AND balloons / the boss) get played; the first note of
-    // each new row is marked `switch` for the game to call out
+    // PHRASES at the guns (owner, 2026-10-04): three on the bottom row, three on the top, and
+    // back — so both rows (soldiers AND balloons / the boss) get played
     const guns = this.section !== "drums" && this.keep !== "none", PHRASE = 3, rowOf = (n) => (+n.lane.split(" ")[1] >= 9 ? 1 : 0);
-    let rowWant = 0, rowCount = 0, callSwitch = false;
+    let rowWant = 0, rowCount = 0;
     while (i < cands.length) {
       while (i < cands.length && cands[i].beat - last < gap - 1e-6) i++;
       if (i >= cands.length) break;
@@ -118,9 +116,8 @@ export class Defend {
       if (!pick) { best = Infinity; for (let j = i; j < cands.length && cands[j].beat <= b0 + SLACK + 1e-6; j++) { const u = used[cands[j].lane] ?? -Infinity; if (u < best) { best = u; pick = cands[j]; } } }
       plan.push(pick); last = pick.beat; used[pick.lane] = pick.beat;
       if (guns) {
-        if (callSwitch) { this._switch.add(pick.id + "@" + k); callSwitch = false; }
         if (rowOf(pick) !== rowWant) { rowWant = rowOf(pick); rowCount = 0; }
-        if (++rowCount >= PHRASE) { rowWant ^= 1; rowCount = 0; callSwitch = true; }
+        if (++rowCount >= PHRASE) { rowWant ^= 1; rowCount = 0; }
       }
       let at = 1;   // together: two hands at most, a different instrument each
       for (let j = i; j < cands.length && cands[j].beat <= last + 1e-6; j++) { const n = cands[j]; if (n !== pick && Math.abs(n.beat - last) < 1e-6 && at < together && n.lane !== pick.lane && (!guns || rowOf(n) === rowOf(pick))) { plan.push(n); used[n.lane] = n.beat; at++; } }
@@ -164,7 +161,7 @@ export class Defend {
         const n = this.note(id), t = k * L + n.beat;
         if (t < this.now - this.graceBeats || t > this.now + this.windowBeats) continue;
         seen.add(id);
-        out.push({ ...n, at: t, k, switch: this._switch.has(id + "@" + k) });
+        out.push({ ...n, at: t, k });
       }
     }
     return out.sort((a, b) => a.at - b.at);

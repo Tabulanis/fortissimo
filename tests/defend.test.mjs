@@ -131,7 +131,5 @@ console.log("defend ok (stream)");
   d.windowBeats = 16; d.graceBeats = 0.3; d.missFrom = 0; d.now = 0;
   const w = d.offered(), rows = w.map((n) => (+n.lane.split(" ")[1] >= 9 ? "T" : "B")).join("");
   assert.ok(/^(BBBTTT)+/.test(rows), `three bottom, three top, from the start (${rows})`);
-  const sw = w.map((n, i) => (n.switch ? i : -1)).filter((i) => i >= 0);
-  assert.deepEqual(sw.slice(0, 2), [3, 6], `SWITCH marks the first of each new row (${sw})`);
   console.log("phrases ok");
 }
