@@ -114,13 +114,26 @@ let LESSONS = null;
 const judgeDiff = () => judgeFor(RUN);   // what a hit is judged by
 const song = () => LESSONS[roundIdx];
 const lastRound = () => roundIdx >= LESSONS.length - 1;
-// THE BOSS'S TWO CRYSTALS (owner, 2026-10-04): the song's top-row treble notes (bars 9-16) fold onto
-// two — bars 9-12 onto the LEFT crystal (treble 9), 13-16 onto the RIGHT (treble 13) — each note keeping its pitch
-const CRYSTAL_L = "treble 9", CRYSTAL_R = "treble 13";
-const toCrystals = (n) => { const m = /^treble (\d+)$/.exec(n.lane); if (!m || +m[1] < 9) return n; return { ...n, lane: +m[1] <= 12 ? CRYSTAL_L : CRYSTAL_R }; };
+// THE BOSS STATION (owner, 2026-10-04): the song's top-row treble notes (bars 9-16) come DOWN onto the
+// mortars of the same column (pitch kept) — the two crystals aren't song notes: the mortar fire CHARGES
+// them, and you hit one when it's READY (THE LIGHTNING, below)
+const toCrystals = (n) => { const m = /^treble (\d+)$/.exec(n.lane); if (!m || +m[1] < 9) return n; return { ...n, lane: `treble ${+m[1] - 8}` }; };
+// ALL SIX DRUMS (owner, 2026-10-04): every drum stands; when a song leaves some out, its busiest
+// drum lends every third of its notes to the empty ones, in turn — easy songs get the whole kit
+const DRUM_LANES = [...LAYOUT.top, ...LAYOUT.bottom].map((l) => l.name);
+function spreadDrums(notes) {
+  const count = Object.fromEntries(DRUM_LANES.map((l) => [l, 0]));
+  for (const n of notes) if (n.lane in count) count[n.lane]++;
+  const missing = DRUM_LANES.filter((l) => !count[l]);
+  if (!missing.length) return notes;
+  const busiest = DRUM_LANES.reduce((a, b) => (count[b] > count[a] ? b : a));
+  if (count[busiest] < 8) return notes;
+  let k = 0, i = 0;
+  return [...notes].sort((a, b) => a.beat - b.beat).map((n) => (n.lane === busiest && (i++ % 3 === 1) ? { ...n, lane: missing[k++ % missing.length] } : n));
+}
 function buildLessons() {
   LESSONS = SONGS.map((s) => {
-    const notes = s.notes.map(toCrystals);
+    const notes = spreadDrums(s.notes.map(toCrystals));
     const { play, backing } = simplifyNotes(notes, RUN.patterns);
     return { ...s, notes, playNotes: play, backingNotes: backing };
   });
@@ -212,8 +225,8 @@ hudUI.setLife(100, 100);
 hudUI.setShield(0);
 
 function applyStage() {
-  const used = new Set(song().notes.map((n) => LANE_INDEX[n.lane]));   // only the drums this song uses; the guns it never plays are dimmed
-  for (let i = 0; i < 6 + 2 * BARS; i++) stage3d.setDrumVisible(i, used.has(i));
+  const used = new Set(song().notes.map((n) => LANE_INDEX[n.lane]));   // every drum stands (owner); the guns the song never plays are dimmed
+  for (let i = 0; i < 6 + 2 * BARS; i++) stage3d.setDrumVisible(i, i < 6 || used.has(i));
   stage3d.setStation(isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left
   if (audioStarted) updateBackLevels();                      // the sections' background music follows progress
   stageMessage();
@@ -227,7 +240,7 @@ function stageMessage() {
   const sec = defend.section, pct = Math.round(defend.progress(sec) * 100);
   hudUI.setPart(`${song().name} · ${sec} ${pct}%`);
   const how = sec === "drums" ? (IS_TOUCH ? "tap the drums" : "top Q W E · bottom A S D")
-    : sec === "treble" ? (IS_TOUCH ? "tap the mortars and the two crystals" : padConnected ? "D-pad + X A B Y = mortars · LB / RB = the crystals" : "mortars A S D F G H J K · crystals Q-R left, T-I right")
+    : sec === "treble" ? `mortar fire charges the crystals — hit one when it's READY, on its count (${IS_TOUCH ? "tap it" : padConnected ? "LB / RB" : "Q-R left, T-I right"})`
     : IS_TOUCH ? "tap the buttons" : padConnected ? "D-pad + X A B Y = the 8 columns (the game picks the gun)" : "mortars A S D F G H J K · cannons Q W E R T Y U I";
   const rule = RUN.lock === 1 ? "every note you hit locks"
     : RUN.keep === "any" ? `groups of ${RUN.lock === Infinity ? "the whole section" : RUN.lock}: every note you hit locks`
@@ -255,6 +268,7 @@ function tickDefend(heardNow) {
     lv[i] = Math.max(lv[i] || 0, Math.min(1, Math.max(0, 1 - (t - heardNow) / APPROACH_S)));
   }
   stage3d.setPending(lv);
+  if (defend.section === "treble") tickCrystals(heardNow);
   tickSiege(heardNow);
   defendEvents();
 }
@@ -322,29 +336,58 @@ function resolveGun(idx, press, rowForce = null) {
 }
 const PER_ROW_GUNS = 8;
 // a gun fires: siege.js aims the shell at the enemy nearest the wall (it lands where they'll be)
-function fireGun(idx, lane, at) {
+function fireGun(idx, lane, at, acc = 0.8) {
   const side = lane.startsWith("bass") ? "bass" : "treble";
-  if (isCrystal(lane)) { chargeLightning(idx); return; }   // treble's top row: crystals, not cannons
+  if (isCrystal(lane)) return;   // the crystals aren't guns (hitCrystal)
+  if (side === "treble") chargeCrystals(acc);   // the boss: every mortar shot charges a crystal
   const kind = +lane.split(" ")[1] >= 9 ? "balloon" : "soldier";   // cannons hunt the balloon guys, mortars the soldiers
   const target = siege ? siege.shoot(side, at + stage3d.gunFlight(idx), undefined, kind) : null;
   stage3d.fireCannon(idx, at, target);
 }
 const isGun = (lane) => /^(bass|treble) \d+$/.test(lane);   // every bar is a gun now: cannons on top, mortars below
 const isCrystal = (lane) => /^treble (9|1[0-6])$/.test(lane);   // treble's top row (owner, 2026-10-04)
-// THE LIGHTNING GUN: every crystal hit (yours, the band's, a filler's) adds a charge; at
-// LIGHTNING_NEED it fires — a bolt at the boss for a quarter of its life
-const LIGHTNING_NEED = 5;
-const lightning = { charge: 0 };
-function chargeLightning(idx) {
+// THE LIGHTNING (owner, 2026-10-04): every MORTAR hit at the boss (yours, the band's, a filler's)
+// charges a crystal — left and right in turn — by how good the hit was. A full crystal is READY:
+// it lights and counts 3, 2, 1 to a beat; hit it (LB / RB, Q-R / T-I, tap) and the tower fires a
+// bolt at the boss — a quarter of its life, times how close to the count you hit. Miss the count
+// and it stays ready, counting to the next bar.
+const CRYSTAL_NEED = 4;   // good mortar hits to charge one
+const lightning = { crystals: [{ charge: 0, ready: false, moment: 0 }, { charge: 0, ready: false, moment: 0 }], next: 0 };
+function nextCrystalMoment(from) {   // the first beat at least 3 beats on: a full 3, 2, 1
+  const b = Math.ceil((from - clock.first) / clock.beatDur) + 3;
+  return clock.first + b * clock.beatDur;
+}
+function chargeCrystals(acc = 0.8) {
+  const cs = lightning.crystals;
+  let i = lightning.next; if (cs[i].ready) i ^= 1; if (cs[i].ready) return;   // both ready: nothing to add
+  const c = cs[i];   // ONE crystal fills at a time (left, then right): one lights up every few good hits
+  c.charge = Math.min(CRYSTAL_NEED, c.charge + Math.max(0.3, acc));
+  if (c.charge >= CRYSTAL_NEED - 1e-9) { c.ready = true; c.moment = nextCrystalMoment(ctx.getOutputTimestamp().contextTime); lightning.next = i ^ 1; hudUI.say(`${i ? "Right" : "Left"} crystal READY — hit it on the count`, "good", 1800); }
+  pushCrystalState();
+}
+function tickCrystals(heardNow) {
+  const box = judgeDiff().window;
+  for (const c of lightning.crystals) if (c.ready && heardNow > c.moment + box) c.moment = nextCrystalMoment(heardNow - 2 * clock.beatDur);   // missed the count: it counts again
+  pushCrystalState();
+}
+function pushCrystalState() { stage3d.setCrystalState(lightning.crystals.map((c) => ({ charge: c.charge / CRYSTAL_NEED, ready: c.ready, moment: c.moment }))); }
+/** a crystal struck (side 0 left / 1 right): READY -> the bolt, by accuracy to its count; else a fizzle */
+function hitCrystal(side, press) {
+  const c = lightning.crystals[side], idx = 6 + BARS + 8 + (side ? 4 : 0), entry = KEYMAP_BY_IDX[idx];
+  const p = stage3d.drumScreen(idx);
+  stage3d.press(idx, "HIT"); stage3d.strike(idx, "HIT");
+  if (!c.ready) { pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...laneSound(entry.ln), velocity: 0.35, when: ctx.currentTime }); if (p) showStamp("not ready", p.x, p.y - 20, { size: 20, color: "#9fd4ff", ms: 600 }); return; }
+  const box = judgeDiff().window, off = press - c.moment, a = Math.abs(off);
+  const acc = a <= 0.02 ? 1.1 : Math.max(0.3, 1 - a / box);
+  c.ready = false; c.charge = 0;
+  pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...laneSound(entry.ln), velocity: Math.min(1.1, 0.6 + 0.5 * acc), when: ctx.currentTime });
+  roundOffsets.push(a <= box ? off : null);
+  if (p) showStamp(Math.round(Math.min(1, acc) * 100) + "%", p.x, p.y - 4, { size: 30, ms: 900 });
   stage3d.crystalHit(idx);
-  lightning.charge = Math.min(LIGHTNING_NEED, lightning.charge + 1);
-  stage3d.setCharge(lightning.charge / LIGHTNING_NEED);
-  if (lightning.charge < LIGHTNING_NEED) return;
-  lightning.charge = 0;
   const b = siege && siege.boss && siege.boss.alive ? siege.boss : null;
-  if (b) { stage3d.lightningStrike(stage3d.enemyPos("treble", b.dist, b.lat, 3.4)); siege.zapBoss(Math.ceil(b.of / 4)); hudUI.say("⚡ LIGHTNING!", "good", 1200); }
-  else stage3d.lightningStrike(stage3d.enemyPos("treble", 12, 0, 1.5));   // nothing to strike: it grounds down the court
-  setTimeout(() => stage3d.setCharge(0), 150);
+  if (b) { const dmg = Math.max(1, Math.round((b.of / 4) * Math.min(1.1, acc))); stage3d.lightningStrike(stage3d.enemyPos("treble", b.dist, b.lat, 3.4)); siege.zapBoss(dmg); hudUI.say(`⚡ LIGHTNING ${Math.round(acc * 100)}%`, "good", 1200); }
+  else stage3d.lightningStrike(stage3d.enemyPos("treble", 12, 0, 1.5));
+  pushCrystalState();
 }
 // a red flash round the edge of the screen: you got hit
 let hurtEl = null;
@@ -875,7 +918,7 @@ function onKey(e) {
     let slot = MELODY_KEYS[e.key.toLowerCase()];
     if (slot != null) {
       e.preventDefault();
-      if (partMode() === "treble" && slot >= 8) slot = slot < 12 ? 8 : 12;   // the boss's two crystals: Q W E R left, T Y U I right
+      if (partMode() === "treble" && slot >= 8) { hitCrystal(slot < 12 ? 0 : 1, press); return; }   // the boss's two crystals: Q W E R left, T Y U I right
       const entry = MELODY_ENTRY[partMode()][slot];
       hitLane(entry.idx, entry.ln, press, 1);
       return;
@@ -952,8 +995,7 @@ const pads = createPads({
     if (armed && !clock) { beginCount(); return; }
     if (!ctx || !drums || !pool || !clock || partMode() !== "treble") return;
     const o = ctx.getOutputTimestamp();
-    const entry = MELODY_ENTRY.treble[side === "left" ? 8 : 12];
-    hitLane(entry.idx, entry.ln, o.contextTime + (ts - o.performanceTime) / 1000 - calibration, 1);
+    hitCrystal(side === "left" ? 0 : 1, o.contextTime + (ts - o.performanceTime) / 1000 - calibration);
   },
   onMelody: (col, force, ts, rowForce) => {
     if (armed && !clock) { beginCount(); return; }
@@ -976,6 +1018,7 @@ const pads = createPads({
     // a controller in hand: the bars show its buttons instead of keyboard letters
     padConnected = st.pads.length > 0;
     for (const k of ["bass", "treble"]) stage3d.melodyStations[k].setLabels(padConnected ? PAD_LABELS[k] : IS_TOUCH ? NO_LABELS : MELODY_LETTERS);
+    if (padConnected || IS_TOUCH) stage3d.hideDrumLabels(); else stage3d.showDrumLabels();   // no letters on the drums with a pad in hand (owner)
     stageMessage();
     const parts = [...st.midi.map((n) => "🥁 " + n), ...st.pads.map((n) => "🎮 " + n.split("(")[0].trim())];
     if (parts.length) hudUI.say("Connected: " + parts.join(" · "), "good", 3000);
@@ -989,6 +1032,7 @@ for (const kind of ["bass", "treble"]) for (const e of MELODY_ENTRY[kind]) KEYMA
 stage3d.setVrHitHandler((idx, force, ms) => {
   if (!ctx || !drums || !pool || !clock) return;
   const o = ctx.getOutputTimestamp(), press = o.contextTime + (ms - o.performanceTime) / 1000 - calibration;
+  if (idx >= 6 + BARS + 8) { hitCrystal(idx >= 6 + BARS + 12 ? 1 : 0, press); return; }   // a crystal
   const entry = idx >= 6 ? resolveGun(idx, press) : KEYMAP_BY_IDX[idx];   // a gun column's one button: the game picks the gun
   if (!entry) return;
   hitLane(entry.idx, entry.ln, press, force);
@@ -1025,7 +1069,7 @@ function hitLane(idx, lane, press, padVel = 1) {
     const p = stage3d.drumScreen(idx);
     if (inBox) {
       const r = defend.hit(found.id, { offset: j.offset, velocity: vel });
-      if (isGun(lane.name)) fireGun(idx, lane.name, ctx.getOutputTimestamp().contextTime);   // your gun
+      if (isGun(lane.name)) fireGun(idx, lane.name, ctx.getOutputTimestamp().contextTime, Math.max(0, 1 - Math.abs(j.offset) / box) * (Math.abs(j.offset) <= 0.02 ? 1.1 : 1));   // your gun — at the boss it charges a crystal, by accuracy
       if (r !== "bonus") { const L = LIFE[RUN.damage] || LIFE.normal; life.you += L.heal; life.town += L.heal; }   // a filler note scores, but doesn't heal
       if (p) showStamp(Math.round(Math.max(0, 1 - Math.abs(j.offset) / box) * 100) + "%", p.x, p.y - 4, { size: 30, ms: 900 });
     } else {
@@ -1227,10 +1271,8 @@ function frame() {
     const up = buildUpcoming(heardNow);
     // ONE cue everywhere (owner, 2026-10-04): a rocket down its lane, for drums and every gun;
     // the guns' red buttons (stage3d's gun cues) light with them
-    const isCrystalLane = (i) => i >= 6 + BARS + 8;   // the boss's crystals: their own cue (a glow with the count), no rocket, no red button
-    stage3d.setGunCues(defend ? up.filter((u) => u.laneIdx >= 6 && !isCrystalLane(u.laneIdx)) : []);
-    stage3d.setCrystalCues(defend ? up.filter((u) => isCrystalLane(u.laneIdx)) : []);
-    stage3d.update(heardNow, up.filter((u) => !isCrystalLane(u.laneIdx)), ghostHits);
+    stage3d.setGunCues(defend ? up.filter((u) => u.laneIdx >= 6) : []);
+    stage3d.update(heardNow, up, ghostHits);
     if (defend) tickDefend(heardNow);
   } else {
     // before Start: keep the courtyard (and its drums) visible, no arrows
@@ -1287,6 +1329,7 @@ stage.addEventListener("pointerdown", (e) => {
   e.preventDefault();
   // the touch's own timestamp, on the heard audio clock (like a key press)
   const o = ctx.getOutputTimestamp();
+  if (lane >= 6 + BARS + 8) { hitCrystal(lane >= 6 + BARS + 12 ? 1 : 0, o.contextTime + (e.timeStamp - o.performanceTime) / 1000 - calibration); return; }   // a crystal
   const entry = lane >= 6 ? resolveGun(lane, o.contextTime + (e.timeStamp - o.performanceTime) / 1000 - calibration) : KEYMAP_BY_IDX[lane];   // a gun column's one button
   const force = e.pointerType === "pen" && e.pressure > 0 ? 0.4 + 0.6 * e.pressure : 1;
   hitLane(entry.idx, entry.ln, o.contextTime + (e.timeStamp - o.performanceTime) / 1000 - calibration, force);
@@ -1350,7 +1393,8 @@ if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; },
   get roundIdx() { return roundIdx; },
   setBackLevel: (v) => { for (const g of Object.values(backGain)) g.gain.value = v; },   // harness: backgrounds at full
-  get defend() { return defend; }, get siege() { return siege; },
+  get defend() { return defend; }, get siege() { return siege; }, get lightning() { return lightning; },
+  hitCrystal: (side) => hitCrystal(side, ctx.getOutputTimestamp().contextTime),   // harness only
   // fireGun: harness only
   fireGun: (idx, lane) => fireGun(idx, lane, ctx.getOutputTimestamp().contextTime),
   get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,

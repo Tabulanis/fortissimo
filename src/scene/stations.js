@@ -223,13 +223,14 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
   let lightning = null;
   if (kind === "treble") {
     const g = new THREE.Group();
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 2.3, 12), carriageMat); post.position.y = 1.15;
+    // smaller and off to the side, under the sightline to the boss (owner, 2026-10-04: "we need to see the monster")
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.07, 1.25, 12), carriageMat); post.position.y = 0.625;
     const coilMat = new THREE.MeshStandardMaterial({ color: 0xc8843a, metalness: 1.0, roughness: 0.25, emissive: 0x000000 });
-    const rings = [[0.9, 0.3], [1.3, 0.26], [1.65, 0.22], [1.95, 0.18]].map(([y, r]) => { const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.028, 10, 32), coilMat); m.position.y = y; m.rotation.x = Math.PI / 2; return m; });
-    const orbMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1.0, roughness: 0.06, envMapIntensity: 1.6, emissive: 0x3a8cff, emissiveIntensity: 0.25 });
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 32, 24), orbMat); orb.position.y = 2.55;
+    const rings = [[0.55, 0.19], [0.8, 0.16], [1.02, 0.13]].map(([y, r]) => { const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.02, 10, 32), coilMat); m.position.y = y; m.rotation.x = Math.PI / 2; return m; });
+    const orbMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1.0, roughness: 0.04, envMapIntensity: 1.8, emissive: 0x3a8cff, emissiveIntensity: 0.03 });   // CHROME
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.17, 32, 24), orbMat); orb.position.y = 1.42;
     for (const m of [post, ...rings, orb]) { m.castShadow = true; g.add(m); }
-    g.position.set(s * (rowNear[1] + 0.9), 0, BAR_MID_Z);
+    g.position.set(s * (rowNear[1] + 0.55), 0, BAR_MID_Z + s * ((PER_ROW - 1) / 2 * PITCH + 0.45));   // past the right-hand end of the rack
     group.add(g); g.updateMatrixWorld(true);
     lightning = { group: g, orb, orbMat, coilMat, rings, pos: orb.getWorldPosition(new THREE.Vector3()) };
   }

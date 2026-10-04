@@ -610,26 +610,24 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // BLOOM the lightning (owner, 2026-10-04): everything electric also sits on the shield's magic-bloom channel
   for (const o of [LG.orb, ...LG.rings, ...bolts3, ...arcs.map((a) => a.line), strikeFlash]) o.layers.enable(SHIELD_LAYER);
   for (const b of melodyStations.treble.bars) if (b.crystal && b.parts) for (const m of b.parts) m.layers.enable(SHIELD_LAYER);
-  // THE CRYSTALS' CUE (owner): no lane, no rocket — the crystal glows in over the last 3 beats
-  // with the count inside it, and flares on the beat
-  let crystalCues = [];
+  // THE CRYSTALS (owner, 2026-10-04): the mortar fire CHARGES them (the game says how full); a
+  // READY one glows hard, pulsing, and counts 3, 2, 1 to its moment inside itself; struck, it flares
+  let crystalState = [{ charge: 0, ready: false, moment: 0 }, { charge: 0, ready: false, moment: 0 }];
   const crystalNums = melodyStations.treble.bars.map((b) => { if (!b.crystal || b.stub) return null;
     const n = new THREE.Sprite(new THREE.SpriteMaterial({ map: COUNT_N[3], transparent: true, depthWrite: false, depthTest: false, fog: false }));
     n.renderOrder = 22; n.layers.set(FX_LAYER); n.visible = false; n.position.copy(b.centre); n.position.y += 0.02; scene.add(n); return { s: n, n: 0, at: 0 }; });
   function updateCrystalCues(heardNow) {
     const bars = melodyStations.treble.bars;
-    for (let k = PER_ROW; k < BARS; k++) {
-      const b = bars[k], cn = crystalNums[k];
-      if (!b.crystal || b.stub) continue;
-      let dt = Infinity;
-      for (const c of crystalCues) if ((c.laneIdx - 6) % BARS === k && c.time - heardNow > -0.05 && c.time - heardNow < dt) dt = c.time - heardNow;
-      const span = 3 * beatDur, glow = dt <= span ? Math.min(1, Math.max(0, 1 - dt / span)) : 0;
-      b._cueGlow = glow;
-      if (dt <= 0.05 && dt > -0.05 && !b._flared) { b._flared = true; crystalPulse[k] = 1; } else if (dt > 0.05) b._flared = false;
-      const n = dt <= span && dt > 0 ? Math.ceil(dt / beatDur) : 0;
-      if (n !== cn.n) { cn.n = n; cn.at = heardNow; if (n) cn.s.material.map = COUNT_N[n]; }
+    for (const [side, k] of [[0, PER_ROW], [1, PER_ROW + 4]]) {
+      const b = bars[k], cn = crystalNums[k], st = crystalState[side];
+      if (!b || !b.crystal || !cn) continue;
+      const dt = st.ready ? st.moment - heardNow : Infinity;
+      const pulse = st.ready ? 0.5 + 0.5 * Math.sin(heardNow * 9) : 0;
+      b._cueGlow = 0.9 * st.charge + (st.ready ? 0.8 + 0.6 * pulse : 0);
+      const n = st.ready && dt > 0 && dt <= 3 * beatDur + 0.01 ? Math.ceil(dt / beatDur) : 0;
+      if (n !== cn.n) { cn.n = n; cn.at = heardNow; if (n) cn.s.material.map = COUNT_N[Math.min(3, n)]; }
       cn.s.visible = n > 0;
-      if (n) { cn.s.material.opacity = Math.min(1, 0.35 + glow) * Math.min(1, dt / (0.4 * beatDur)); cn.s.scale.setScalar(0.3 * (1 + 0.4 * Math.exp(-9 * (heardNow - cn.at)))); }
+      if (n) { cn.s.material.opacity = Math.min(1, dt / (0.4 * beatDur)); cn.s.scale.setScalar(0.3 * (1 + 0.4 * Math.exp(-9 * (heardNow - cn.at)))); }
     }
   }
   function updateLightning(dt) {
@@ -638,7 +636,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     const boltAge = S.now - S.boltT0, bolting = boltAge < 0.35;
     LG.orb.scale.setScalar(1 + 0.4 * S.shown);
     LG.coilMat.emissive.setRGB(0.1 * S.shown, 0.35 * S.shown, 1.0 * S.shown);
-    LG.orbMat.emissiveIntensity = 0.25 + 2 * S.shown + (bolting ? 2.5 : 0);   // bright, not a white-out (the bloom channel doubles it)
+    LG.orbMat.emissiveIntensity = 0.03 + 1.6 * S.shown + (bolting ? 2.0 : 0);   // chrome at rest; lit by charge, not a white-out (the bloom channel doubles it)
     const bars = melodyStations.treble.bars;
     for (let k = PER_ROW; k < BARS; k++) { crystalPulse[k] *= Math.exp(-dt * 6); if (bars[k].crystal && !bars[k].stub) bars[k].mat.emissiveIntensity = 0.6 + 4 * (bars[k]._cueGlow || 0) + 3.5 * crystalPulse[k] + 0.4 * S.shown; }
     for (const a of arcs) { const age = S.now - a.t0; if (age > 0.25) { a.line.visible = false; continue; } a.line.visible = true; jag(a.line, a.from, LG.pos, 0.25); a.line.material.opacity = 1 - age / 0.25; }
@@ -716,7 +714,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       if (L.station !== station) L.seen = 0;   // a fresh section: guides start dark
       else if (hot) L.seen = 1;
       // drums: every drum in the song keeps its lane; guns: a lane lights when used, then stays as a faint guide
-      const isCrystal = L.i >= 6 + BARS + PER_ROW;   // the boss's crystals: no lane
+      const isCrystal = L.i >= 6 + BARS + PER_ROW;   // the boss's crystals: no lane (they aren't song notes)
       const want = station !== L.station || !drumVisible[L.i] || isCrystal ? 0 : L.i < 6 ? 1 : L.seen ? (hot ? 1 : 0.45) : 0;
       u.uOn.value += (want - u.uOn.value) * Math.min(1, fireDt * 3);
       L.mesh.visible = u.uOn.value > 0.01;
@@ -2578,7 +2576,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     volley: (a) => defense.volley(a),
     /** the guns' timing cues: [{laneIdx, time}] — fuses on cannons, falling shells into mortars */
     setGunCues: (cues) => { gunCues = cues; },
-    setCrystalCues: (cues) => { crystalCues = cues; },
+    setCrystalState: (st) => { crystalState = st; },
     debugGunCues: (cues) => { gunCuesTest = cues; },
     debugCountdown: () => [0, 1, 2, 3, 4, 5].map((i) => Math.max(0, ...activeNotes.filter((e) => e.laneIdx === i && e.num.visible).map((e) => e.numN))),
     debugGunInfo: () => ({ red: melodyStations.bass.bars.map((b) => +(b._red || 0).toFixed(2)) }),
@@ -2611,6 +2609,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       const a = arcs.reduce((best, x) => (x.t0 < best.t0 ? x : best)); a.t0 = lgState.now; a.from.copy(b.muzzle); },
     /** no key letters on the drums (touch screens: there are no keys) */
     hideDrumLabels: () => { labelsOff = true; for (const l of drumLabels) l.visible = false; },
+    showDrumLabels: () => { labelsOff = false; drumLabels.forEach((l, i) => { l.visible = drumVisible[i]; }); },
     setCharge: (f) => { lgState.charge = Math.max(0, Math.min(1, f)); },
     lightningStrike: (target) => { lgState.boltT0 = lgState.now; lgState.from.copy(LG.pos); lgState.to.copy(target); },
     /** a BALLOON's rocket (siege.js "balloonRocket"): from the balloon down at the cannon row, bursting there, landing at `landAt` */
