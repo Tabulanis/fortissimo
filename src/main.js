@@ -328,7 +328,7 @@ function chargeLightning(idx) {
   if (lightning.charge < LIGHTNING_NEED) return;
   lightning.charge = 0;
   const b = siege && siege.boss && siege.boss.alive ? siege.boss : null;
-  if (b) { stage3d.lightningStrike(stage3d.enemyPos("treble", b.dist, b.lat, 4.5)); siege.zapBoss(Math.ceil(b.of / 4)); hudUI.say("⚡ LIGHTNING!", "good", 1200); }
+  if (b) { stage3d.lightningStrike(stage3d.enemyPos("treble", b.dist, b.lat, 3.4)); siege.zapBoss(Math.ceil(b.of / 4)); hudUI.say("⚡ LIGHTNING!", "good", 1200); }
   else stage3d.lightningStrike(stage3d.enemyPos("treble", 12, 0, 1.5));   // nothing to strike: it grounds down the court
   setTimeout(() => stage3d.setCharge(0), 150);
 }

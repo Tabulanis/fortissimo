@@ -199,7 +199,7 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
       const r = e.kind === "boss" ? bossRig : rigs.find((x) => !x.live);
       if (!r) return;
       r.live = true; r.dead = false; r.enemy = e; r.t = 0; r.g.visible = true; r.ph0 = Math.random() * 6; r.thrashAt = null; r.thrashing = null;
-      r.scale = e.kind === "boss" ? 4.2 : e.kind === "balloon" ? 1.3 : 1.6 + Math.random() * 0.5;   // a mob of sizes
+      r.scale = e.kind === "boss" ? 3.2 : e.kind === "balloon" ? 1.0 : 1.0 + Math.random() * 0.25;   // human-sized (owner: "they are huge"), the boss three men tall
       if (e.kind === "balloon") { const bl = balloons.find((x) => !x.rig); if (bl) { bl.rig = r; bl.pop = -1; bl.env.visible = bl.basket.visible = true; bl.env.scale.setScalar(1); bl.env.material.opacity = 0.95; } }
       posed(r, e, 0);
       for (let i = 0; i < N; i++) r.prev[i].copy(r.pos[i]);
