@@ -20,6 +20,7 @@ import { createVrHits } from "../input/vrhits.js";
 import { createFire } from "./fire.js";
 import { createStation, BAR_MID_Z, BARS, PER_ROW } from "./stations.js";
 import { createDefense } from "./defense.js";
+import { createTroops } from "./troops.js";
 import { createPool, poolContains, POOL, SURFACE_Y } from "./pool.js";
 import { bootlog } from "../bootlog.js";
 
@@ -559,6 +560,11 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   })();
   // THE DEFENSE you build by playing: the shield dome and the cannons (defense.js)
   const defense = createDefense(scene, { fireTexture, layer: FX_LAYER, glowLayer: SHIELD_LAYER });
+  // THE ARMY down the courts (troops.js): fwd = down the court a station faces, right = across it
+  const courtOf = (side) => { const yaw = STATIONS[side].yaw, fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    return { fwd: new THREE.Vector3(fx, 0, fz), right: new THREE.Vector3(-fz, 0, fx) }; };
+  const COURTS = { bass: courtOf("bass"), treble: courtOf("treble") };
+  const troops = createTroops(scene, { court: (side) => COURTS[side], center: new THREE.Vector3(0, 0, 0.3), layer: FX_LAYER });
 
   // GUN CUES (owner, 2026-10-03: arrows can't reach the guns through the shield):
   // a CANNON's fuse burns down — the spark reaches the touch-hole on the beat;
@@ -1879,6 +1885,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   function update(heardNow, upcoming, ghosts = []) {
     { const t = performance.now(); fireDt = Math.min(0.05, (t - fireT) / 1000); fireT = t; }
     defense.update(heardNow, fireDt);
+    troops.update(fireDt);
     updateBeatKick(heardNow);
     updateGunCues(heardNow);
     // clouds drift; the sunlight follows how much cloud is over the sun (eased over ~1.5 s)
@@ -2430,10 +2437,21 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     debugDefense: (heard) => ({ heard: +heard.toFixed(2), ...defense.debug() }),
     /** a missed arrow reached the shield: flash the part in front of that target */
     /** a top-row note fires that bar's cannon at its archer, at heard time `at` */
-    fireCannon: (laneIdx, at) => {
+    /** a gun's shell flight (s): mortars lob slow, cannons fly fast */
+    gunFlight: (laneIdx) => { const name = laneIdx < 6 + BARS ? "bass" : "treble", b = melodyStations[name] && melodyStations[name].bars[(laneIdx - 6) % BARS]; return b && b.mortar ? 1.5 : 0.9; },
+    troopSpawn: (e) => troops.spawn(e), troopKill: (e, by) => troops.kill(e, by), bossHit: (e) => troops.bossHit(e),
+    debugTroops: () => troops.debug(),
+    fireCannon: (laneIdx, at, target = null) => {
       if (laneIdx < 6 || laneIdx >= N_T) return;
       const name = laneIdx < 6 + BARS ? "bass" : "treble", k = (laneIdx - 6) % BARS;
       const b = melodyStations[name].bars[k], from = b.muzzle || drumFace[laneIdx];
+      if (target) {   // at an enemy (siege.js aimed it): {dist, lat} down this court
+        const c = COURTS[name];
+        _shot.set(0, 0, 0.3).addScaledVector(c.fwd, target.dist).addScaledVector(c.right, target.lat);
+        _shot.y = b.mortar ? 0.3 : 1.0;
+        defense.fire(from, _shot, at, b.mortar ? { arc: 9, dur: 1.5 } : { arc: 1.2, dur: 0.9 });
+        return;
+      }
       // FORWARD, down the court you're facing (owner: "so we can see"), fanned across the view
       const yaw = STATIONS[name].yaw, fx = -Math.sin(yaw), fz = -Math.cos(yaw), j = (k % PER_ROW) - (PER_ROW - 1) / 2;
       if (b.mortar) {   // mortars lob high, landing nearer down the court

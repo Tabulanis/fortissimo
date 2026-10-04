@@ -26,7 +26,7 @@ import { normalize, judgeFor, simplifyNotes, scoreMultiplier, levelOf } from "./
 const runName = (r) => { const lv = levelOf(r); return lv ? `Level ${lv}` : "Custom"; };
 import { createMenu } from "./ui/menu.js";
 import { Defend, LIFE } from "./game/defend.js";
-import { Siege } from "./game/siege.js";
+import { Siege, ARMY } from "./game/siege.js";
 import { gradeRound } from "./game/grade.js";
 import { createResults } from "./ui/results.js";
 import { showStamp } from "./ui/locked.js";
@@ -129,7 +129,8 @@ const roundsReady = loadRoundFiles().then((songs) => {
 // come for the notes you still need (song time: the "part" is the whole song),
 // a correct hit locks by the run's lock size. Before Start: nothing is offered.
 let defend = null;
-let siege = null;                // the enemy: arrows always coming, the shield's life (siege.js)
+let siege = null;                // the enemy: arrows always coming, the shield's life, the army (siege.js)
+let waveSection = null;          // the section whose army is out
 let defendFrom = 0;              // misses count from here (a breath after Start)
 const occDone = new Set();       // "noteId@pass": that occurrence was hit or counted as a miss
 const offeredAt = new Map();     // noteId -> when it was first offered (its arrow can only come after that)
@@ -280,12 +281,28 @@ function tickSiege(heardNow) {
   siege.rise = defend.progress("drums");
   if (drumsDone && !siege.full) { siege.full = true; showShield(); hudUI.say("🛡 The shield is up — it takes the hits now", "good", 2600); }
   siege.paused = life.over;
+  // THE ARMY: bass brings soldiers, treble the BOSS (its life: 2 hits for every treble note you'll play)
+  const sec = defend.section;
+  if (sec !== waveSection) {
+    if (waveSection === "bass" || waveSection === "treble") siege.endWave();
+    if (sec === "bass" || sec === "treble") {
+      const trebleNotes = (song().playNotes || song().notes).filter((n) => n.lane.startsWith("treble")).length;
+      siege.startWave(sec, { bossHp: Math.max(12, trebleNotes * ARMY.bossHpPerNote) });
+      if (sec === "treble") hudUI.say("⚠ THE BOSS IS COMING — keep the guns firing!", "bad", 3500);
+      else hudUI.say("Here they come — every note fires a gun", "good", 3000);
+    }
+    waveSection = sec;
+  }
   siege.tick(heardNow);
   for (const e of siege.drain()) {
     if (e.type === "arrow") stage3d.volley({ part: defend.section || "drums", ...e });
     else if (e.type === "arrowHit") { life.you -= e.dmg; life.town -= e.dmg; }
     else if (e.type === "shieldBroken") { showShield(); hudUI.say("The shield broke! Lock notes to raise it", "bad", 2600); }
     else if (e.type === "shieldBack") { showShield(); hudUI.say("🛡 Shield back up", "good", 2000); }
+    else if (e.type === "spawn") stage3d.troopSpawn(e.enemy);
+    else if (e.type === "killed") { stage3d.troopKill(e.enemy, e.by); if (e.enemy.kind === "boss") hudUI.say("💥 THE BOSS IS DOWN!", "good", 4000); }
+    else if (e.type === "bossHit") stage3d.bossHit(e.enemy);
+    else if (e.type === "wallHit") life.town -= e.dmg;   // no shield: they're at the town
   }
   hudUI.setShield(siege.full ? siege.hp : 100 * siege.rise, siege.full ? (siege.broken ? "broken" : "up") : "building");
 }
@@ -295,6 +312,12 @@ function showShield() {
   // broken, it's down until it's healed back
   const st = siege && siege.broken ? { progress: 0, up: false } : { progress: defend.progress("drums"), up: defend.progress("drums") >= 1 };
   stage3d.setShield({ drums: st, bass: st, treble: st });
+}
+// a gun fires: siege.js aims the shell at the enemy nearest the wall (it lands where they'll be)
+function fireGun(idx, lane, at) {
+  const side = lane.startsWith("bass") ? "bass" : "treble";
+  const target = siege ? siege.shoot(side, at + stage3d.gunFlight(idx)) : null;
+  stage3d.fireCannon(idx, at, target);
 }
 const isGun = (lane) => /^(bass|treble) \d+$/.test(lane);   // every bar is a gun now: cannons on top, mortars below
 function defendEvents() {
@@ -770,7 +793,7 @@ function scheduleGhosts() {
       velocity: e.velocity * 0.85,   // exactly as played, a touch under live play
       when: e.time,
     });
-    if (defend && isGun(e.lane)) stage3d.fireCannon(entry.idx, e.time);   // the band's cannons fire on their notes
+    if (defend && isGun(e.lane)) fireGun(entry.idx, e.lane, e.time);   // the band's guns fire on their notes
   }
   scheduledUntil = until;
 }
@@ -940,7 +963,7 @@ function hitLane(idx, lane, press, padVel = 1) {
       const loop = 4 * song().bars * clock.beatDur;
       occDone.add(found.id + "@" + Math.round((j.time - clock.first - found.beat * clock.beatDur) / loop));   // this occurrence is hit, not a miss
       const r = defend.hit(found.id, { offset: j.offset, velocity: vel });
-      if (isGun(lane.name)) stage3d.fireCannon(idx, ctx.getOutputTimestamp().contextTime);   // your cannon
+      if (isGun(lane.name)) fireGun(idx, lane.name, ctx.getOutputTimestamp().contextTime);   // your gun
       if (r !== "wrong") { const L = LIFE[RUN.damage] || LIFE.normal; life.you += L.heal; life.town += L.heal; }
       if (p) showStamp(Math.round(Math.max(0, 1 - Math.abs(j.offset) / box) * 100) + "%", p.x, p.y - 4, { size: 30, ms: 900 });
     } else {
@@ -1263,7 +1286,8 @@ if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; },
   get roundIdx() { return roundIdx; },
   setBackLevel: (v) => { for (const g of Object.values(backGain)) g.gain.value = v; },   // harness: backgrounds at full
-  get defend() { return defend; }, get siege() { return siege; }, get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,
+  get defend() { return defend; }, get siege() { return siege; },
+  fireGun: (idx, lane) => fireGun(idx, lane, ctx.getOutputTimestamp().contextTime),   // harness only get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,
   get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln, midi) => laneSound(ln, midi),
   backInfo: () => ({ bpm: BPM, songBpm: song().bpm, loopSeconds: +(song().bars * 4 * clock.beatDur).toFixed(3),
     stretched: [...backCache].map(([k, b]) => [k, +b.duration.toFixed(3)]) }),

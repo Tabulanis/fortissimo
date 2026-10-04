@@ -1,0 +1,41 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" style="width:1400px;height:900px;border:0"></iframe>
+<script type="module">
+// THE ARMY: skip the drums, let soldiers march in, shell them (TABS ragdolls); then skip to the boss
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+localStorage.removeItem("gr.run");
+const f = document.getElementById("f");
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  if (w.location.href === "about:blank") return;
+  const grab = () => new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png"))));
+  const log = [];
+  try {
+    await wait(3500);
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(1500);
+    const G = w.__gr.game, s = w.__gr.stage3d, D = G.defend;
+    const skip = (sec) => { while (D.section === sec) D.hit(D.offered()[0].id); };
+    skip("drums");
+    await wait(11000);
+    log.push("bass, before firing: " + JSON.stringify(s.debugTroops()));
+    say("shot_army1", await grab());
+    for (let k = 0; k < 10; k++) { G.fireGun(6 + (k % 8) + (k % 2 ? 8 : 0), `bass ${1 + (k % 8) + (k % 2 ? 8 : 0)}`); await wait(350); }
+    await wait(900);
+    log.push("bass, shelled: " + JSON.stringify(s.debugTroops()) + " life " + JSON.stringify(G.life) + " shield " + G.siege.hp.toFixed(1));
+    say("shot_army2", await grab());
+    await wait(600);
+    say("shot_army3", await grab());
+    skip("bass");
+    await wait(14000);
+    log.push("treble: " + JSON.stringify(s.debugTroops()) + " boss hp " + (G.siege.boss && G.siege.boss.hp));
+    for (let k = 0; k < 6; k++) { G.fireGun(22 + k, `treble ${1 + k}`); await wait(300); }
+    await wait(1600);
+    log.push("boss shelled: " + JSON.stringify(s.debugTroops()) + " boss hp " + (G.siege.boss && G.siege.boss.hp) + "/" + (G.siege.boss && G.siege.boss.of));
+    say("shot_army4", await grab());
+    say("info_army", log.join("\n"));
+  } catch (e) { say("err_army", e.message + " " + e.stack); }
+};
+f.src = "/?quality=high";
+</script>

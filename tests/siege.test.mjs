@@ -41,3 +41,44 @@ const run = (s, from, to, step = 0.05) => { const ev = []; for (let t = from; t 
   assert.ok(!s.broken && s.hp >= REUP_AT && s.drain().some((e) => e.type === "shieldBack"), `healed back up after ${n} locks`);
 }
 console.log("siege ok");
+
+// THE ARMY: soldiers march in and stop at the wall; a shell kills what it lands on; the boss takes hits
+{
+  const { ARMY } = await import("../src/game/siege.js");
+  const s = new Siege({ beatDur: 0.5, rng: seq([0.5]) });
+  s.full = true; s.rise = 1; s.paused = false;
+  s.startWave("bass");
+  let ev = run(s, 0, 1);
+  const spawned = ev.filter((e) => e.type === "spawn");
+  assert.ok(spawned.length >= 1 && spawned[0].enemy.side === "bass", "soldiers come on the bass side");
+  const e = spawned[0].enemy;
+  // a shell aimed now lands where the soldier will be
+  const at = s.shoot("bass", 2.0, 1.0);
+  assert.ok(at && Math.abs(at.dist - (e.dist - ARMY.soldierSpeed * 1.0)) < 0.05, `leads its target: ${at && at.dist} vs ${e.dist}`);
+  ev = run(s, 1.05, 2.1);
+  assert.ok(ev.some((x) => x.type === "killed" && x.enemy.id === e.id), "the shell kills it");
+  // nothing on the other side: a treble gun has no target
+  assert.equal(s.shoot("treble", 3, 2), null);
+  // left alone, soldiers reach the wall and wear the shield down
+  const hp0 = s.hp;
+  run(s, 2.1, 2.1 + (ARMY.start - ARMY.wall) / ARMY.soldierSpeed + 3);
+  assert.ok(s.enemies.some((x) => x.alive && x.attacking), "they reach the wall");
+  assert.ok(s.hp < hp0, `and hit the shield: ${hp0} -> ${s.hp.toFixed(1)}`);
+}
+{
+  const s = new Siege({ beatDur: 0.5, rng: seq([0.5]) });
+  s.full = true;
+  s.startWave("treble", { bossHp: 3 });
+  const boss = s.boss;
+  assert.ok(boss && boss.kind === "boss" && boss.hp === 3);
+  let ev = [];
+  for (let k = 0; k < 3; k++) { s.shoot("treble", 0.5 + k, k); ev.push(...run(s, k, k + 0.95)); }
+  ev.push(...run(s, 3, 3.6));
+  assert.equal(ev.filter((x) => x.type === "bossHit").length, 3, "every shell hits the boss");
+  assert.ok(!boss.alive && ev.some((x) => x.type === "killed" && x.enemy === boss), "three hits bring it down");
+  // locking the last note ends the wave: everyone left falls
+  s.startWave("treble", { bossHp: 99 });
+  s.endWave();
+  assert.ok(s.enemies.every((x) => !x.alive) && s.drain().some((x) => x.type === "killed" && x.enemy.kind === "boss"));
+}
+console.log("army ok");
