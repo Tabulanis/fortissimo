@@ -50,7 +50,11 @@ void main() {
   // with a bright edge where it's still growing
   float risen = 1.0 - smoothstep(uRise - 0.05, uRise + 0.03, vUv.y);
   float edge = (uRise < 0.99) ? smoothstep(0.025, 0.0, abs(vUv.y - uRise)) * (0.4 + 0.6 * lum) : 0.0;   // a fine line, following the swirl
-  float a = (uStrength * (pow(lum, 1.6) * 1.1 + 0.15 * rim) * risen + uStrength * edge * 0.3 + hit * (0.4 + lum)) * floorFade;
+  // CLEAR LOW DOWN (owner, 2026-10-03: "it gotta not cover the foreground"): below head
+  // height the dome is see-through — the drums, guns and court stay clean; the magic is
+  // overhead. The rising edge line and the hit flashes still show low down.
+  float overhead = smoothstep(1.2, 2.2, vP.y);
+  float a = (uStrength * (pow(lum, 1.6) * 1.1 + 0.15 * rim) * risen * overhead + uStrength * edge * 0.3 + hit * (0.4 + lum)) * floorFade;
   gl_FragColor = vec4(mix(sw * 1.5, uColor, 0.2) + uColor * (0.5 * rim + hit + 0.5 * edge), a);
 }`;
 

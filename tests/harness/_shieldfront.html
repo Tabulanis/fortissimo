@@ -1,0 +1,23 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" style="width:1400px;height:900px;border:0"></iframe>
+<script type="module">
+// the full shield seen from the drums: does it cover the foreground?
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+localStorage.removeItem("gr.run2");
+const f = document.getElementById("f");
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  if (w.location.href === "about:blank") return;
+  try {
+    await wait(3500);
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(1500);
+    const s = w.__gr.stage3d, up = { progress: 1, up: true };
+    s.setShield({ drums: up, bass: up, treble: up });
+    await wait(3000);
+    say("shot_sf", await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png")))));
+  } catch (e) { say("err_sf", e.message); }
+};
+f.src = "/?quality=high";
+</script>

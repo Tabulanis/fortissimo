@@ -312,7 +312,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // hard, tinted a cool blue and added over the finished picture — a magic halo
   // on the shield only, nothing else blooms more than before
   const SHIELD_LAYER = 2;
-  let shieldGlow = null, shieldCamera = null, shieldMix = null, shieldOnly = false;
+  let shieldGlow = null, shieldCamera = null, shieldOccCamera = null, shieldMix = null, shieldOnly = false;
   let composer = null, gtao = null, bloom = null, lens = null, smaa = null;
   if (!LOW) {
   composer = new EffectComposer(renderer);
@@ -350,8 +350,16 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     shieldCamera.layers.set(SHIELD_LAYER);
     shieldGlow = new EffectComposer(renderer);
     shieldGlow.renderToScreen = false;
+    // FOREGROUND FIRST (owner, 2026-10-03: "the shield is blocking the drums"): the
+    // real scene as flat black, depth and all — whatever stands in front of the dome
+    // (drums, guns, sticks) hides it here too, so the glow only rises from shield you see
+    shieldOccCamera = camera.clone();
+    shieldOccCamera.layers.set(0);
+    const occ = new RenderPass(scene, shieldOccCamera, new THREE.MeshBasicMaterial({ color: 0x000000 }));
+    occ.clearColor = new THREE.Color(0x000000); occ.clearAlpha = 1;
+    shieldGlow.addPass(occ);
     const sp = new RenderPass(scene, shieldCamera);
-    sp.clearColor = new THREE.Color(0x000000); sp.clearAlpha = 1;
+    sp.clear = false;   // over the black foreground, depth-tested against it
     shieldGlow.addPass(sp);
     shieldGlow.addPass(new UnrealBloomPass(new THREE.Vector2(canvas.clientWidth || 1280, canvas.clientHeight || 720), 1.0, 0.7, 0.15));
     composer.addPass(new ShaderPass({
@@ -2272,6 +2280,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       if (shieldGlow) {   // the shield's own glow first, from the same view
         shieldCamera.position.copy(camera.position); shieldCamera.quaternion.copy(camera.quaternion);
         shieldCamera.projectionMatrix.copy(camera.projectionMatrix); shieldCamera.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
+        for (const c of [shieldOccCamera]) { c.position.copy(camera.position); c.quaternion.copy(camera.quaternion); c.projectionMatrix.copy(camera.projectionMatrix); c.projectionMatrixInverse.copy(camera.projectionMatrixInverse); }
         shieldGlow.renderToScreen = shieldOnly;   // harness: show the channel alone
         shieldGlow.render();
       }
