@@ -21,7 +21,7 @@ f.onload = async () => {
     await wait(11000);
     log.push("bass, before firing: " + JSON.stringify(s.debugTroops()));
     say("shot_army1", await grab());
-    for (let k = 0; k < 10; k++) { G.fireGun(6 + (k % 8) + (k % 2 ? 8 : 0), `bass ${1 + (k % 8) + (k % 2 ? 8 : 0)}`); await wait(350); }
+    for (let k = 0; k < 10; k++) { G.fireGun(6 + (k % 8) + (k % 2 ? 8 : 0), `bass ${1 + (k % 8) + (k % 2 ? 8 : 0)}`); if (k === 9) { await wait(70); say("shot_army6", await grab()); } await wait(350); }   // army6: the moment a cannon fires
     await wait(900);
     log.push("bass, shelled: " + JSON.stringify(s.debugTroops()) + " life " + JSON.stringify(G.life) + " shield " + G.siege.hp.toFixed(1));
     say("shot_army2", await grab());

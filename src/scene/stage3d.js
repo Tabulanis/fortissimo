@@ -650,13 +650,11 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   /** a MORTAR's cart lane, on the paving: from far down its court to just in front of its gun (f 0 -> 1) */
   function cartPoint(i, f, out) {
     const name = stationOf(i), b = melodyStations[name].bars[(i - 6) % BARS], fwd = courtFwd(name), right = new THREE.Vector3(-fwd.z, 0, fwd.x);
-    // along the paving, then up a short ramp right to the mortar itself (so it plainly arrives AT its gun)
-    const end = b.top.clone().addScaledVector(fwd, 0.1); end.y -= 0.02;
-    const foot = new THREE.Vector3(end.x, 0.04, end.z).addScaledVector(fwd, 1.3);
-    const lat = foot.clone().sub(LANE_C).dot(right);
+    // straight along the paving to the BASE of the mortar (owner, 2026-10-04: consistent)
+    const end = new THREE.Vector3(b.top.x, 0.04, b.top.z).addScaledVector(fwd, 0.3);
+    const lat = end.clone().sub(LANE_C).dot(right);
     const start = LANE_C.clone().addScaledVector(fwd, 26).addScaledVector(right, lat * 3.5).setY(0.04);
-    const RAMP = 0.9;
-    return f < RAMP ? out.copy(start).lerp(foot, f / RAMP) : out.copy(foot).lerp(end, (f - RAMP) / (1 - RAMP));
+    return out.copy(start).lerp(end, f);
   }
   function buildLane(i, pointAt, W) {
     const N = 48, P = new THREE.Vector3(), Q = new THREE.Vector3(), side = new THREE.Vector3();
@@ -745,6 +743,32 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     return { g, mat, glow, wheels, num, n: 0, live: false, laneIdx: -1 };
   });
   const _cp = new THREE.Vector3(), _cq = new THREE.Vector3();
+  // FIRING TELL (owner, 2026-10-04: "hard to notice the cannons going"): when a shot leaves, a
+  // bright muzzle flash, the barrel kicks back and glows hot for a moment
+  const muzzleFlashes = Array.from({ length: 10 }, () => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: fireTexture, color: 0xffe0a0, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true, fog: false })); s.layers.set(FX_LAYER); s.visible = false; scene.add(s); return s; });
+  const firing = [];   // { at, laneIdx }: shots that will leave at `at`
+  function gunKick(b) {
+    if (!b.mesh.userData.home) { b.mesh.userData.home = b.mesh.position.clone(); b.mesh.userData.axis = new THREE.Vector3(0, 1, 0).applyEuler(b.mesh.rotation).normalize(); }
+    b._kick = 1;
+  }
+  function updateFiring(heardNow, dt) {
+    for (let i = firing.length - 1; i >= 0; i--) {
+      if (heardNow < firing[i].at) continue;
+      const f = firing.splice(i, 1)[0], name = f.laneIdx < 6 + BARS ? "bass" : "treble", b = melodyStations[name].bars[(f.laneIdx - 6) % BARS];
+      if (b) gunKick(b);
+    }
+    let mi = 0;
+    for (const name of ["bass", "treble"]) for (const b of melodyStations[name].bars) {
+      if (!b._kick) continue;
+      b._kick = Math.max(0, b._kick - dt * 5);   // 0.2 s
+      const k = b._kick;
+      b.mesh.position.copy(b.mesh.userData.home).addScaledVector(b.mesh.userData.axis, -0.08 * k);   // recoil
+      if (b.mat.emissive) b.mat.emissive.setRGB(1.2 * k, 0.5 * k, 0.1 * k);   // the barrel glows hot
+      if (mi < muzzleFlashes.length && k > 0.3) { const s = muzzleFlashes[mi++]; s.visible = true; s.position.copy(b.muzzle); s.scale.setScalar(0.45 + 0.9 * (1 - k)); s.material.opacity = (k - 0.3) / 0.7; }
+      if (!k) b.mesh.position.copy(b.mesh.userData.home);
+    }
+    for (; mi < muzzleFlashes.length; mi++) muzzleFlashes[mi].visible = false;
+  }
   let gunCues = [], gunCuesTest = null;   // gunCuesTest: harness only
   const _fA = new THREE.Vector3(), _fB = new THREE.Vector3(), _fP = new THREE.Vector3();
   function updateGunCues(heardNow) {
@@ -2045,6 +2069,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     defense.update(heardNow, fireDt);
     troops.update(fireDt);
     updateLightning(fireDt);
+    updateFiring(heardNow, fireDt);
     updateBeatKick(heardNow);
     updateGunCues(heardNow);
     // clouds drift; the sunlight follows how much cloud is over the sun (eased over ~1.5 s)
@@ -2099,7 +2124,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         e.tubeMat.color.copy(_lc);
         e.flame.material.color.copy(_lc).lerp(_white3, 0.35);
         e.flame.material.opacity = 1;              // a recycled glance left these faded
-        e.glow.material.opacity = 0.3;
+        e.glow.material.opacity = 0.2;
         e.glow.material.color.copy(hexToColor(laneHex(u.laneIdx)));
         e.spawn.copy(SPAWNS[u.laneIdx]);
         e.face.copy(drumFace[u.laneIdx]);
@@ -2239,7 +2264,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       const far = Math.max(1, e.group.position.distanceTo(camera.position) / 5);
       // flame core keeps a readable size far away; the halo grows only a little,
       // so distant arrows are sharp points of fire, not blobs
-      const s = 0.28 * Math.min(far, 5) * (0.9 + 0.2 * Math.random());   // hot core; the sim is the fire
+      const s = 0.2 * Math.min(far, 5) * (0.9 + 0.2 * Math.random());   // the exhaust flame, in the lane's colour
       e.flame.scale.setScalar(s);
       e.glow.scale.setScalar(0.6 * Math.min(far, 1.8) * (0.9 + 0.2 * Math.random()));
       // the countdown it carries: 3, 2, 1 over its last three beats, the same size on screen at any distance
@@ -2253,7 +2278,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       // bigger flames so they stay readable, like the core sprite.
       if (dt >= 0) {
         _pT.copy(e.group.position).addScaledVector(_tan, -0.07 * ROCKET_SCALE);   // the rocket's exhaust trails behind
-        fireSim.trail(e.id, _pT, Math.min(far, 3));
+        fireSim.trail(e.id, _pT, Math.min(far, 3) * 0.3);   // a small exhaust: the lane-coloured flame is the rocket (owner: less bloom)
       }
     }
 
@@ -2629,6 +2654,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       if (laneIdx < 6 || laneIdx >= N_T) return;
       const name = laneIdx < 6 + BARS ? "bass" : "treble", k = (laneIdx - 6) % BARS;
       const b = melodyStations[name].bars[k], from = b.muzzle || drumFace[laneIdx];
+      firing.push({ at, laneIdx });   // the tell, when the shot leaves
       if (target) {   // at an enemy (siege.js aimed it): {dist, lat} down this court
         const c = COURTS[name];
         _shot.set(0, 0, 0.3).addScaledVector(c.fwd, target.dist).addScaledVector(c.right, target.lat);

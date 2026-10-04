@@ -19,7 +19,8 @@ const ids = (ns) => ns.map((n) => n.lane[0] + n.at);
 {
   const d = mk({ keep: "any" });
   const w = at(d, 0);
-  assert.ok(w.length >= 2 && w.every((n) => n.lane === "kick" || n.lane === "snare"), `first pass: the backbone (${ids(w)})`);
+  assert.ok(w.length >= 2 && w.every((n) => ["kick", "snare", "hat"].includes(n.lane)), `first pass: the groove — kick, snare, hat (${ids(w)})`);
+  assert.ok(new Set(w.map((n) => n.lane)).size >= 3, `it FLOWS between instruments, not kick kick kick (${ids(w)})`);
   assert.ok(w.every((n, i) => !i || n.at - w[i - 1].at >= 2 - 1e-9), "Easy: two beats apart, never two together");
   assert.ok(w.every((n) => n.at >= 0 && n.at <= 5), "only what's inside the window");
   // the stream keeps coming: time moves on, the window slides, nothing waits for a hit

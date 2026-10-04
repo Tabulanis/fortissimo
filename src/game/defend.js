@@ -82,7 +82,10 @@ export class Defend {
     const open = this.unlocked();
     let layer = open;
     if (this.keep !== "none" && open.length) {
-      if (this.section === "drums") { const t = Math.min(...open.map((n) => laneRank(n.lane))) + 0.9; layer = open.filter((n) => laneRank(n.lane) <= t); }
+      if (this.section === "drums") {   // the groove first: kick, snare AND hat together (owner: "bdrum snare hihat"), crash and toms after
+        const lo = Math.min(...open.map((n) => laneRank(n.lane))), t = lo < 3 ? 3.6 : lo + 0.9;
+        layer = open.filter((n) => laneRank(n.lane) <= t);
+      }
       else {
         let rows = open;
         if (this.keep === "any" && this.section === "bass") {   // EASY at bass: one row at a time (owner) — mortars first, then the cannons; the boss (treble) uses both
@@ -94,13 +97,25 @@ export class Defend {
     }
     const { gap, together, maxGap } = STREAM[this.keep] || STREAM.none;
     const cands = [...layer].sort((a, b) => a.beat - b.beat || laneRank(a.lane) - laneRank(b.lane) || a.id - b.id);
+    // FLOW (owner, 2026-10-04: "too many bdrum bdrum bdrum"): walk the song; each next hit is the
+    // earliest note a gap on, but within a beat of slack prefer one on a DIFFERENT instrument from
+    // the last — kick snare hat, snare kick snare — still the song's own notes at their own times
     const plan = [];
-    let last = -Infinity, at = 0;
-    for (const n of cands) {
-      if (Math.abs(n.beat - last) < 1e-6) { if (at < together) { plan.push(n); at++; } continue; }   // together: two hands at most
-      if (n.beat - last < gap - 1e-6) continue;
-      plan.push(n); last = n.beat; at = 1;
+    const SLACK = gap >= 1 ? 1 : 0.5;
+    let last = -Infinity, i = 0;
+    const used = {};   // lane -> the beat it was last picked at: the instrument left alone longest goes next
+    while (i < cands.length) {
+      while (i < cands.length && cands[i].beat - last < gap - 1e-6) i++;
+      if (i >= cands.length) break;
+      const b0 = cands[i].beat;
+      let pick = cands[i], best = Infinity;
+      for (let j = i; j < cands.length && cands[j].beat <= b0 + SLACK + 1e-6; j++) { const u = used[cands[j].lane] ?? -Infinity; if (u < best) { best = u; pick = cands[j]; } }
+      plan.push(pick); last = pick.beat; used[pick.lane] = pick.beat;
+      let at = 1;   // together: two hands at most, a different instrument each
+      for (let j = i; j < cands.length && cands[j].beat <= last + 1e-6; j++) { const n = cands[j]; if (n !== pick && Math.abs(n.beat - last) < 1e-6 && at < together && n.lane !== pick.lane) { plan.push(n); used[n.lane] = n.beat; at++; } }
+      while (i < cands.length && cands[i].beat <= last + 1e-6) i++;
     }
+    plan.sort((a, b) => a.beat - b.beat);
     // FILL the long waits with THE SONG: its notes in the gap, locked ones replayed (bonus),
     // unlocked ones from later layers brought forward (real) — every FILL_STEP at most
     const inPlan = new Set(plan.map((n) => n.id)), filled = [], promoted = [];
