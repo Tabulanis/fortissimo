@@ -114,10 +114,15 @@ let LESSONS = null;
 const judgeDiff = () => judgeFor(RUN);   // what a hit is judged by
 const song = () => LESSONS[roundIdx];
 const lastRound = () => roundIdx >= LESSONS.length - 1;
+// THE BOSS'S TWO CRYSTALS (owner, 2026-10-04): the song's top-row treble notes (bars 9-16) fold onto
+// two — bars 9-12 onto the LEFT crystal (treble 9), 13-16 onto the RIGHT (treble 13) — each note keeping its pitch
+const CRYSTAL_L = "treble 9", CRYSTAL_R = "treble 13";
+const toCrystals = (n) => { const m = /^treble (\d+)$/.exec(n.lane); if (!m || +m[1] < 9) return n; return { ...n, lane: +m[1] <= 12 ? CRYSTAL_L : CRYSTAL_R }; };
 function buildLessons() {
   LESSONS = SONGS.map((s) => {
-    const { play, backing } = simplifyNotes(s.notes, RUN.patterns);
-    return { ...s, playNotes: play, backingNotes: backing };
+    const notes = s.notes.map(toCrystals);
+    const { play, backing } = simplifyNotes(notes, RUN.patterns);
+    return { ...s, notes, playNotes: play, backingNotes: backing };
   });
 }
 buildLessons();
@@ -221,9 +226,9 @@ function stageMessage() {
   if (defend.done) { hudUI.setPart(`${song().name} done`); return; }
   const sec = defend.section, pct = Math.round(defend.progress(sec) * 100);
   hudUI.setPart(`${song().name} · ${sec} ${pct}%`);
-  const topName = sec === "treble" ? "crystals (charge the lightning gun)" : "cannons";
-  const how = sec === "drums" ? (IS_TOUCH ? "tap the drums" : "top Q W E · bottom A S D") : IS_TOUCH ? "tap the buttons"
-    : padConnected ? "D-pad + X A B Y = the 8 columns (the game picks the gun)" : `mortars A S D F G H J K · ${topName} Q W E R T Y U I`;
+  const how = sec === "drums" ? (IS_TOUCH ? "tap the drums" : "top Q W E · bottom A S D")
+    : sec === "treble" ? (IS_TOUCH ? "tap the mortars and the two crystals" : padConnected ? "D-pad + X A B Y = mortars · LB / RB = the crystals" : "mortars A S D F G H J K · crystals Q-R left, T-I right")
+    : IS_TOUCH ? "tap the buttons" : padConnected ? "D-pad + X A B Y = the 8 columns (the game picks the gun)" : "mortars A S D F G H J K · cannons Q W E R T Y U I";
   const rule = RUN.lock === 1 ? "every note you hit locks"
     : RUN.keep === "any" ? `groups of ${RUN.lock === Infinity ? "the whole section" : RUN.lock}: every note you hit locks`
     : RUN.keep === "half" ? `groups of ${RUN.lock === Infinity ? "the whole section" : RUN.lock}, in order — break it and half of your hits still lock`
@@ -302,6 +307,7 @@ function showShield() {
 function resolveGun(idx, press, rowForce = null) {
   const base = idx < 6 + BARS ? 6 : 6 + BARS, col = (idx - 6) % PER_ROW_GUNS;
   const bottom = base + col, top = base + PER_ROW_GUNS + col;
+  if (base === 6 + BARS) return KEYMAP_BY_IDX[bottom];   // the boss station: the top row is the two crystals (LB / RB), columns are mortars
   if (rowForce === "top") return KEYMAP_BY_IDX[top];
   if (rowForce === "bottom") return KEYMAP_BY_IDX[bottom];
   let best = null, bestD = Infinity, rowNext = null, nextAt = Infinity;
@@ -446,7 +452,7 @@ const MELODY_KEYS = Object.fromEntries(MELODY_LETTERS.map((c, i) => [c.toLowerCa
 // the pad: the same 8 buttons for both rows (hold LT = top row); drawn as D-pad arrows / face letters
 // the pad (owner, 2026-10-04): D-pad + X A B Y = the 8 COLUMNS; the game picks the row — one label per column
 const PAD_ROW = ["dL", "dD", "dR", "dU", "X", "A", "B", "Y"];
-const PAD_LABELS = [...PAD_ROW, ...Array(8).fill("")];
+const PAD_LABELS = { bass: [...PAD_ROW, ...Array(8).fill("")], treble: [...PAD_ROW, "LB", "", "", "", "RB", "", "", ""] };   // the boss's crystals: the bumpers
 const NO_LABELS = Array(16).fill("");   // tablets: no letters anywhere (owner, 2026-10-04) — unless a controller is plugged in
 const MELODY_ENTRY = { bass: [], treble: [] };
 for (const kind of ["bass", "treble"]) {
@@ -866,9 +872,10 @@ function onKey(e) {
 
   // at the bars: A S D F G H J K = bottom row (bars 1-8), Q W E R T Y U I = top row (9-16); Shift+letter = the shortcuts
   if (isMelody() && !e.shiftKey) {
-    const slot = MELODY_KEYS[e.key.toLowerCase()];
+    let slot = MELODY_KEYS[e.key.toLowerCase()];
     if (slot != null) {
       e.preventDefault();
+      if (partMode() === "treble" && slot >= 8) slot = slot < 12 ? 8 : 12;   // the boss's two crystals: Q W E R left, T Y U I right
       const entry = MELODY_ENTRY[partMode()][slot];
       hitLane(entry.idx, entry.ln, press, 1);
       return;
@@ -941,6 +948,13 @@ function onKey(e) {
 const pads = createPads({
   melodyMode: () => isMelody(),
   onHint: () => playHint(),
+  onCrystal: (side, ts) => {   // LB / RB at the boss
+    if (armed && !clock) { beginCount(); return; }
+    if (!ctx || !drums || !pool || !clock || partMode() !== "treble") return;
+    const o = ctx.getOutputTimestamp();
+    const entry = MELODY_ENTRY.treble[side === "left" ? 8 : 12];
+    hitLane(entry.idx, entry.ln, o.contextTime + (ts - o.performanceTime) / 1000 - calibration, 1);
+  },
   onMelody: (col, force, ts, rowForce) => {
     if (armed && !clock) { beginCount(); return; }
     if (!ctx || !drums || !pool || !clock) return;
@@ -961,7 +975,7 @@ const pads = createPads({
   onStatus: (st) => {
     // a controller in hand: the bars show its buttons instead of keyboard letters
     padConnected = st.pads.length > 0;
-    for (const k of ["bass", "treble"]) stage3d.melodyStations[k].setLabels(padConnected ? PAD_LABELS : IS_TOUCH ? NO_LABELS : MELODY_LETTERS);
+    for (const k of ["bass", "treble"]) stage3d.melodyStations[k].setLabels(padConnected ? PAD_LABELS[k] : IS_TOUCH ? NO_LABELS : MELODY_LETTERS);
     stageMessage();
     const parts = [...st.midi.map((n) => "🥁 " + n), ...st.pads.map((n) => "🎮 " + n.split("(")[0].trim())];
     if (parts.length) hudUI.say("Connected: " + parts.join(" · "), "good", 3000);
@@ -1213,8 +1227,10 @@ function frame() {
     const up = buildUpcoming(heardNow);
     // ONE cue everywhere (owner, 2026-10-04): a rocket down its lane, for drums and every gun;
     // the guns' red buttons (stage3d's gun cues) light with them
-    stage3d.setGunCues(defend ? up.filter((u) => u.laneIdx >= 6) : []);
-    stage3d.update(heardNow, up, ghostHits);
+    const isCrystalLane = (i) => i >= 6 + BARS + 8;   // the boss's crystals: their own cue (a glow with the count), no rocket, no red button
+    stage3d.setGunCues(defend ? up.filter((u) => u.laneIdx >= 6 && !isCrystalLane(u.laneIdx)) : []);
+    stage3d.setCrystalCues(defend ? up.filter((u) => isCrystalLane(u.laneIdx)) : []);
+    stage3d.update(heardNow, up.filter((u) => !isCrystalLane(u.laneIdx)), ghostHits);
     if (defend) tickDefend(heardNow);
   } else {
     // before Start: keep the courtyard (and its drums) visible, no arrows

@@ -11,6 +11,7 @@
            D-pad (left down right up) + X A B Y = the 8 COLUMNS of guns; the game
            fires whichever gun of the column is due (owner, 2026-10-04: no row
            switch). Hold LT to force the top row, RT the bottom (free play).
+           At the BOSS the top row is two crystals: LB = left, RB = right.
    every mode: View = LISTEN (the whole section),
            either thumbstick = look around a little (screen mode)
 
@@ -41,7 +42,7 @@ export function midiToHit(data) {
   return lane ? { lane, force: vel / 127 } : null;
 }
 
-export function createPads({ onHit, onStatus, onMelody, onHint, melodyMode = () => false } = {}) {
+export function createPads({ onHit, onStatus, onMelody, onCrystal, onHint, melodyMode = () => false } = {}) {
   const status = { midi: [], pads: [] };
   const look = { x: 0, y: 0 };
   const report = () => onStatus && onStatus(status);
@@ -80,6 +81,8 @@ export function createPads({ onHit, onStatus, onMelody, onHint, melodyMode = () 
         if (melodyMode()) {
           // the guns: D-pad + face buttons = the 8 columns; LT / RT force a row; View listens
           const force = now[FORCE_TOP] ? "top" : now[FORCE_BOTTOM] ? "bottom" : null;
+          if (now[4] && !prev[4]) onCrystal && onCrystal("left", performance.now());    // LB / RB: the boss's two crystals
+          if (now[5] && !prev[5]) onCrystal && onCrystal("right", performance.now());
           for (const [i, col] of Object.entries(MELODY_BUTTONS)) {
             if (now[i] && !prev[i]) onMelody && onMelody(col, 1, performance.now(), force);
           }

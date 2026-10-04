@@ -113,13 +113,13 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
   // CRYSTALS (owner, 2026-10-04): at the TREBLE station the top row is crystals, not cannons —
   // hitting one charges the LIGHTNING GUN behind the station; charged, it strikes the boss
   const crystalMat = new THREE.MeshStandardMaterial({ color: 0x9fd4ff, metalness: 0.1, roughness: 0.15, emissive: 0x2a6fd0, emissiveIntensity: 0.9, transparent: true, opacity: 0.92 });
-  function makeCrystal(rg, i, z) {
+  function makeCrystal(rg, i, z, big = 1) {   // big: the BOSS's two crystals are large (owner, 2026-10-04)
     const mat = crystalMat.clone();   // its own: it flares when struck
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.04, 8), carriageMat);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.09 * big, 0.1 * big, 0.04, 8), carriageMat);
     base.position.set(s * 0.14, 0.02, z);
     const prisms = [[0, 0, 0.26, 0.05], [0.05, 0.04, 0.17, 0.035], [-0.045, -0.04, 0.14, 0.03]].map(([dx, dz, h, r]) => {
-      const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 6), mat);
-      m.position.set(s * 0.14 + dx, 0.04 + h / 2, z + dz); m.rotation.y = dx * 7; m.rotation.z = -s * 0.12 + dx * 2;
+      const m = new THREE.Mesh(new THREE.ConeGeometry(r * big, h * big, 6), mat);
+      m.position.set(s * 0.14 + dx * big, 0.04 + h * big / 2, z + dz * big); m.rotation.y = dx * 7; m.rotation.z = -s * 0.12 + dx * 2;
       return m;
     });
     for (const m of [base, ...prisms]) { m.castShadow = true; m.receiveShadow = true; rg.add(m); }
@@ -128,8 +128,9 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
     rg.updateMatrixWorld(true);
     const top = new THREE.Vector3(), buttonMat = null;   // set to the column's shared button below
     const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(rg.quaternion);
-    const muzzle = prisms[0].localToWorld(new THREE.Vector3(0, 0.13, 0));   // the tall crystal's tip
-    return { mesh: prisms[0], mat, label: lab, top, normal, radius: 0.05, len: 0.17, row: 1, crystal: true, muzzle, buttonMat };
+    const muzzle = prisms[0].localToWorld(new THREE.Vector3(0, 0.13 * big, 0));   // the tall crystal's tip
+    const centre = prisms[0].getWorldPosition(new THREE.Vector3());
+    return { mesh: prisms[0], parts: prisms, mat, label: lab, top, normal, radius: 0.05, len: 0.17, row: 1, crystal: true, muzzle, centre, buttonMat };
   }
   function makeCannon(rg, i, z) {
     const mat = cannonMat.clone();   // its own: it lights up on its own
@@ -193,27 +194,44 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
     const row = i < PER_ROW ? 0 : 1, j = i % PER_ROW;
     const z = BAR_MID_Z + s * (j - (PER_ROW - 1) / 2) * PITCH;
     const rg = rowGroups[row];
-    // every bar is a GUN (owner, 2026-10-03): cannons on the top row, mortars on the bottom
-    const b = row === 1 ? (kind === "treble" ? makeCrystal(rg, i, z) : makeCannon(rg, i, z)) : makeMortar(rg, i, z);
+    // every bar is a GUN (owner, 2026-10-03): cannons on the top row, mortars on the bottom —
+    // except the BOSS station's top row: TWO big crystals (owner, 2026-10-04), on bars 9 and 13,
+    // between the columns; the other six top slots are stubs (nothing there, nothing plays them)
     const sh = shared[j];
+    if (row === 1 && kind === "treble") {
+      const isC = j === 0 || j === 4;
+      if (isC) {
+        const zc = BAR_MID_Z + s * ((j + 1.5) - (PER_ROW - 1) / 2) * PITCH;
+        const b = makeCrystal(rg, i, zc, 2.2);
+        b.top = b.centre.clone(); b.radius = 0.2; b.normal = new THREE.Vector3(0, 1, 0); b.buttonMat = sh.mat; b.column = j;
+        b.label.scale.setScalar(0.12); b.label.position.set(s * 0.14, 0.72, zc); rg.add(b.label);   // its key, over the crystal
+        bars.push(b);
+      } else {
+        const lab = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(""), transparent: true, depthWrite: false })); lab.visible = false;
+        const stub = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), crystalMat.clone()); stub.visible = false; rg.add(stub);
+        bars.push({ mesh: stub, mat: stub.material, label: lab, top: sh.top, normal: sh.normal, radius: 0.05, len: 0.17, row: 1, stub: true, muzzle: sh.top.clone(), buttonMat: sh.mat, column: j });
+      }
+      continue;
+    }
+    const b = row === 1 ? makeCannon(rg, i, z) : makeMortar(rg, i, z);
     b.top = sh.top; b.normal = sh.normal; b.buttonMat = sh.mat; b.column = j;
     labelAt(i, b.label);
     bars.push(b);
   }
-  // THE LIGHTNING GUN (treble): a coil on a post behind the crystals, an orb on top that fills with charge
+  // THE TESLA TOWER (treble; owner, 2026-10-04: "make the orb a tesla tower, and shiny"): a tall
+  // post ringed with copper coils, a mirror-bright sphere on top that fills with charge
   let lightning = null;
   if (kind === "treble") {
     const g = new THREE.Group();
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.3, 10), carriageMat); post.position.y = 0.65;
-    const coilMat = new THREE.MeshStandardMaterial({ color: 0xb8742a, metalness: 0.9, roughness: 0.3, emissive: 0x000000 });
-    const coil = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.03, 10, 24), coilMat); coil.position.y = 1.1; coil.rotation.x = Math.PI / 2;
-    const coil2 = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.025, 10, 24), coilMat); coil2.position.y = 1.24; coil2.rotation.x = Math.PI / 2;
-    const orbMat = new THREE.MeshStandardMaterial({ color: 0xcfe9ff, metalness: 0.2, roughness: 0.1, emissive: 0x3a8cff, emissiveIntensity: 0.3, transparent: true, opacity: 0.9 });
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.16, 20, 16), orbMat); orb.position.y = 1.5;
-    for (const m of [post, coil, coil2, orb]) { m.castShadow = true; g.add(m); }
-    g.position.set(s * (rowNear[1] + 0.75), 0, BAR_MID_Z);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 2.3, 12), carriageMat); post.position.y = 1.15;
+    const coilMat = new THREE.MeshStandardMaterial({ color: 0xc8843a, metalness: 1.0, roughness: 0.25, emissive: 0x000000 });
+    const rings = [[0.9, 0.3], [1.3, 0.26], [1.65, 0.22], [1.95, 0.18]].map(([y, r]) => { const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.028, 10, 32), coilMat); m.position.y = y; m.rotation.x = Math.PI / 2; return m; });
+    const orbMat = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1.0, roughness: 0.06, envMapIntensity: 1.6, emissive: 0x3a8cff, emissiveIntensity: 0.25 });
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 32, 24), orbMat); orb.position.y = 2.55;
+    for (const m of [post, ...rings, orb]) { m.castShadow = true; g.add(m); }
+    g.position.set(s * (rowNear[1] + 0.9), 0, BAR_MID_Z);
     group.add(g); g.updateMatrixWorld(true);
-    lightning = { group: g, orb, orbMat, coilMat, pos: orb.getWorldPosition(new THREE.Vector3()) };
+    lightning = { group: g, orb, orbMat, coilMat, rings, pos: orb.getWorldPosition(new THREE.Vector3()) };
   }
   // frame: per row, two rails under the bar ends (tilting with the row) and legs to the floor
   for (let row = 0; row < 2; row++) {
