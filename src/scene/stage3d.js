@@ -603,11 +603,12 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   function updateGunCues(heardNow) {
     let fi = 0, si = 0;
     const FUSE_S = cueSpan(), DROP_S = cueSpan();
-    for (const name of ["bass", "treble"]) for (const b of (melodyStations[name] ? melodyStations[name].bars : [])) if (b.buttonMat) b._red = 0;
+    for (const name of ["bass", "treble"]) for (const b of (melodyStations[name] ? melodyStations[name].bars : [])) if (b.buttonMat) { b._red = 0; b._cdNext = Infinity; }
     for (const c of gunCuesTest || gunCues) {
       const dt = c.time - heardNow, name = c.laneIdx < 6 + BARS ? "bass" : "treble";
       const b = melodyStations[name] && melodyStations[name].bars[(c.laneIdx - 6) % BARS];
       if (!b || !drumVisible[c.laneIdx]) continue;
+      if (dt > 0) b._cdNext = Math.min(b._cdNext, dt);   // its countdown follows the nearest note
       // the BUTTON lights red, fading in to full on the beat, then out fast (owner, 2026-10-03)
       if (b.buttonMat) {
         const span = b.cannon ? FUSE_S : DROP_S;
@@ -635,6 +636,17 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     for (const name of ["bass", "treble"]) for (const b of (melodyStations[name] ? melodyStations[name].bars : [])) {
       if (!b.buttonMat) continue;
       b.buttonMat.emissive.setRGB(2.6 * b._red, 0.1 * b._red, 0.04 * b._red);   // dark red -> bright red
+      // the same 3, 2, 1 as the drums, a little smaller, just above the button (owner, 2026-10-03)
+      const left = b._cdNext / beatDur, n = left <= 3 ? Math.ceil(left) : 0;
+      if (n && !b._cd) {
+        b._cd = new THREE.Sprite(new THREE.SpriteMaterial({ map: COUNT_TEX[0], transparent: true, depthWrite: false, depthTest: false, fog: false }));
+        b._cd.renderOrder = 20; b._cd.layers.set(FX_LAYER); b._cd.position.copy(b.top); b._cd.position.y += 0.2;   // straight up, over its key letter (the tilted row's normal leans at the camera) scene.add(b._cd); b._cdN = 0;
+        scene.add(b._cd); b._cdN = 0;
+      }
+      if (!b._cd) continue;
+      if (n !== b._cdN) { b._cdN = n; b._cdAt = heardNow; if (n) b._cd.material.map = COUNT_TEX[3 - n]; }
+      b._cd.visible = n > 0;
+      if (n) b._cd.scale.setScalar((b.mortar ? 0.1 : 0.13) * (1 + 0.5 * Math.exp(-9 * (heardNow - b._cdAt))));
     }
     for (; fi < fuseSparks.length; fi++) { fuseSparks[fi].head.visible = false; for (const t of fuseSparks[fi].trail) t.visible = false; }
     for (; si < dropShells.length; si++) { dropShells[si].m.visible = false; dropShells[si].glint.visible = false; }
