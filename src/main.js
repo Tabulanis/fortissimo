@@ -211,7 +211,7 @@ function judgeGraphics(measured) {
   setTimeout(() => location.reload(), 1200);
 }
 
-// LIFE: you and the town, 100 each; a drum miss and an arrow that gets through hurt both, a hit heals both
+// LIFE: you and the town, 100 each; a missed rocket arrow hurts you, an arrow or a soldier that gets through hurts the town, a hit heals both
 const life = { you: 100, town: 100, over: false };
 hudUI.setLife(100, 100);
 hudUI.setShield(0);
@@ -233,7 +233,10 @@ function stageMessage() {
   hudUI.setPart(`${song().name} · ${sec} ${pct}%`);
   const how = sec === "drums" ? (IS_TOUCH ? "tap the drums" : "top Q W E · bottom A S D") : IS_TOUCH ? "tap the buttons"
     : padConnected ? "D-pad = mortars · X A B Y = cannons" : "mortars A S D F G H J K · cannons Q W E R T Y U I";
-  const rule = RUN.lock === 1 ? "every note you hit locks" : RUN.lock === Infinity ? "hit them ALL, in order, to lock the section" : `hit the next ${RUN.lock}, in order, to lock them`;
+  const rule = RUN.lock === 1 ? "every note you hit locks"
+    : RUN.keep === "any" ? `groups of ${RUN.lock === Infinity ? "the whole section" : RUN.lock}: every note you hit locks`
+    : RUN.keep === "half" ? `groups of ${RUN.lock === Infinity ? "the whole section" : RUN.lock}, in order — break it and half of your hits still lock`
+    : RUN.lock === Infinity ? "hit them ALL, in order, to lock the section" : `hit all ${RUN.lock}, in order, to lock them`;
   hudUI.say(`${sec === "drums" ? "Drums" : sec === "bass" ? "Bass — turned right" : "Treble — turned left"}: ${how} — ${rule}`);
 }
 
@@ -297,7 +300,7 @@ function tickSiege(heardNow) {
   siege.tick(heardNow);
   for (const e of siege.drain()) {
     if (e.type === "arrow") stage3d.volley({ part: defend.section || "drums", ...e });
-    else if (e.type === "arrowHit") { life.you -= e.dmg; life.town -= e.dmg; }
+    else if (e.type === "arrowHit") life.town -= e.dmg;   // the archers' arrows threaten the TOWN
     else if (e.type === "shieldBroken") { showShield(); hudUI.say("The shield broke! Lock notes to raise it", "bad", 2600); }
     else if (e.type === "shieldBack") { showShield(); hudUI.say("🛡 Shield back up", "good", 2000); }
     else if (e.type === "spawn") stage3d.troopSpawn(e.enemy);
@@ -321,13 +324,24 @@ function fireGun(idx, lane, at) {
   stage3d.fireCannon(idx, at, target);
 }
 const isGun = (lane) => /^(bass|treble) \d+$/.test(lane);   // every bar is a gun now: cannons on top, mortars below
+// a red flash round the edge of the screen: you got hit
+let hurtEl = null;
+function hurtFlash() {
+  if (!hurtEl) {
+    hurtEl = document.createElement("div");
+    hurtEl.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:45;opacity:0;transition:opacity 0.5s;box-shadow:inset 0 0 120px 40px rgba(255,30,10,0.75)";
+    document.body.appendChild(hurtEl);
+  }
+  hurtEl.style.transition = "none"; hurtEl.style.opacity = "1";
+  requestAnimationFrame(() => { hurtEl.style.transition = "opacity 0.6s"; hurtEl.style.opacity = "0"; });
+}
 function defendEvents() {
   const L = LIFE[RUN.damage] || LIFE.normal;
   for (const e of defend.drain()) {
     if (e.type === "miss") {
       if (e.note.section !== "drums") continue;   // at the guns a miss just doesn't fire: the enemy is the threat
-      life.you -= L.miss;   // a drum miss: the shield is still being built, so it hurts both
-      life.town -= L.miss;
+      life.you -= L.miss;   // a missed rocket arrow blows up at the drum: it hurts YOU (owner: rockets threaten the player, arrows the town)
+      hurtFlash();
       const idx = LANE_INDEX[e.note.lane], p = idx != null && stage3d.drumScreen(idx);
       if (p) showStamp("MISS", p.x, p.y, { size: 26, color: "#ff7a5a", ms: 800 });
     } else if (e.type === "lock") {
@@ -641,7 +655,7 @@ function makeStartButton() {
     drums = await makeDrums(ctx.sampleRate);
     await roundsReady;
     BPM = Math.round((song().bpm || 80) * RUN.tempo * 10) / 10;   // the song's own tempo x the run's tempo
-    bootlog("run", { hitbox: RUN.hitbox, tempo: RUN.tempo, patterns: RUN.patterns, lockSize: RUN.lock === Infinity ? "all" : RUN.lock, damage: RUN.damage, bpm: BPM, mult: scoreMultiplier(RUN).total });
+    bootlog("run", { hitbox: RUN.hitbox, tempo: RUN.tempo, patterns: RUN.patterns, lockSize: RUN.lock === Infinity ? "all" : RUN.lock, keep: RUN.keep, damage: RUN.damage, bpm: BPM, mult: scoreMultiplier(RUN).total });
     await buildMelodyVoices();   // fallback bar voices
     await loadRoundSamples();    // the round's own sounds (from Hackbeat)
     pool = new VoicePool(ctx, { max: IS_TOUCH ? 12 : 24 });   // phones: fewer voices at once (crackle when busy)
@@ -665,7 +679,7 @@ function makeStartButton() {
     loops = new Loops(4 * clock.beatDur);
     ghosts = loops;   // the scheduler below replays loop layers
     addBacking();
-    defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, beatDur: clock.beatDur });
+    defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, keep: RUN.keep, beatDur: clock.beatDur });
     stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat
     siege = new Siege({ miss: (LIFE[RUN.damage] || LIFE.normal).miss, beatDur: clock.beatDur });
     defendFrom = clock.first + Math.ceil((ctx.currentTime + 1.5 - clock.first) / (4 * clock.beatDur)) * 4 * clock.beatDur;   // misses count from the next bar after a breath
@@ -1075,7 +1089,7 @@ function recordPress(idx, offsetSec, vel, laneName, lab) {
 // --- upcoming notes (the arrows) -------------------------------------------
 // Every chart note for both rows within the next APPROACH window, as
 // { laneIdx, time } on the audio clock. Freestyle passes nothing.
-const APPROACH_S = 3.2;   // must match stage3d.js
+const APPROACH_S = 4.0;   // must match stage3d.js
 
 function buildUpcoming(heardNow) {
   // arrows only for the part you're learning; none in free play

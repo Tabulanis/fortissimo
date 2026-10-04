@@ -8,49 +8,52 @@
  *   patterns  "easy"   only the easy-to-get notes (on the beat and half-beat)
  *             "medium" more, but no fast runs or odd off-grid bits
  *             "full"   every note
- *   lock      LOCK SIZE (defend.js): 1 = any note you hit locks; N = the next N
- *             notes, all hit in order on one pass; Infinity = a whole section
+ *   lock      GROUP SIZE (defend.js): 1 = single notes; N = the next N notes;
+ *             Infinity = a whole section
+ *   keep      a group you don't finish: "any" = every note you hit locks (any order),
+ *             "half" = a random half of them, "none" = only a perfect pattern locks
  *   damage    gentle / normal / harsh: what a miss costs you and the town
  * Notes a run leaves out still play, in the backing, so the song is whole.
  * Every setting moves the SCORE MULTIPLIER: harder pays more.
  */
 
 export const PRESETS = {
-  easy:   { hitbox: 0.25, tempo: 1, patterns: "easy",   lock: 1,        damage: "gentle" },
-  medium: { hitbox: 0.25, tempo: 1, patterns: "medium", lock: 3,        damage: "normal" },
-  hard:   { hitbox: 0.25, tempo: 1, patterns: "full",   lock: 8,        damage: "normal" },
-  expert: { hitbox: 0.25, tempo: 1, patterns: "full",   lock: Infinity, damage: "harsh" },
+  easy:   { hitbox: 0.25, tempo: 1, patterns: "easy",   lock: 3,        keep: "any",  damage: "gentle" },
+  medium: { hitbox: 0.25, tempo: 1, patterns: "medium", lock: 3,        keep: "half", damage: "normal" },
+  hard:   { hitbox: 0.25, tempo: 1, patterns: "full",   lock: 8,        keep: "none", damage: "normal" },
+  expert: { hitbox: 0.25, tempo: 1, patterns: "full",   lock: Infinity, keep: "none", damage: "harsh" },
 };
 // THE DIFFICULTY SLIDER (owner, 2026-10-03): 10 levels, each a full set of modifiers;
 // the old four presets sit on it at 3, 5, 7 and 10. The HITBOX is ±250 ms at every level
 // (owner: "ginormous"): anything near the note counts — the score is how CLOSE (chase 100%)
 export const LEVELS = [
-  { hitbox: 0.25, tempo: 0.8, patterns: "easy",   lock: 1,        damage: "gentle" },   // 1  slower
-  { hitbox: 0.25, tempo: 0.9, patterns: "easy",   lock: 1,        damage: "gentle" },   // 2
-  PRESETS.easy,                                                                        // 3
-  { hitbox: 0.25, tempo: 1,   patterns: "medium", lock: 1,        damage: "normal" },   // 4
-  PRESETS.medium,                                                                      // 5
-  { hitbox: 0.25, tempo: 1,   patterns: "full",   lock: 3,        damage: "normal" },   // 6
-  PRESETS.hard,                                                                        // 7
-  { hitbox: 0.25, tempo: 1,   patterns: "full",   lock: 8,        damage: "harsh" },    // 8
-  { hitbox: 0.25, tempo: 1.1, patterns: "full",   lock: 8,        damage: "harsh" },    // 9  faster
-  PRESETS.expert,                                                                      // 10
+  { hitbox: 0.25, tempo: 0.8, patterns: "easy",   lock: 1, keep: "any",  damage: "gentle" },   // 1  single notes, slower
+  { hitbox: 0.25, tempo: 0.9, patterns: "easy",   lock: 1, keep: "any",  damage: "gentle" },   // 2
+  PRESETS.easy,                                                                                 // 3  groups: keep whatever you hit
+  { hitbox: 0.25, tempo: 1,   patterns: "medium", lock: 3, keep: "any",  damage: "normal" },   // 4
+  PRESETS.medium,                                                                               // 5  groups: keep half if it breaks
+  { hitbox: 0.25, tempo: 1,   patterns: "full",   lock: 3, keep: "half", damage: "normal" },   // 6
+  PRESETS.hard,                                                                                 // 7  only a perfect pattern
+  { hitbox: 0.25, tempo: 1,   patterns: "full",   lock: 8, keep: "none", damage: "harsh" },    // 8
+  { hitbox: 0.25, tempo: 1.1, patterns: "full",   lock: 8, keep: "none", damage: "harsh" },    // 9  faster
+  PRESETS.expert,                                                                               // 10
 ];
 export const LEVEL_NAMES = ["Sprout", "Seedling", "Easy", "Steady", "Medium", "Brisk", "Hard", "Fierce", "Brutal", "Expert"];
 /** which level (1..10) a config IS, or 0 for custom */
 export function levelOf(cfg) {
-  const i = LEVELS.findIndex((p) => Math.abs(p.hitbox - cfg.hitbox) < 1e-3 && Math.abs(p.tempo - cfg.tempo) < 1e-3 && p.patterns === cfg.patterns && p.lock === cfg.lock && p.damage === cfg.damage);
+  const i = LEVELS.findIndex((p) => Math.abs(p.hitbox - cfg.hitbox) < 1e-3 && Math.abs(p.tempo - cfg.tempo) < 1e-3 && p.patterns === cfg.patterns && p.lock === cfg.lock && p.keep === cfg.keep && p.damage === cfg.damage);
   return i + 1;
 }
 export const PRESET_NAMES = { easy: "Easy", medium: "Medium", hard: "Hard", expert: "Expert", custom: "Custom" };
 export const LIMITS = { hitbox: [0.03, 0.25], tempo: [0.6, 1.4] };
 export const LOCKS = [1, 3, 8, Infinity];
 export const DAMAGES = ["gentle", "normal", "harsh"];
+export const KEEPS = ["any", "half", "none"];   // a group you don't finish: keep every hit / a random half / nothing
 
 /** which preset a config IS (else "custom") */
 export function presetOf(cfg) {
   for (const [k, p] of Object.entries(PRESETS)) {
-    if (Math.abs(p.hitbox - cfg.hitbox) < 1e-3 && Math.abs(p.tempo - cfg.tempo) < 1e-3 && p.patterns === cfg.patterns && p.lock === cfg.lock && p.damage === cfg.damage) return k;
+    if (Math.abs(p.hitbox - cfg.hitbox) < 1e-3 && Math.abs(p.tempo - cfg.tempo) < 1e-3 && p.patterns === cfg.patterns && p.lock === cfg.lock && p.keep === cfg.keep && p.damage === cfg.damage) return k;
   }
   return "custom";
 }
@@ -65,7 +68,8 @@ export function normalize(cfg = {}) {
   if (c.lock === null || c.lock === "all") c.lock = Infinity;
   if (!LOCKS.includes(c.lock)) c.lock = 1;
   if (!DAMAGES.includes(c.damage)) c.damage = "normal";
-  delete c.step; delete c.keep;   // the old bell loop's settings
+  if (!KEEPS.includes(c.keep)) c.keep = c.lock === 1 ? "any" : "none";
+  delete c.step;   // the old bell loop's setting
   return c;
 }
 
@@ -76,6 +80,7 @@ export function scoreMultiplier(cfg) {
     tempo: 1 + (c.tempo - 1) * 0.8,                                       // 0.75x -> x0.80, 1.25x -> x1.20
     patterns: { easy: 0.7, medium: 0.85, full: 1 }[c.patterns],
     lock: { 1: 0.8, 3: 0.95, 8: 1.05 }[c.lock] ?? 1.15,                 // all at once: x1.15
+    keep: { any: 0.85, half: 1, none: 1.1 }[c.keep],
     damage: { gentle: 0.9, normal: 1, harsh: 1.1 }[c.damage],
   };
   const total = Object.values(parts).reduce((a, b) => a * b, 1);

@@ -71,3 +71,42 @@ const song = { bars: 1, notes: [n("kick", 0), n("snare", 1), n("kick", 2), n("sn
   }
 }
 console.log("defend ok");
+
+// GROUPS with a KEEP rule (owner, 2026-10-03): Easy keeps whatever you hit, Medium a random
+// half of it when the pattern breaks, Hard nothing without the whole pattern
+{
+  const song = { bars: 2, notes: [0, 1, 2, 3, 4, 5, 6, 7].map((b) => ({ lane: "kick", beat: b })) };
+  const seq = (v) => { let i = 0; return () => v[i++ % v.length]; };
+  // EASY: any order, each hit locks; one hit and a miss = the group is done, the next starts after it
+  let d = new Defend(song, { lockSize: 3, keep: "any" });
+  let g = d.offered().map((n) => n.beat);
+  assert.deepStrictEqual(g, [0, 1, 2]);
+  assert.strictEqual(d.hit(d.offered()[1].id), "lock", "the middle one first: fine on Easy");
+  assert.ok(d.locked.size === 1);
+  d.miss(d.offered()[0].id);
+  d.nowBeat = 2.5;   // time moves on: the next group is what comes round after the lead
+  assert.deepStrictEqual(d.offered().map((n) => n.beat), [3, 4, 5], "got one, missed one: on to the next group");
+  // nothing hit: the same group comes round again
+  d.miss(d.offered()[0].id);
+  assert.deepStrictEqual(d.offered().map((n) => n.beat), [3, 4, 5], "none hit: it comes round again");
+  // left-behind notes come back when the section wraps round
+  for (const n of d.offered()) d.hit(n.id);
+  d.nowBeat = 5.5;
+  assert.deepStrictEqual(d.offered().map((n) => n.beat), [0, 6, 7], "then on, wrapping round to the missed one");
+  // MEDIUM: in order; the pattern breaks after two hits — a random half of them lock
+  d = new Defend(song, { lockSize: 3, keep: "half", rng: seq([0.2, 0.9]) });
+  const [a, b, c] = d.offered();
+  assert.strictEqual(d.hit(a.id), "progress"); assert.strictEqual(d.hit(b.id), "progress");
+  d.miss(c.id);
+  assert.ok(d.locked.has(a.id) && !d.locked.has(b.id), "one of the two kept (rng 0.2 yes, 0.9 no)");
+  assert.deepStrictEqual(d.offered().map((n) => n.beat), [1, 2], "the rest of the group comes round again");
+  // a whole pattern locks it all
+  for (const n of d.offered()) d.hit(n.id);
+  assert.ok(d.locked.has(b.id) && d.locked.has(c.id));
+  // HARD: two hits then a miss = nothing kept
+  d = new Defend(song, { lockSize: 3, keep: "none" });
+  const h = d.offered();
+  d.hit(h[0].id); d.hit(h[1].id); d.miss(h[2].id);
+  assert.strictEqual(d.locked.size, 0, "Hard keeps nothing without the whole pattern");
+  console.log("groups ok");
+}

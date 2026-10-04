@@ -1,7 +1,7 @@
 /* menu.js — the start menu (owner, 2026-10-03, Beat Saber style):
  *   PLAY -> pick a LEVEL (rounds unlock one by one) -> set up the RUN -> Start.
  * The run: a DIFFICULTY slider, 1-10 (each level a full set of modifiers), or Custom, with the
- * modifiers — hitbox, tempo, patterns, lock size, damage — and the score
+ * modifiers — hitbox, tempo, patterns, groups, keep, damage — and the score
  * multiplier they're worth, live. The last run is remembered.
  *
  * createMenu({ levels: [{name, title, bpm}], unlocked, level, run, startAt, onStart(level, run) })
@@ -79,9 +79,12 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
       <div class="row"><span>Tempo</span><input type="range" data-k="tempo" min="${LIMITS.tempo[0]}" max="${LIMITS.tempo[1]}" step="0.05"><span class="v" data-v="tempo"></span></div>
       <div class="row"><span>Patterns</span><select data-k="patterns">
         <option value="easy">Easy — beats and half-beats</option><option value="medium">Medium — no fast runs</option><option value="full">Full — every note</option></select><span></span></div>
-      <div class="row"><span>Lock size</span><select data-k="lock">
-        <option value="1">1 — any note you hit locks</option><option value="3">3 — the next 3, in order</option>
+      <div class="row"><span>Groups</span><select data-k="lock">
+        <option value="1">1 — single notes</option><option value="3">3 — groups of 3</option>
         <option value="8">8 — the next 8, in order</option><option value="all">All — the whole section in one go</option></select><span></span></div>
+      <div class="row"><span>Keep</span><select data-k="keep">
+        <option value="any">Whatever you hit — any order</option><option value="half">Half — if the pattern breaks</option>
+        <option value="none">Nothing — only a perfect pattern</option></select><span></span></div>
       <div class="row"><span>Damage</span><select data-k="damage">
         <option value="gentle">Gentle — a miss costs a little</option><option value="normal">Normal</option>
         <option value="harsh">Harsh — misses hurt</option></select><span></span></div>
@@ -91,7 +94,7 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
     const el = (k) => card.querySelector(`[data-k=${k}]`);
     const paint = () => {
       el("hitbox").value = cfg.hitbox; el("tempo").value = cfg.tempo; el("patterns").value = cfg.patterns;
-      el("lock").value = cfg.lock === Infinity ? "all" : String(cfg.lock); el("damage").value = cfg.damage;
+      el("lock").value = cfg.lock === Infinity ? "all" : String(cfg.lock); el("keep").value = cfg.keep; el("damage").value = cfg.damage;
       card.querySelector("[data-v=hitbox]").textContent = `${ms(cfg.hitbox)}`;
       card.querySelector("[data-v=tempo]").textContent = L.bpm ? `${Math.round(L.bpm * cfg.tempo)} bpm` : `×${cfg.tempo.toFixed(2)}`;
       const lv = levelOf(cfg);
@@ -109,6 +112,7 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
     el("patterns").onchange = () => { cfg.patterns = el("patterns").value; paint(); };
     el("lock").onchange = () => { cfg.lock = el("lock").value === "all" ? Infinity : +el("lock").value; paint(); };
     el("damage").onchange = () => { cfg.damage = el("damage").value; paint(); };
+    el("keep").onchange = () => { cfg.keep = el("keep").value; paint(); };
     card.querySelector("[data-a=back]").onclick = levelsScreen;
     card.querySelector("[data-a=start]").onclick = () => { root.style.display = "none"; onStart(lvl, normalize(cfg)); };
     paint();

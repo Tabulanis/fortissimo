@@ -34,10 +34,13 @@ export class Defend {
    * @param {{notes: {lane, beat, midi?, vel?}[], bars: number}} song  (beats; the song loops every 4*bars beats)
    * @param {{lockSize: number, beatDur: number}} opts
    */
-  constructor(song, { lockSize = 1, beatDur = 0.75 } = {}) {
+  constructor(song, { lockSize = 1, beatDur = 0.75, keep = "none", rng = Math.random } = {}) {
     this.loopBeats = 4 * song.bars;
     this.beatDur = beatDur;
     this.lockSize = lockSize;
+    this.keep = keep;                 // a group you DON'T finish: "any" = every note you hit locks (Easy),
+                                      // "half" = a random half of them lock (Medium), "none" = nothing (Hard)
+    this.rng = rng;
     this.notes = song.notes.map((n, id) => ({ ...n, id, section: sectionOf(n.lane) }));
     this.locked = new Set();          // note ids
     this.sectionIdx = 0;
@@ -83,7 +86,16 @@ export class Defend {
     }
     if (!this._chunk) {
       const size = this.lockSize === Infinity ? open.length : this.lockSize;
-      this._chunk = { ids: open.slice(0, size).map((n) => n.id), next: 0, hits: [] };
+      // Easy / Medium still REVEAL THE SONG: groups draw from the backbone first (kick and
+      // snare, then hats, then crash and toms); Hard plays the real sequence as it comes
+      let pool = open;
+      if (this.keep !== "none") { const tier = Math.min(...open.map((n) => laneRank(n.lane))) + 0.9; pool = open.filter((n) => laneRank(n.lane) <= tier); }
+      // in song order from the first notes that come round AFTER the lead — so a new group
+      // never has to wait a whole loop for its warning; notes left behind come back next time round
+      const target = this.nowBeat + this.leadBeats, L = this.loopBeats;
+      const wait = (n) => (((n.beat - target) % L) + L) % L;
+      const ids = [...pool].sort((a, b) => wait(a) - wait(b)).slice(0, size).map((n) => n.id);
+      this._chunk = { ids, next: 0, hits: [] };
     }
     const ids = new Set(this._chunk.ids);
     return this.notes.filter((n) => ids.has(n.id)).sort((a, b) => a.beat - b.beat);
@@ -102,6 +114,15 @@ export class Defend {
     if (!offered.some((n) => n.id === noteId)) return "ignored";
     if (this.lockSize === 1) { this._lock([noteId], [{ id: noteId, ...hitInfo }]); return "lock"; }
     const c = this._chunk;
+    if (this.keep === "any") {
+      // Easy: any note of the group, any order — it locks on the spot; the group is done
+      // once you've got at least one and it comes round (or when it's all locked)
+      c.hits.push({ id: noteId, ...hitInfo });
+      c.ids = c.ids.filter((id) => id !== noteId);
+      this._lockSome([noteId], [{ id: noteId, ...hitInfo }]);
+      if (this._chunk === c && !c.ids.length) this._closeChunk();
+      return "lock";
+    }
     if (c.ids[c.next] !== noteId) { this._fail("out of order"); return "wrong"; }
     c.hits.push({ id: noteId, ...hitInfo });
     c.next++;
@@ -118,22 +139,46 @@ export class Defend {
     // lock size 1: a miss moves on to another note (owner, 2026-10-03: keep the pace steady) —
     // the missed one stays unlocked and comes back later
     if (this.lockSize === 1 && this._single === noteId) { this._single = null; this._avoid = noteId; }
-    if (this.lockSize !== 1 && this._chunk && this._chunk.ids.includes(noteId)) this._fail("missed");
+    if (this.lockSize !== 1 && this._chunk && this._chunk.ids.includes(noteId)) {
+      if (this.keep === "any") { if (this._chunk.hits.length) this._closeChunk(); }   // got some: move on
+      else this._fail("missed");
+    }
   }
 
   /** a wrong note — a hit with no offered note there (only matters while a chunk is under way) */
-  stray() { if (this.lockSize !== 1 && this._chunk && this._chunk.next > 0) this._fail("wrong note"); }
+  stray() { if (this.lockSize !== 1 && this.keep !== "any" && this._chunk && this._chunk.next > 0) this._fail("wrong note"); }
 
   drain() { const e = this.events; this.events = []; return e; }
 
   _fail(why) {
-    if (this._chunk && this._chunk.next > 0) this.events.push({ type: "chunkFail", why });
-    if (this._chunk) { this._chunk.next = 0; this._chunk.hits = []; }
+    const c = this._chunk;
+    if (!c) return;
+    if (c.next > 0) this.events.push({ type: "chunkFail", why });
+    // Medium: a random half of what you DID hit locks anyway; the rest of the group comes round again
+    if (this.keep === "half" && c.hits.length) {
+      const kept = c.hits.filter(() => this.rng() < 0.5);
+      if (kept.length) {
+        const keptIds = new Set(kept.map((h) => h.id));
+        c.ids = c.ids.filter((id) => !keptIds.has(id));
+        this._lockSome([...keptIds], kept);
+      }
+    }
+    if (this._chunk === c) { c.next = 0; c.hits = []; if (!c.ids.length) this._closeChunk(); }
+  }
+
+  /** the group is done: the next one starts after it */
+  _closeChunk() { this._chunk = null; }
+
+  /** lock some notes without ending the group (Easy's every hit, Medium's kept half) */
+  _lockSome(ids, hits) {
+    for (const id of ids) this.locked.add(id);
+    this.events.push({ type: "lock", notes: ids.map((id) => this.notes[id]), hits });
+    this._skipEmpty();
   }
 
   _lock(ids, hits) {
     for (const id of ids) this.locked.add(id);
-    this._chunk = null;
+    this._closeChunk();
     this.events.push({ type: "lock", notes: ids.map((id) => this.notes[id]), hits });
     this._skipEmpty();
   }
@@ -142,6 +187,7 @@ export class Defend {
     while (!this.done && this.unlocked().length === 0) {
       this.events.push({ type: "sectionDone", section: this.section });
       this.sectionIdx++;
+      this._chunk = null;   // a new section starts fresh
     }
   }
 }

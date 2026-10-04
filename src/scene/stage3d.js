@@ -24,9 +24,10 @@ import { createTroops } from "./troops.js";
 import { createPool, poolContains, POOL, SURFACE_Y } from "./pool.js";
 import { bootlog } from "../bootlog.js";
 
-const APPROACH_S = 3.2;   // seconds of visible flight: launched from the far wall, tracked all the way
+const APPROACH_S = 4.0;   // seconds of visible flight (rocket arrows: a bit slower, owner) — must match main.js
 const STUCK_S = 0.6;      // seconds an unhit arrow stays stuck at the face
-const ARROW_TIP = 0.36;   // the head's tip, along the arrow from its origin: the TIP stops on the drum, never past it (owner)
+const ROCKET_SCALE = 1.5;  // rocket arrows: bigger, to read down the lane
+const ARROW_TIP = 0.36 * ROCKET_SCALE;   // the head's tip, along the arrow from its origin: the TIP stops on the drum, never past it (owner)
 
 // module-level temps: no per-frame allocations
 const UP = new THREE.Vector3(0, 1, 0);
@@ -589,36 +590,38 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // with BEAT BARS sliding down it — a bar reaches the drum on each beat (brighter on
   // the bar's downbeat), so an arrow rides in with a bar under it. Built on first use
   // (the drums' faces exist by then).
-  const LANE_VERT = `attribute float aF; varying float vF; void main() { vF = aF; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
-  const LANE_FRAG = `uniform vec3 uColor; uniform float uNow, uFirst, uBeat, uA, uOn, uHot; varying float vF;
+  const LANE_VERT = `attribute float aF, aS; varying float vF, vS; void main() { vF = aF; vS = aS; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+  const LANE_FRAG = `uniform vec3 uColor; uniform float uNow, uFirst, uBeat, uA, uOn, uHot; varying float vF, vS;
     void main() {
       float b = (uNow + (1.0 - vF) * uA - uFirst) / uBeat;           // which beat reaches the drum when this point does
       float d = abs(fract(b + 0.5) - 0.5) * uBeat / uA;               // distance to the nearest bar, in path units
       float down = step(0.5, 1.0 - abs(mod(floor(b + 0.5), 4.0)));    // the bar's downbeat
-      float bar = (1.0 - smoothstep(0.008, 0.02, d)) * (0.6 + 0.4 * down) * uHot;   // bars only on a lane with an arrow on it (owner)
-      float fade = smoothstep(0.0, 0.35, vF);
+      float bar = 0.0;   // no bars: the rocket arrow coming down the lane is the cue (owner)
+      float fade = smoothstep(0.0, 0.35, vF) * (1.0 - smoothstep(0.0, 1.0, abs(vS)));   // soft, blurred edges (owner)
       float a = fade * (0.16 + 0.22 * uHot + bar * 1.6) * uOn;
       gl_FragColor = vec4(mix(uColor, vec3(1.0), 0.6 * bar) * (1.0 + 1.5 * bar), min(1.0, a));   // the bars run white-hot
     }`;
   let lanes = null;
   function buildLanes() {
     lanes = [];
-    const N = 48, W = 0.16, e = { spawn: null, face: null, laneIdx: 0 }, P = new THREE.Vector3(), Q = new THREE.Vector3(), side = new THREE.Vector3();
+    const N = 48, W = 0.1,   // thin (owner)
+      e = { spawn: null, face: null, laneIdx: 0 }, P = new THREE.Vector3(), Q = new THREE.Vector3(), side = new THREE.Vector3();
     for (let i = 0; i < 6; i++) {
       e.spawn = SPAWNS[i]; e.face = drumFace[i]; e.laneIdx = i;
-      const pos = new Float32Array((N + 1) * 2 * 3), fs = new Float32Array((N + 1) * 2), idx = [];
+      const pos = new Float32Array((N + 1) * 2 * 3), fs = new Float32Array((N + 1) * 2), ss = new Float32Array((N + 1) * 2), idx = [];
       for (let k = 0; k <= N; k++) {
         const f = k / N;
         pathPoint(e, f, P); pathPoint(e, Math.min(1, f + 0.01), Q);
         if (f >= 1) { pathPoint(e, 0.99, Q); Q.subVectors(P, Q).add(P); }
         side.subVectors(Q, P).cross(UP).normalize().multiplyScalar(W / 2);
         pos.set([P.x - side.x, P.y - side.y, P.z - side.z, P.x + side.x, P.y + side.y, P.z + side.z], k * 6);
-        fs[k * 2] = fs[k * 2 + 1] = f;
+        fs[k * 2] = fs[k * 2 + 1] = f; ss[k * 2] = -1; ss[k * 2 + 1] = 1;
         if (k < N) idx.push(k * 2, k * 2 + 1, k * 2 + 2, k * 2 + 1, k * 2 + 3, k * 2 + 2);
       }
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
       g.setAttribute("aF", new THREE.BufferAttribute(fs, 1));
+      g.setAttribute("aS", new THREE.BufferAttribute(ss, 1));
       g.setIndex(idx);
       const m = new THREE.ShaderMaterial({ vertexShader: LANE_VERT, fragmentShader: LANE_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
         blending: THREE.AdditiveBlending, fog: false,
@@ -748,12 +751,19 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // the drum body as firelight; the small flame sprite and the arrow meshes
   // keep depth testing.
   const _pT = new THREE.Vector3();
+  // ROCKET ARROWS (owner, 2026-10-03): the drum notes threaten YOU — an arrow with a
+  // rocket tube strapped to its shaft, like the old fire-arrows, flame pouring out the back
+  const tubeGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.22, 10); tubeGeo.translate(0.042, 0.06, 0);
+  const capGeo = new THREE.ConeGeometry(0.03, 0.06, 10); capGeo.translate(0.042, 0.2, 0);
+  const TUBE_MAT = new THREE.MeshBasicMaterial({ color: 0x8a1e14, fog: false }), CAP_MAT = new THREE.MeshBasicMaterial({ color: 0x2a1a10, fog: false });
   const pool = [];
   for (let i = 0; i < 40; i++) {
     const group = new THREE.Group();
     const shaft = new THREE.Mesh(shaftGeo, SHAFT_MAT);
     const head = new THREE.Mesh(headGeo, HEAD_MAT);
+    const tube = new THREE.Mesh(tubeGeo, TUBE_MAT), cap = new THREE.Mesh(capGeo, CAP_MAT);
     shaft.castShadow = true; head.castShadow = true;
+    group.scale.setScalar(ROCKET_SCALE);
     const flame = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
       map: fireTexture,
       color: 0xffffff,
@@ -761,7 +771,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       depthWrite: false,
       transparent: true,
     }));
-    flame.position.set(0, 0.3, 0);
+    flame.position.set(0.042, -0.07, 0);   // the rocket's exhaust, at the back of the tube
     flame.scale.setScalar(0.45);
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
       map: flameTexture,
@@ -772,9 +782,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       transparent: true,
       opacity: 0.25,
     }));
-    glow.position.set(0, 0.3, 0);
+    glow.position.set(0.042, -0.07, 0);
     glow.scale.setScalar(1.4);
-    group.add(shaft, head, flame, glow);
+    group.add(shaft, head, tube, cap, flame, glow);
     group.visible = false;
     scene.add(group);
     pool.push({
@@ -2060,6 +2070,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
           if (e.stuckUntil === 0) {
             // first frame past the time: arm the timer, park at the face
             e.stuckUntil = e.time + STUCK_S;
+            spawnBurst(e.laneIdx, heardNow, 14, 1.5, 3.8, false);   // unhit: the rocket goes off at the drum
             // backward difference: at f = 1 a forward step is zero-length
             pathPoint(e, 1, _pA);
             pathPoint(e, 0.99, _pB);
@@ -2146,7 +2157,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       // head = group position + 0.3 m along the heading). Far arrows emit
       // bigger flames so they stay readable, like the core sprite.
       if (dt >= 0) {
-        _pT.copy(e.group.position).addScaledVector(_tan, 0.3);
+        _pT.copy(e.group.position).addScaledVector(_tan, -0.07 * ROCKET_SCALE);   // the rocket's exhaust trails behind
         fireSim.trail(e.id, _pT, Math.min(far, 3));
       }
     }
