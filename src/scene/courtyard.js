@@ -10,7 +10,7 @@
      floor            x -8..8, z +6..-46
      colonnades       columns at x = ±6.8, every 3.2 m from z = +1 to -42
      colonnade roofs  y = 7.4  (archers stand on the inner edge, x = ±6.3)
-     far building     wall at z = -46, 11 m tall, open arch in the middle */
+     far building     wall at z = -46, 5.6 m tall, open arch in the middle */
 import * as THREE from "three";
 import { bootlog } from "../bootlog.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -18,7 +18,8 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 export const ARCHER_ROOF_Y = 7.6;      // top of the colonnade roofs
 export const ARCHER_ROOF_X = 6.3;      // inner roof edge, each side
 export const ARCHER_ROOF_Z = [-42, -8]; // the stretch of roof archers use
-const FAR_H = 8;   // far building height (was 11: it hid the sunset — owner 2026-10-02)
+const FAR_H = 5.6;   // far building height (11 hid the sunset — owner 2026-10-02; 8 still loomed — owner 2026-10-03)
+const ARCH_Y = FAR_H - 1.6;   // where the arch's curve starts (the opening is about this tall)
 export const FAR_WALL = { z: -46.5, top: FAR_H + 0.6, halfWidth: 9 };
 
 const SAND = 0xc9a77c, SAND_DARK = 0x8f6f4f, TERRACOTTA = 0xb5643c, LEAF = 0x3f5a2e, WOOD = 0x6b4a32;
@@ -210,10 +211,10 @@ export function createCourtyard(scene) {
     const ez = -L - 0.5;
     b(7.0, FAR_H, 1.2, stone, -5.5, FAR_H / 2, ez);
     b(7.0, FAR_H, 1.2, stone, 5.5, FAR_H / 2, ez);
-    b(4.0, FAR_H - 6.4, 1.2, stone, 0, (FAR_H + 6.4) / 2, ez);       // over the arch
+    b(4.0, FAR_H - ARCH_Y, 1.2, stone, 0, (FAR_H + ARCH_Y) / 2, ez);   // over the arch
     const archTop = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 1.2, 32, 1, false, 0, Math.PI), stone);
     archTop.rotation.z = Math.PI / 2; archTop.rotation.y = Math.PI / 2;
-    archTop.position.set(0, 6.4, ez);
+    archTop.position.set(0, ARCH_Y, ez);
     g.add(archTop);
     b(19.6, 0.6, 1.8, stoneDark, 0, FAR_H + 0.3, ez);                // cornice
     for (const x of [-8.5, -3.5, 3.5, 8.5]) b(0.7, 1.0, 0.7, stoneDark, x, FAR_H + 1.1, ez);

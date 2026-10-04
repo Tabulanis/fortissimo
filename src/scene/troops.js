@@ -52,12 +52,15 @@ function pose(out, ph, attacking, t) {
 export function createTroops(scene, { court, center, layer = 0 } = {}) {
   const box = new THREE.BoxGeometry(1, 1, 1);
   const ball = new THREE.SphereGeometry(0.5, 12, 10);
+  // SELF-LIT (owner, 2026-10-03: "increase lighting of enemies so we can see em"): their own
+  // glow, so they read from far down the court in the dusk shade
   const mats = {
-    soldier: { body: new THREE.MeshStandardMaterial({ color: 0x1f5fd6, roughness: 0.7, emissive: 0x051a40 }), limb: new THREE.MeshStandardMaterial({ color: 0x1a2a4a, roughness: 0.8 }),
-      head: new THREE.MeshStandardMaterial({ color: 0xd9a27a, roughness: 0.7 }) },
-    boss: { body: new THREE.MeshStandardMaterial({ color: 0x34343e, metalness: 0.7, roughness: 0.45, emissive: 0x000000 }),
-      limb: new THREE.MeshStandardMaterial({ color: 0x24242c, metalness: 0.6, roughness: 0.5 }),
-      head: new THREE.MeshStandardMaterial({ color: 0x2a2a30, metalness: 0.7, roughness: 0.4, emissive: 0x551008 }) },
+    soldier: { body: new THREE.MeshStandardMaterial({ color: 0x2a6cf0, roughness: 0.7, emissive: 0x1d4fb8, emissiveIntensity: 0.9 }),
+      limb: new THREE.MeshStandardMaterial({ color: 0x23365e, roughness: 0.8, emissive: 0x16306a, emissiveIntensity: 0.8 }),
+      head: new THREE.MeshStandardMaterial({ color: 0xe0ac84, roughness: 0.7, emissive: 0x6a4028, emissiveIntensity: 0.8 }) },
+    boss: { body: new THREE.MeshStandardMaterial({ color: 0x3a3a46, metalness: 0.6, roughness: 0.45, emissive: 0x2a0c08 }),
+      limb: new THREE.MeshStandardMaterial({ color: 0x2c2c36, metalness: 0.5, roughness: 0.5, emissive: 0x1e0a08 }),
+      head: new THREE.MeshStandardMaterial({ color: 0x2a2a30, metalness: 0.7, roughness: 0.4, emissive: 0xaa2010 }) },
   };
   const makeRig = (kind) => {
     const m = mats[kind], g = new THREE.Group();
@@ -195,7 +198,7 @@ export function createTroops(scene, { court, center, layer = 0 } = {}) {
     update(dt) {
       dt = Math.min(dt, 0.05);
       bossFlash = Math.max(0, bossFlash - dt * 4);
-      mats.boss.body.emissive.setRGB(0.9 * bossFlash, 0.15 * bossFlash, 0.05 * bossFlash);
+      mats.boss.body.emissive.setRGB(0.16 + 0.9 * bossFlash, 0.05 + 0.15 * bossFlash, 0.03 + 0.05 * bossFlash);   // a dull red heat, flaring when hit
       for (const r of [...rigs, bossRig]) {
         if (!r.live) continue;
         if (!r.dead) {

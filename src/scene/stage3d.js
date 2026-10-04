@@ -288,8 +288,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     camera.fov = Math.min(v, 120);
   };
   fitFov();
-  camera.position.set(0, 1.7, 0.75);           // standing, just behind the kit (VR uses the headset)
-  camera.lookAt(new THREE.Vector3(0, 1.0, -2.2));  // tilted down: both rows in view, the arcs above
+  camera.position.set(0, 2.1, 0.75);           // a little above standing height: more of the battlefield (owner, 2026-10-03; VR uses the headset)
+  camera.lookAt(new THREE.Vector3(0, 1.25, -2.2));  // tilted down: both rows in view, the court beyond
   // LOOK AROUND (screen mode): arrow keys / thumbsticks turn the view a little
   // off this forward pose; let go and it drifts back to facing the kit
   const baseQuat = camera.quaternion.clone();
@@ -297,9 +297,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // camera turns between them (in VR you turn yourself); look-around rides on top.
   const PITCH0 = new THREE.Euler().setFromQuaternion(baseQuat, "YXZ").x;   // the drums' downward look
   const STATIONS = {
-    drums:  { yaw: 0,            pos: new THREE.Vector3(0, 1.7, 0.75) },
-    bass:   { yaw: -Math.PI / 2, pos: new THREE.Vector3(-0.35, 1.7, 0.6) },
-    treble: { yaw: Math.PI / 2,  pos: new THREE.Vector3(0.35, 1.7, 0.6) },
+    drums:  { yaw: 0,            pos: new THREE.Vector3(0, 2.1, 0.75) },
+    bass:   { yaw: -Math.PI / 2, pos: new THREE.Vector3(-0.35, 2.1, 0.6) },
+    treble: { yaw: Math.PI / 2,  pos: new THREE.Vector3(0.35, 2.1, 0.6) },
   };
   let station = "drums";
   const st = { yaw: 0, pos: STATIONS.drums.pos.clone() };
