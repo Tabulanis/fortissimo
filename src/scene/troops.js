@@ -13,6 +13,7 @@
  *   -> { spawn(enemy), kill(enemy, by), bossHit(enemy), update(dt), debug() }
  */
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 // joints: 0 head, 1 lSh, 2 rSh, 3 lHip, 4 rHip, 5 lEl, 6 lHand, 7 rEl, 8 rHand, 9 lKnee, 10 lFoot, 11 rKnee, 12 rFoot
 const N = 13;
@@ -96,6 +97,30 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
     return { env, basket, rig: null, pop: -1 };
   });
   const bossRig = makeRig("boss");
+  // THE BOSS MODEL (owner's Meshy "Canyon Cyclops", 2026-10-04; tools/build-cyclops.py folds its
+  // six clips into public/models/Cyclops.glb): it stands on the box rig's spot and plays Walking as
+  // it lumbers, Attack at the wall, Double_Combo_Attack when it thrashes, Hit_Reaction when the
+  // lightning lands; no death clip, so it topples. The box rig stays as the fallback.
+  const cyc = { root: null, mixer: null, clips: {}, action: null, name: null, once: null, hitMat: [], topple: 0 };
+  new GLTFLoader().load("/models/Cyclops.glb", (gltf) => {
+    cyc.root = gltf.scene; cyc.root.visible = false; scene.add(cyc.root);
+    cyc.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; if (o.material) { o.material.emissive = new THREE.Color(0, 0, 0); cyc.hitMat.push(o.material); } } });
+    cyc.mixer = new THREE.AnimationMixer(cyc.root);
+    for (const c of gltf.animations) cyc.clips[c.name] = c;
+  }, undefined, (err) => console.warn("Cyclops model failed to load — the box boss stands in", err));
+  /** play a clip: looping, or once (then back to the loop) — crossfaded */
+  const cycPlay = (name, { once = false, speed = 1 } = {}) => {
+    if (!cyc.mixer || !cyc.clips[name]) return;
+    if (cyc.name === name && !once) return;
+    const next = cyc.mixer.clipAction(cyc.clips[name]);
+    next.reset(); next.enabled = true; next.timeScale = speed;
+    if (once) { next.setLoop(THREE.LoopOnce, 1); next.clampWhenFinished = false; }
+    else next.setLoop(THREE.LoopRepeat, Infinity);
+    if (cyc.action && cyc.action !== next) { cyc.action.crossFadeTo(next, 0.25, false); }
+    next.play();
+    if (once) { const back = cyc.name; cyc.once = { action: next, back, end: cyc.mixer.time + cyc.clips[name].duration / speed - 0.2 }; }
+    else { cyc.action = next; cyc.name = name; }
+  };
   // the boss's life, over its head
   const barCanvas = document.createElement("canvas"); barCanvas.width = 256; barCanvas.height = 40;
   const barTex = new THREE.CanvasTexture(barCanvas);
@@ -128,7 +153,7 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
     if (e.kind === "boss" && !e.attacking) {   // every few steps it stops and WRECKS something (owner): a 1.6 s two-fisted slam
       if (r.thrashAt == null) r.thrashAt = r.t + 4;
       if (r.t >= r.thrashAt) { r.thrashing = r.t; r.thrashAt = r.t + 1.6 + 3 + Math.random() * 3; }
-      if (r.thrashing != null && r.t - r.thrashing < 1.6) { thrash = (r.t - r.thrashing) / 1.6; if (thrash > 0.72 && !r.slammed) { r.slammed = true; for (const i of [6, 8]) for (let k = 0; k < 4; k++) dust(r.pos[i]); } }
+      if (r.thrashing != null && r.t - r.thrashing < 1.6) { thrash = (r.t - r.thrashing) / 1.6; if (thrash > 0.72 && !r.slammed) { r.slammed = true; const c = court(e.side); for (const sgn of [-1, 1]) for (let k = 0; k < 4; k++) dust(_base.clone().addScaledVector(c.fwd, -0.9 * r.scale).addScaledVector(c.right, sgn * 0.45 * r.scale)); } }
       else { r.thrashing = null; r.slammed = false; }
     }
     if (!e.attacking && !thrash) r.ph += dt * (e.kind === "boss" ? 3.2 : 7.5 * (e.speed ? e.speed / 1.6 : 1));
@@ -204,7 +229,7 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
       posed(r, e, 0);
       for (let i = 0; i < N; i++) r.prev[i].copy(r.pos[i]);
       STICKS.forEach(([a, b], j) => (r.rest[j] = r.pos[a].distanceTo(r.pos[b])));
-      if (e.kind === "boss") { drawBar(1); bar.visible = true; }
+      if (e.kind === "boss") { drawBar(1); bar.visible = true; cyc.name = null; cyc.action = null; cyc.once = null; if (cyc.mixer) cyc.mixer.stopAllAction(); }
     },
     /** BOOM: the rig goes limp, kicked away from the blast (by: where the shell landed) */
     kill(e, by) {
@@ -226,7 +251,7 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
       }
       if (e.kind === "boss") bar.visible = false;
     },
-    bossHit(e) { drawBar(e.hp / e.of); bossFlash = 1; },
+    bossHit(e) { drawBar(e.hp / e.of); bossFlash = 1; if (!bossRig.dead) cycPlay("Hit_Reaction", { once: true, speed: 1.3 }); },
     update(dt) {
       dt = Math.min(dt, 0.05);
       clock += dt;
@@ -242,12 +267,44 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
       for (const d of dusts) { const age = clock - d.t0; if (age > 0.9) { d.s.visible = false; continue; } d.s.position.addScaledVector(d.v, dt); d.v.y -= dt * 1.5; d.s.scale.setScalar((0.6 + 1.6 * age) * 1.5); d.s.material.opacity = 0.55 * (1 - age / 0.9); }
       bossFlash = Math.max(0, bossFlash - dt * 4);
       mats.boss.body.emissive.setRGB(0.16 + 0.9 * bossFlash, 0.05 + 0.15 * bossFlash, 0.03 + 0.05 * bossFlash);   // a dull red heat, flaring when hit
+      if (cyc.mixer) {
+        cyc.mixer.update(dt);
+        if (cyc.once && cyc.mixer.time >= cyc.once.end) { const o = cyc.once; cyc.once = null; if (o.back && cyc.clips[o.back]) { const a = cyc.mixer.clipAction(cyc.clips[o.back]); a.reset(); a.setLoop(THREE.LoopRepeat, Infinity); a.play(); o.action.crossFadeTo(a, 0.25, false); cyc.action = a; cyc.name = o.back; } }
+        for (const m of cyc.hitMat) m.emissive.setRGB(1.2 * bossFlash, 0.15 * bossFlash, 0.05 * bossFlash);   // flares when the lightning lands
+      }
       for (const r of [...rigs, bossRig]) {
         if (!r.live) continue;
+        const useModel = r === bossRig && cyc.root;
         if (!r.dead) {
           posed(r, r.enemy, dt);
-          draw(r);
-          if (r === bossRig) bar.position.copy(r.pos[0]).setY(r.pos[0].y + 0.9 * r.scale * 0.5 + 0.6);
+          if (useModel) {
+            // the model stands on the rig's spot, facing the dome; its clip follows the enemy's state
+            const e = r.enemy, c = court(e.side);
+            cyc.root.visible = true; r.g.visible = false;
+            cyc.root.position.copy(center).addScaledVector(c.fwd, e.dist).addScaledVector(c.right, e.lat).setY(0);
+            cyc.root.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), c.fwd.clone().negate());
+            cyc.root.scale.setScalar(r.scale);
+            const thrashing = r.thrashing != null && r.t - r.thrashing < 1.6;
+            if (e.attacking) cycPlay("Attack");
+            else if (thrashing) { if (cyc.name !== "Double_Combo_Attack") cycPlay("Double_Combo_Attack", { speed: 1.1 }); }
+            else cycPlay("Walking", { speed: 0.35 });
+            bar.position.copy(cyc.root.position).setY(1.7 * r.scale + 0.6);
+          } else {
+            draw(r);
+            if (r === bossRig) bar.position.copy(r.pos[0]).setY(r.pos[0].y + 0.9 * r.scale * 0.5 + 0.6);
+          }
+          continue;
+        }
+        if (useModel) {   // down: it topples forward over a second, lies there, then sinks away
+          r.t += dt;
+          const age = r.t - r.deadAt;
+          if (cyc.action) { cyc.action.paused = true; }
+          const k = Math.min(1, age / 1.1), fall = 1 - Math.pow(1 - k, 3);
+          const c = court(r.enemy.side);
+          cyc.root.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), c.fwd.clone().negate()).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), fall * Math.PI / 2));
+          const sink = age > DEAD_S ? (age - DEAD_S) / SINK_S * 0.8 * r.scale : 0;
+          cyc.root.position.y = -sink;
+          if (age > DEAD_S + SINK_S) { r.live = false; cyc.root.visible = false; r.enemy = null; if (cyc.action) { cyc.action.paused = false; } }
           continue;
         }
         r.t += dt;
