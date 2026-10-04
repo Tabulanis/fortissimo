@@ -582,6 +582,42 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     return { fwd: new THREE.Vector3(fx, 0, fz), right: new THREE.Vector3(-fz, 0, fx) }; };
   const COURTS = { bass: courtOf("bass"), treble: courtOf("treble") };
   const troops = createTroops(scene, { court: (side) => COURTS[side], center: new THREE.Vector3(0, 0, 0.3), layer: FX_LAYER });
+  // THE LIGHTNING GUN (treble, owner 2026-10-04): crystal hits arc into the orb, which fills
+  // with charge; charged, a jagged BOLT leaps from the orb to the boss
+  const LG = melodyStations.treble.lightning;
+  const lgState = { charge: 0, shown: 0, now: 0, boltT0: -1e9, from: new THREE.Vector3(), to: new THREE.Vector3() };
+  const jagLine = (n) => { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    const l = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xd8ecff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    l.layers.set(FX_LAYER); l.visible = false; l.frustumCulled = false; scene.add(l); return l; };
+  const _ja = new THREE.Vector3(), _jb = new THREE.Vector3(), _jc = new THREE.Vector3();
+  const jag = (line, from, to, amp) => {   // a fresh zig-zag between two points, every frame
+    const pos = line.geometry.attributes.position, n = pos.count;
+    _ja.subVectors(to, from); _jb.set(-_ja.z, 0, _ja.x).normalize(); _jc.crossVectors(_ja, _jb).normalize();
+    for (let i = 0; i < n; i++) { const f = i / (n - 1), w = Math.sin(Math.PI * f) * amp;
+      pos.setXYZ(i, from.x + _ja.x * f + (_jb.x * (Math.random() - 0.5) + _jc.x * (Math.random() - 0.5)) * w,
+        from.y + _ja.y * f + (_jb.y * (Math.random() - 0.5) + _jc.y * (Math.random() - 0.5)) * w,
+        from.z + _ja.z * f + (_jb.z * (Math.random() - 0.5) + _jc.z * (Math.random() - 0.5)) * w); }
+    pos.needsUpdate = true;
+  };
+  const bolts3 = [jagLine(30), jagLine(30), jagLine(30)];   // three strands make it read as thick
+  const arcs = Array.from({ length: 6 }, () => ({ line: jagLine(10), t0: -1e9, from: new THREE.Vector3() }));
+  const crystalPulse = new Float32Array(BARS);
+  const strikeFlash = new THREE.Sprite(new THREE.SpriteMaterial({ map: fireTexture, color: 0xcfe9ff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+  strikeFlash.layers.set(FX_LAYER); strikeFlash.visible = false; scene.add(strikeFlash);
+  function updateLightning(dt) {
+    const S = lgState; S.now += dt;
+    S.shown += (S.charge - S.shown) * Math.min(1, dt * 8);
+    const boltAge = S.now - S.boltT0, bolting = boltAge < 0.35;
+    LG.orbMat.emissiveIntensity = 0.3 + 2.6 * S.shown + (bolting ? 5 : 0);
+    LG.orb.scale.setScalar(1 + 0.4 * S.shown);
+    LG.coilMat.emissive.setRGB(0.08 * S.shown, 0.3 * S.shown, 0.9 * S.shown);
+    const bars = melodyStations.treble.bars;
+    for (let k = PER_ROW; k < BARS; k++) { crystalPulse[k] *= Math.exp(-dt * 6); if (bars[k].crystal) bars[k].mat.emissiveIntensity = 0.9 + 3.5 * crystalPulse[k] + 0.6 * S.shown; }
+    for (const a of arcs) { const age = S.now - a.t0; if (age > 0.25) { a.line.visible = false; continue; } a.line.visible = true; jag(a.line, a.from, LG.pos, 0.25); a.line.material.opacity = 1 - age / 0.25; }
+    for (const b of bolts3) { if (!bolting) { b.visible = false; continue; } b.visible = true; jag(b, S.from, S.to, 1.4); b.material.opacity = 1 - boltAge / 0.35; }
+    strikeFlash.visible = bolting;
+    if (bolting) { strikeFlash.position.copy(S.to); strikeFlash.scale.setScalar(2 + 8 * boltAge / 0.35); strikeFlash.material.opacity = 1 - boltAge / 0.35; }
+  }
 
   // GUN CUES (owner, 2026-10-03: arrows can't reach the guns through the shield):
   // a CANNON's fuse burns down — the spark reaches the touch-hole on the beat;
@@ -1630,6 +1666,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   }
   const _red = new THREE.Color(0xff1408);
   const laneCol = [];   // each lane's colour, built on first use
+  const previewAt = new Float64Array(N_T).fill(-1e9);   // when each target last flashed its preview
   const _shot = new THREE.Vector3();
   const pending = new Float32Array(64);   // per target 0..1: "coming up" (set by the game)
 
@@ -2006,6 +2043,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     { const t = performance.now(); fireDt = Math.min(0.05, (t - fireT) / 1000); fireT = t; }
     defense.update(heardNow, fireDt);
     troops.update(fireDt);
+    updateLightning(fireDt);
     updateBeatKick(heardNow);
     updateGunCues(heardNow);
     // clouds drift; the sunlight follows how much cloud is over the sun (eased over ~1.5 s)
@@ -2053,6 +2091,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         e.hit = null;
         e.hitAt = -1;
         e.stuckUntil = 0;
+        e.previewed = false;
         e.group.visible = true;
         // its lane's colour: the tube, a tint in the flame, a small glow (owner: tell them apart, not a big bloom)
         _lc.copy(hexToColor(laneHex(u.laneIdx)));
@@ -2079,6 +2118,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     // position + flame flicker + retirement
     for (const e of activeNotes) {
       const dt = e.time - heardNow;
+      // PREVIEW (owner, 2026-10-04): at the 3 mark its target flashes for an instant — a run of
+      // notes flashes its drums 1, 2, 3 in the order you'll hit them three beats later
+      if (!e.previewed && !e.hit && dt <= 3 * beatDur) { e.previewed = true; previewAt[e.laneIdx] = heardNow; }
       if (dt < 0) {
         // past its time: a hit vanishes at once; otherwise sticks, then vanishes
         if (e.hit) {
@@ -2238,10 +2280,11 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         // progress down the lane — dim at launch, climbing, white-hot right on the beat — in the lane's colour
         const pl = pending[lane], ramp = pl * pl * pl;
         if (!laneCol[lane]) laneCol[lane] = hexToColor(laneHex(lane));
+        const flash = Math.exp(-(heardNow - previewAt[lane]) / 0.1);   // the preview: full for an instant, gone in a quarter second
         fl.glow.visible = true;
-        fl.glow.material.opacity = Math.min(1, (0.2 + 0.8 * pl * pl) * (0.65 + 0.35 * beatKick));   // throbs on the song's beat
-        fl.glow.scale.setScalar(fl.radius * (1.25 + 0.55 * ramp));   // tight on the object (owner)
-        _mc.copy(laneCol[lane]).lerp(_white, Math.max(0, (pl - 0.65) / 0.35) * 0.9);
+        fl.glow.material.opacity = Math.min(1, (0.2 + 0.8 * pl * pl) * (0.65 + 0.35 * beatKick) + flash);
+        fl.glow.scale.setScalar(fl.radius * (1.25 + 0.55 * ramp + 0.6 * flash));
+        _mc.copy(laneCol[lane]).lerp(_white, Math.min(1, Math.max(0, (pl - 0.65) / 0.35) * 0.9 + 0.8 * flash));
         fl.glow.material.color.copy(_mc);
         if (frame) { frame.visible = true; frame.material.opacity = Math.min(1, 0.3 + 0.9 * pl); frame.material.color.copy(_mc); }
         if (mat && mat.userData.base) { mat.color.copy(mat.userData.base).lerp(_mc, 0.35 + 0.55 * ramp); }
@@ -2571,6 +2614,13 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     /** a top-row note fires that bar's cannon at its archer, at heard time `at` */
     /** a gun's shell flight (s): mortars lob slow, cannons fly fast */
     gunFlight: (laneIdx) => { const name = laneIdx < 6 + BARS ? "bass" : "treble", b = melodyStations[name] && melodyStations[name].bars[(laneIdx - 6) % BARS]; return b && b.mortar ? 1.5 : 0.9; },
+    /** a crystal struck: it flares and arcs into the orb */
+    crystalHit: (laneIdx) => { const k = (laneIdx - 6) % BARS, b = melodyStations.treble.bars[k]; if (!b || !b.crystal) return; crystalPulse[k] = 1;
+      const a = arcs.reduce((best, x) => (x.t0 < best.t0 ? x : best)); a.t0 = lgState.now; a.from.copy(b.muzzle); },
+    setCharge: (f) => { lgState.charge = Math.max(0, Math.min(1, f)); },
+    lightningStrike: (target) => { lgState.boltT0 = lgState.now; lgState.from.copy(LG.pos); lgState.to.copy(target); },
+    /** a point down a side's court (dist m out, lat m across, y up) — where an enemy stands */
+    enemyPos: (side, dist, lat, y = 0) => { const c = COURTS[side]; return new THREE.Vector3(0, 0, 0.3).addScaledVector(c.fwd, dist).addScaledVector(c.right, lat).setY(y); },
     troopSpawn: (e) => troops.spawn(e), troopKill: (e, by) => troops.kill(e, by), bossHit: (e) => troops.bossHit(e),
     debugTroops: () => troops.debug(),
     fireCannon: (laneIdx, at, target = null) => {

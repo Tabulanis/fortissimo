@@ -92,3 +92,26 @@ const ids = (ns) => ns.map((n) => n.lane[0] + n.at);
   assert.deepEqual(Object.keys(STREAM), ["any", "half", "none"]);
 }
 console.log("defend ok (stream)");
+
+// BONUS notes fill the waits: a thin section never leaves more than maxGap beats empty;
+// they score but lock nothing, and missing one doesn't break a pattern
+{
+  const thin = { bars: 2, notes: [{ lane: "treble 1", beat: 0 }, { lane: "treble 9", beat: 6 }] };
+  const d = new Defend(thin, { keep: "any" }); d.windowBeats = 8; d.graceBeats = 0.3; d.missFrom = 0; d.now = 0;
+  const w = d.offered();
+  assert.ok(w.length >= 4, `filled in (${w.length} in flight)`);
+  for (let i = 1; i < w.length; i++) assert.ok(w[i].at - w[i - 1].at <= STREAM.any.maxGap + 1e-9, `never more than ${STREAM.any.maxGap} beats of nothing`);
+  const bonus = w.filter((n) => n.bonus), real = w.filter((n) => !n.bonus);
+  assert.ok(bonus.length && real.length === 2 && bonus.every((n) => n.lane.startsWith("treble") && n.lane !== real[0].lane), "fillers on OTHER treble guns");
+  assert.ok(w.every((n, i) => !i || n.lane !== w[i - 1].lane), "no two in a row on the same gun");
+  assert.equal(d.hit(bonus[0].id), "bonus");
+  assert.ok(!d.locked.has(bonus[0].id) && d.drain().some((e) => e.type === "bonusHit"), "a bonus hit locks nothing");
+  assert.equal(d.progress("treble"), 0);
+  // Medium: a missed filler leaves the run alone
+  const m = new Defend(thin, { lockSize: 2, keep: "half" }); m.windowBeats = 8; m.graceBeats = 0.3; m.missFrom = 0; m.now = 0;
+  const mw = m.offered(), firstReal = mw.find((n) => !n.bonus), firstBonus = mw.find((n) => n.bonus && n.at > firstReal.at);
+  m.hit(firstReal.id); m.drain();
+  m.now = firstBonus.at + 1; m.tick();
+  assert.ok(!m.drain().some((e) => e.type === "chunkFail"), "a missed bonus note doesn't break the pattern");
+  console.log("bonus ok");
+}

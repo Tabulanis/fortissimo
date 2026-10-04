@@ -22,7 +22,8 @@
  * everyone close (TABS ragdolls, troops.js draws them).
  *   bass:   soldiers, a steady stream
  *   treble: THE BOSS — huge, slow, lots of life, hits hard at the wall — and an
- *           escort of soldiers; locking the last treble note brings it down
+ *           escort of soldiers. Shells only get the escort: the boss falls to the LIGHTNING
+ *           GUN (zapBoss), charged by hitting the crystals; the last treble lock finishes it
  * An enemy: { id, side, kind: "soldier"|"boss", dist (m from the dome's centre,
  * down its court), lat (m across it), hp, alive, attacking }.
  *   { type: "spawn", enemy }   { type: "killed", enemy, by: {dist, lat} }
@@ -97,7 +98,7 @@ export class Siege {
    * @returns {{dist: number, lat: number} | null} where it'll land (null: nothing to shoot)
    */
   shoot(side, landAt, now = this.lastT ?? landAt) {
-    const live = this.enemies.filter((e) => e.alive && e.side === side);
+    const live = this.enemies.filter((e) => e.alive && e.side === side && e.kind !== "boss");   // shells are for soldiers; the boss takes LIGHTNING
     if (!live.length) return null;
     // the nearest, spreading the fire: each shell already on its way counts as 4 m further
     let best = null, bestD = Infinity;
@@ -130,6 +131,16 @@ export class Siege {
       else if (a.onShield) this.events.push({ type: "arrowHit", dmg: this.dmg });   // broke while it flew: it goes through
       else this.events.push(a.blocked ? { type: "zapped" } : { type: "arrowHit", dmg: this.dmg });
     }
+  }
+
+  /** the LIGHTNING GUN strikes the boss (owner, 2026-10-04: crystals charge it) */
+  zapBoss(n) {
+    const b = this.boss;
+    if (!b || !b.alive) return false;
+    b.hp = Math.max(0, b.hp - n);
+    this.events.push({ type: "bossHit", enemy: b, hp: b.hp, of: b.of });
+    if (b.hp <= 0) this._kill(b, { dist: b.dist, lat: b.lat });
+    return true;
   }
 
   /** the full shield takes a hit (an arrow, an enemy at the wall) */
@@ -177,12 +188,8 @@ export class Siege {
       for (const e of this.enemies) {
         if (!e.alive || e.side !== s.side) continue;
         const d = Math.hypot(e.dist - s.at.dist, e.lat - s.at.lat);
-        if (e.kind === "boss") {
-          if (d > ARMY.blast * 2) continue;   // a big target
-          e.hp--;
-          this.events.push({ type: "bossHit", enemy: e, hp: e.hp, of: e.of });
-          if (e.hp <= 0) this._kill(e, s.at);
-        } else if (d <= ARMY.blast) this._kill(e, s.at);
+        if (e.kind === "boss") continue;   // shells don't hurt it (owner, 2026-10-04: the lightning gun does)
+        if (d <= ARMY.blast) this._kill(e, s.at);
       }
     }
     // the dead are gone from the logic (troops.js keeps their ragdolls a while)

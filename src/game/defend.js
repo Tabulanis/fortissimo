@@ -31,7 +31,11 @@ export const LIFE = {              // per run damage: a miss hurts you and the t
   gentle: { miss: 3, heal: 3 }, normal: { miss: 5, heal: 2 }, harsh: { miss: 8, heal: 1 },
 };
 /** the stream's density per keep rule: gap = beats between notes, together = at most this many at one beat */
-export const STREAM = { any: { gap: 1, together: 1 }, half: { gap: 0.5, together: 2 }, none: { gap: 0, together: 2 } };
+export const STREAM = { any: { gap: 1, together: 1, maxGap: 2 }, half: { gap: 0.5, together: 2, maxGap: 1 }, none: { gap: 0, together: 2, maxGap: 2 } };
+// maxGap: the stream never leaves you waiting longer than this (owner, 2026-10-04) — a thin
+// stretch of the song gets BONUS notes on the section's other drums / guns: in key (a bar plays
+// its own note), they fire the guns and score like any hit, but lock nothing (they're not the song)
+const BAR_LANES = (sec) => Array.from({ length: 16 }, (_, i) => `${sec} ${i + 1}`);
 // how much an instrument carries the song (lower = sooner): the drums' backbone first
 const LANE_RANK = { kick: 0, snare: 0.3, hat: 3.5, crash: 3.8, "tom low": 4, "tom high": 4 };
 const laneRank = (lane) => LANE_RANK[lane] ?? 0;
@@ -55,6 +59,9 @@ export class Defend {
     this.graceBeats = 0.3;            // set by the game: the hitbox, in beats (a note is live this long after its beat)
     this.missFrom = -Infinity;        // set by the game: misses count from here (a breath after Start)
     this._plans = new Map();          // "section:k" -> note ids streamed on pass k (fixed once the window reaches it)
+    this._bonus = [];                 // the filler notes made so far (ids continue after the song's)
+    this._lanes = {};                 // per section: the lanes bonus notes may use
+    for (const s of SECTIONS) this._lanes[s] = s === "drums" ? [...new Set(this.notes.filter((n) => n.section === s).map((n) => n.lane))] : BAR_LANES(s);
     this._done = new Set();           // "id@k": that occurrence was hit, or counted as a miss
     this._run = [];                   // Medium / Hard: the hits of the pattern under way
     this.events = [];                 // what happened since the last drain()
@@ -63,6 +70,8 @@ export class Defend {
 
   get section() { return SECTIONS[this.sectionIdx] || null; }
   get done() { return this.sectionIdx >= SECTIONS.length; }
+  /** a note by id: the song's, or a bonus one */
+  note(id) { return id < this.notes.length ? this.notes[id] : this._bonus[id - this.notes.length]; }
   sectionNotes(s = this.section) { return this.notes.filter((n) => n.section === s).sort((a, b) => a.beat - b.beat); }
   unlocked(s = this.section) { return this.sectionNotes(s).filter((n) => !this.locked.has(n.id)); }
   progress(s) { const all = this.sectionNotes(s); return all.length ? all.filter((n) => this.locked.has(n.id)).length / all.length : 1; }
@@ -77,17 +86,39 @@ export class Defend {
       if (this.section === "drums") { const t = Math.min(...open.map((n) => laneRank(n.lane))) + 0.9; layer = open.filter((n) => laneRank(n.lane) <= t); }
       else { const t = Math.min(...open.map((n) => beatWeight(n.beat))) + 1; layer = open.filter((n) => beatWeight(n.beat) <= t); }
     }
-    const { gap, together } = STREAM[this.keep] || STREAM.none;
+    const { gap, together, maxGap } = STREAM[this.keep] || STREAM.none;
     const cands = [...layer].sort((a, b) => a.beat - b.beat || laneRank(a.lane) - laneRank(b.lane) || a.id - b.id);
     const plan = [];
     let last = -Infinity, at = 0;
     for (const n of cands) {
-      if (Math.abs(n.beat - last) < 1e-6) { if (at < together) { plan.push(n.id); at++; } continue; }   // together: two hands at most
+      if (Math.abs(n.beat - last) < 1e-6) { if (at < together) { plan.push(n); at++; } continue; }   // together: two hands at most
       if (n.beat - last < gap - 1e-6) continue;
-      plan.push(n.id); last = n.beat; at = 1;
+      plan.push(n); last = n.beat; at = 1;
     }
-    this._plans.set(key, plan);
-    return plan;
+    // FILL the gaps: bonus notes on the beat grid, on a different lane from their neighbours
+    const lanes = this._lanes[this.section] || [], step = Math.max(gap, 1), filled = [];
+    let prev = null, pick = (k * 7 + plan.length) % Math.max(1, lanes.length);
+    const fill = (from, to, nextLane) => {
+      // bonus notes every `step` beats across the gap, none closer than `gap` to the note that ends it
+      for (let b = from + step; b <= to - Math.max(gap, 0.5) + 1e-6 && lanes.length; b += step) {
+        let lane = lanes[pick % lanes.length];
+        for (let tries = 0; tries < lanes.length && (lane === (prev && prev.lane) || lane === nextLane); tries++) lane = lanes[++pick % lanes.length];
+        pick++;
+        const id = this.notes.length + this._bonus.length;
+        const bn = { lane, beat: b, id, section: this.section, bonus: true };
+        this._bonus.push(bn); filled.push(bn); prev = bn;
+      }
+    };
+    const L = this.loopBeats;
+    for (let i = 0; i <= plan.length; i++) {
+      const a = i ? plan[i - 1] : null, b = i < plan.length ? plan[i] : null;
+      const from = a ? a.beat : -step, to = b ? b.beat : L;   // from the loop's start, and out to its end
+      if (to - from > maxGap + 1e-6) fill(from, to, b && b.lane);
+      if (b) prev = b;
+    }
+    const ids = [...plan, ...filled].sort((a, b) => a.beat - b.beat).map((n) => n.id);
+    this._plans.set(key, ids);
+    return ids;
   }
 
   /** the notes in flight right now: each with `at` (its occurrence, in beats) — the stream's window */
@@ -98,7 +129,7 @@ export class Defend {
     for (let k = k0; k <= k1; k++) {
       for (const id of this._plan(k)) {
         if (this.locked.has(id) || seen.has(id) || this._done.has(id + "@" + k)) continue;
-        const n = this.notes[id], t = k * L + n.beat;
+        const n = this.note(id), t = k * L + n.beat;
         if (t < this.now - this.graceBeats || t > this.now + this.windowBeats) continue;
         seen.add(id);
         out.push({ ...n, at: t, k });
@@ -114,10 +145,10 @@ export class Defend {
     for (let k = k0; k <= k1; k++) {
       for (const id of this._plan(k)) {
         if (this.locked.has(id)) continue;
-        const t = k * L + this.notes[id].beat, key = id + "@" + k;
+        const t = k * L + this.note(id).beat, key = id + "@" + k;
         if (t >= this.now - this.graceBeats || this._done.has(key)) continue;
         this._done.add(key);
-        if (t >= this.missFrom) this._miss(this.notes[id]);
+        if (t >= this.missFrom) this._miss(this.note(id));
       }
     }
   }
@@ -128,13 +159,14 @@ export class Defend {
 
   /**
    * A correct hit on a streamed note (the caller judged the timing).
-   * @returns {"lock"|"progress"|"ignored"}
+   * @returns {"lock"|"progress"|"bonus"|"ignored"}  bonus: a filler note — scores, locks nothing
    */
   hit(noteId, hitInfo = {}) {
     if (this.done || this.locked.has(noteId)) return "ignored";
     const o = this.offered().find((n) => n.id === noteId);
     if (!o) return "ignored";
     this._done.add(noteId + "@" + o.k);
+    if (o.bonus) { this.events.push({ type: "bonusHit", note: o }); return "bonus"; }
     const h = { id: noteId, ...hitInfo };
     if (this.keep === "any") { this._lock([noteId], [h]); return "lock"; }
     this._run.push(h);
@@ -154,7 +186,7 @@ export class Defend {
 
   _miss(n) {
     this.events.push({ type: "miss", note: n });
-    this._break("missed");
+    if (!n.bonus) this._break("missed");   // a missed filler costs you the rocket, not the pattern
   }
 
   /** the pattern breaks: Medium keeps a random half of the run, Hard nothing */
@@ -171,7 +203,7 @@ export class Defend {
 
   _lock(ids, hits) {
     for (const id of ids) this.locked.add(id);
-    this.events.push({ type: "lock", notes: ids.map((id) => this.notes[id]), hits });
+    this.events.push({ type: "lock", notes: ids.map((id) => this.note(id)), hits });
     this._skipEmpty();
   }
 

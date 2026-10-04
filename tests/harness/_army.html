@@ -30,9 +30,10 @@ f.onload = async () => {
     skip("bass");
     await wait(14000);
     log.push("treble: " + JSON.stringify(s.debugTroops()) + " boss hp " + (G.siege.boss && G.siege.boss.hp));
-    for (let k = 0; k < 6; k++) { G.fireGun(22 + k, `treble ${1 + k}`); await wait(300); }
+    // the CRYSTALS (treble 9-14): five hits charge the lightning gun — the fifth fires it
+    for (let k = 0; k < 6; k++) { G.fireGun(30 + k, `treble ${9 + k}`); if (k === 4) { await wait(120); say("shot_army5", await grab()); } await wait(300); }
     await wait(1600);
-    log.push("boss shelled: " + JSON.stringify(s.debugTroops()) + " boss hp " + (G.siege.boss && G.siege.boss.hp) + "/" + (G.siege.boss && G.siege.boss.of));
+    log.push("boss zapped: " + JSON.stringify(s.debugTroops()) + " boss hp " + (G.siege.boss && G.siege.boss.hp) + "/" + (G.siege.boss && G.siege.boss.of));
     say("shot_army4", await grab());
     say("info_army", log.join("\n"));
   } catch (e) { say("err_army", e.message + " " + e.stack); }

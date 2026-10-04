@@ -71,11 +71,15 @@ console.log("siege ok");
   s.startWave("treble", { bossHp: 3 });
   const boss = s.boss;
   assert.ok(boss && boss.kind === "boss" && boss.hp === 3);
+  // shells don't touch it: nothing for a shell down its court but the escort
+  assert.equal(s.shoot("treble", 0.5, 0), null, "no escort yet: nothing for a shell to hit");
+  run(s, 0, 1.2);
+  assert.ok(boss.alive && boss.hp === 3, "shells never hurt the boss");
+  // the LIGHTNING GUN does: three bolts
   let ev = [];
-  for (let k = 0; k < 3; k++) { s.shoot("treble", 0.5 + k, k); ev.push(...run(s, k, k + 0.95)); }
-  ev.push(...run(s, 3, 3.6));
-  assert.equal(ev.filter((x) => x.type === "bossHit").length, 3, "every shell hits the boss");
-  assert.ok(!boss.alive && ev.some((x) => x.type === "killed" && x.enemy === boss), "three hits bring it down");
+  for (let k = 0; k < 3; k++) { s.zapBoss(1); ev.push(...s.drain()); }
+  assert.equal(ev.filter((x) => x.type === "bossHit").length, 3, "every bolt hits the boss");
+  assert.ok(!boss.alive && ev.some((x) => x.type === "killed" && x.enemy === boss), "three bolts bring it down");
   // locking the last note ends the wave: everyone left falls
   s.startWave("treble", { bossHp: 99 });
   s.endWave();

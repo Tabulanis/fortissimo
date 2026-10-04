@@ -220,8 +220,9 @@ function stageMessage() {
   if (defend.done) { hudUI.setPart(`${song().name} done`); return; }
   const sec = defend.section, pct = Math.round(defend.progress(sec) * 100);
   hudUI.setPart(`${song().name} · ${sec} ${pct}%`);
+  const topName = sec === "treble" ? "crystals (charge the lightning gun)" : "cannons";
   const how = sec === "drums" ? (IS_TOUCH ? "tap the drums" : "top Q W E · bottom A S D") : IS_TOUCH ? "tap the buttons"
-    : padConnected ? "D-pad = mortars · X A B Y = cannons" : "mortars A S D F G H J K · cannons Q W E R T Y U I";
+    : padConnected ? `D-pad = mortars · X A B Y = ${topName}` : `mortars A S D F G H J K · ${topName} Q W E R T Y U I`;
   const rule = RUN.lock === 1 ? "every note you hit locks"
     : RUN.keep === "any" ? `groups of ${RUN.lock === Infinity ? "the whole section" : RUN.lock}: every note you hit locks`
     : RUN.keep === "half" ? `groups of ${RUN.lock === Infinity ? "the whole section" : RUN.lock}, in order — break it and half of your hits still lock`
@@ -295,10 +296,27 @@ function showShield() {
 // a gun fires: siege.js aims the shell at the enemy nearest the wall (it lands where they'll be)
 function fireGun(idx, lane, at) {
   const side = lane.startsWith("bass") ? "bass" : "treble";
+  if (isCrystal(lane)) { chargeLightning(idx); return; }   // treble's top row: crystals, not cannons
   const target = siege ? siege.shoot(side, at + stage3d.gunFlight(idx)) : null;
   stage3d.fireCannon(idx, at, target);
 }
 const isGun = (lane) => /^(bass|treble) \d+$/.test(lane);   // every bar is a gun now: cannons on top, mortars below
+const isCrystal = (lane) => /^treble (9|1[0-6])$/.test(lane);   // treble's top row (owner, 2026-10-04)
+// THE LIGHTNING GUN: every crystal hit (yours, the band's, a filler's) adds a charge; at
+// LIGHTNING_NEED it fires — a bolt at the boss for a quarter of its life
+const LIGHTNING_NEED = 5;
+const lightning = { charge: 0 };
+function chargeLightning(idx) {
+  stage3d.crystalHit(idx);
+  lightning.charge = Math.min(LIGHTNING_NEED, lightning.charge + 1);
+  stage3d.setCharge(lightning.charge / LIGHTNING_NEED);
+  if (lightning.charge < LIGHTNING_NEED) return;
+  lightning.charge = 0;
+  const b = siege && siege.boss && siege.boss.alive ? siege.boss : null;
+  if (b) { stage3d.lightningStrike(stage3d.enemyPos("treble", b.dist, b.lat, 4.5)); siege.zapBoss(Math.ceil(b.of / 4)); hudUI.say("⚡ LIGHTNING!", "good", 1200); }
+  else stage3d.lightningStrike(stage3d.enemyPos("treble", 12, 0, 1.5));   // nothing to strike: it grounds down the court
+  setTimeout(() => stage3d.setCharge(0), 150);
+}
 // a red flash round the edge of the screen: you got hit
 let hurtEl = null;
 function hurtFlash() {
@@ -313,6 +331,7 @@ function hurtFlash() {
 function defendEvents() {
   const L = LIFE[RUN.damage] || LIFE.normal;
   for (const e of defend.drain()) {
+    if (e.type === "bonusHit") continue;   // a filler note: the sound, the stamp and the gun already happened
     if (e.type === "miss") {
       if (e.note.section !== "drums") continue;   // at the guns a miss just doesn't fire: the enemy is the threat
       life.you -= L.miss;   // a missed rocket arrow blows up at the drum: it hurts YOU (owner: rockets threaten the player, arrows the town)
@@ -950,7 +969,7 @@ function hitLane(idx, lane, press, padVel = 1) {
     if (inBox) {
       const r = defend.hit(found.id, { offset: j.offset, velocity: vel });
       if (isGun(lane.name)) fireGun(idx, lane.name, ctx.getOutputTimestamp().contextTime);   // your gun
-      if (r !== "wrong") { const L = LIFE[RUN.damage] || LIFE.normal; life.you += L.heal; life.town += L.heal; }
+      if (r !== "bonus") { const L = LIFE[RUN.damage] || LIFE.normal; life.you += L.heal; life.town += L.heal; }   // a filler note scores, but doesn't heal
       if (p) showStamp(Math.round(Math.max(0, 1 - Math.abs(j.offset) / box) * 100) + "%", p.x, p.y - 4, { size: 30, ms: 900 });
     } else {
       defend.stray();   // nothing offered there: breaks a run under way
