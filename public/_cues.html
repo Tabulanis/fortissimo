@@ -13,6 +13,7 @@ f.onload = async () => {
     await wait(2500);
     const s = w.__gr.stage3d, G = w.__gr.game;
     s.setStation("bass"); await wait(2200);
+    if (location.hash === "#pad") s.melodyStations.bass.setLabels("dL dL dD dD dR dR dU dU X X A A B B Y Y".split(" "));
     const now = G.ctx.getOutputTimestamp().contextTime;
     // cannons Q..I are bass 9-16 = targets 14..21; mortars A..K = 6..13; staggered so each shows a different stage
     s.debugGunCues([0, 1, 2, 3].flatMap((k) => [{ laneIdx: 14 + k * 2, time: now + 0.6 + k * 0.45 }, { laneIdx: 6 + k * 2, time: now + 0.5 + k * 0.4 }]));

@@ -460,8 +460,8 @@ for (const e of Object.values(KEYMAP)) KEYMAP_BY_LANE[e.ln.name] = e;
 const MELODY_LETTERS = [..."ASDFGHJK", ..."QWERTYUI"];
 const MELODY_KEYS = Object.fromEntries(MELODY_LETTERS.map((c, i) => [c.toLowerCase(), i]));
 // the pad: the same 8 buttons for both rows (hold LT = top row); drawn as D-pad arrows / face letters
-const PAD_ROW = ["dL", "dD", "dR", "dU", "X", "A", "B", "Y"];
-const PAD_LABELS = [...PAD_ROW, ...PAD_ROW.map((b) => "LT:" + b)];   // top row: "LT" over the button
+// the pad (owner, 2026-10-03): D-pad = the mortars, X A B Y = the cannons, each button on two neighbours
+const PAD_LABELS = [..."dL dL dD dD dR dR dU dU X X A A B B Y Y".split(" ")];
 const MELODY_ENTRY = { bass: [], treble: [] };
 for (const kind of ["bass", "treble"]) {
   for (let slot = 0; slot < BARS; slot++) {
@@ -473,6 +473,7 @@ for (const kind of ["bass", "treble"]) {
 }
 // the melody voices, built for the current round's key + scale
 let melodyVoices = { bass: [], treble: [] };
+let lastUp = [];   // this frame's upcoming notes: a pad button on two guns picks the one that's due
 async function buildMelodyVoices() {
   if (!ctx) return;
   const { key = "C", scale = "major" } = song();
@@ -947,11 +948,15 @@ function onKey(e) {
 const pads = createPads({
   melodyMode: () => isMelody(),
   onHint: () => playHint(),
-  onMelody: (slot, force, ts) => {
+  onMelody: (slots, force, ts) => {
     if (!ctx || !drums || !pool || !clock) return;
-    const entry = MELODY_ENTRY[partMode()][slot];
     const o = ctx.getOutputTimestamp();
-    hitLane(entry.idx, entry.ln, o.contextTime + (ts - o.performanceTime) / 1000 - calibration, force);
+    const press = o.contextTime + (ts - o.performanceTime) / 1000 - calibration;
+    // a button covers two guns: fire the one whose note is due nearest the press (else the first)
+    const pick = (slot) => MELODY_ENTRY[partMode()][slot];
+    let entry = pick(slots[0]), best = Infinity;
+    for (const s of slots) for (const u of lastUp) if (u.laneIdx === pick(s).idx && Math.abs(u.time - press) < best) { best = Math.abs(u.time - press); entry = pick(s); }
+    hitLane(entry.idx, entry.ln, press, force);
   },
   onHit: (laneName, force, ts) => {
     if (!ctx || !drums || !pool || !clock) return;
@@ -1225,6 +1230,7 @@ function frame() {
     }
     // arrows for the drums; the guns get their own cues (a fuse, a falling shell) — arrows can't pass the shield
     const up = buildUpcoming(heardNow);
+    lastUp = up;
     stage3d.setGunCues(defend ? up.filter((u) => u.laneIdx >= 6) : []);
     stage3d.update(heardNow, defend ? up.filter((u) => u.laneIdx < 6) : up, ghostHits);
     if (defend) tickDefend(heardNow); else tickBell(heardNow);
