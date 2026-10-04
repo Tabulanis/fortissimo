@@ -94,6 +94,7 @@ stage.addEventListener("webglcontextlost", () => bootlog("WEBGL CONTEXT LOST"));
     frames = 0;
   }, 5000); }
 if (IS_TOUCH) document.documentElement.classList.add("touch");   // touch layout (no keyboard hints)
+if (IS_TOUCH) { stage3d.hideDrumLabels(); for (const k of ["bass", "treble"]) stage3d.melodyStations[k].setLabels(Array(16).fill("")); }   // no letters on a tablet (owner)
 window.__gr = { stage3d };   // debug handle for the browser harness
 
 // --- the song: parts unlock two drums at a time; the ghost bell locks them ---
@@ -438,6 +439,7 @@ const MELODY_KEYS = Object.fromEntries(MELODY_LETTERS.map((c, i) => [c.toLowerCa
 // the pad (owner, 2026-10-04): D-pad + X A B Y = the bottom row; hold LT = the top row (drawn "LT" over the button)
 const PAD_ROW = ["dL", "dD", "dR", "dU", "X", "A", "B", "Y"];
 const PAD_LABELS = [...PAD_ROW, ...PAD_ROW.map((b) => "LT:" + b)];
+const NO_LABELS = Array(16).fill("");   // tablets: no letters anywhere (owner, 2026-10-04) — unless a controller is plugged in
 const MELODY_ENTRY = { bass: [], treble: [] };
 for (const kind of ["bass", "treble"]) {
   for (let slot = 0; slot < BARS; slot++) {
@@ -929,7 +931,7 @@ const pads = createPads({
   onStatus: (st) => {
     // a controller in hand: the bars show its buttons instead of keyboard letters
     padConnected = st.pads.length > 0;
-    for (const k of ["bass", "treble"]) stage3d.melodyStations[k].setLabels(padConnected ? PAD_LABELS : MELODY_LETTERS);
+    for (const k of ["bass", "treble"]) stage3d.melodyStations[k].setLabels(padConnected ? PAD_LABELS : IS_TOUCH ? NO_LABELS : MELODY_LETTERS);
     stageMessage();
     const parts = [...st.midi.map((n) => "🥁 " + n), ...st.pads.map((n) => "🎮 " + n.split("(")[0].trim())];
     if (parts.length) hudUI.say("Connected: " + parts.join(" · "), "good", 3000);

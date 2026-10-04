@@ -426,6 +426,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const drumPos = [];
   const drumFace = [];
   const drumLabels = [];
+  let labelsOff = false;   // tablets: no letters on the drums (owner, 2026-10-04)
   const drumLabelMats = [];
   // the countdown numbers: fat, a thick dark outline and a ring — 1 red, 2 orange, 3 yellow;
   // 4-9 pale (only shown small, for the NEXT strike queued on the same target)
@@ -932,7 +933,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       mesh.visible = true;
       mat.transparent = true;
       mat.opacity = 0;
-      drumLabels[laneIdx].visible = true;
+      drumLabels[laneIdx].visible = !labelsOff;
       drumLabelMats[laneIdx].opacity = 0;
       if (!f.arming) {
         f.arming = true;
@@ -2644,6 +2645,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     /** a crystal struck: it flares and arcs into the orb */
     crystalHit: (laneIdx) => { const k = (laneIdx - 6) % BARS, b = melodyStations.treble.bars[k]; if (!b || !b.crystal) return; crystalPulse[k] = 1;
       const a = arcs.reduce((best, x) => (x.t0 < best.t0 ? x : best)); a.t0 = lgState.now; a.from.copy(b.muzzle); },
+    /** no key letters on the drums (touch screens: there are no keys) */
+    hideDrumLabels: () => { labelsOff = true; for (const l of drumLabels) l.visible = false; },
     setCharge: (f) => { lgState.charge = Math.max(0, Math.min(1, f)); },
     lightningStrike: (target) => { lgState.boltT0 = lgState.now; lgState.from.copy(LG.pos); lgState.to.copy(target); },
     /** a BALLOON's rocket (siege.js "balloonRocket"): from the balloon down at the cannon row, bursting there, landing at `landAt` */
