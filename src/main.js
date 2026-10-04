@@ -306,7 +306,7 @@ function tickDefend(heardNow) {
     offeredAt.delete(n.id);   // if it's offered again later, it gets a fresh lead
   }
   // the targets of what's offered glow "coming up"
-  // ...over the last 2 s before its note (owner: ~2 s of warning), then the arrow's red charge takes over
+  // ...over the last few BEATS before its note (owner: in the song's timing), throbbing on each beat
   const lv = {};
   if (!defend.done) for (const n of defend.offered()) {
     const i = LANE_INDEX[n.lane];
@@ -314,7 +314,7 @@ function tickDefend(heardNow) {
     const from = Math.max(readyAt(n.id), heardNow - box);
     const k = Math.ceil((from - clock.first - n.beat * clock.beatDur) / loop);
     const tNext = clock.first + k * loop + n.beat * clock.beatDur;   // its next moment that counts
-    lv[i] = Math.max(lv[i] || 0, Math.min(1, Math.max(0, 1 - (tNext - heardNow) / 2)));
+    lv[i] = Math.max(lv[i] || 0, Math.min(1, Math.max(0, 1 - (tNext - heardNow) / stage3d.cueSpan())));   // over the cue's beats (2, or 4 when fast)
   }
   stage3d.setPending(lv);
   defendEvents();
@@ -716,6 +716,7 @@ function makeStartButton() {
     ghosts = loops;   // the scheduler below replays loop layers
     addBacking();
     defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, beatDur: clock.beatDur });
+    stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat
     defendFrom = clock.first + Math.ceil((ctx.currentTime + 1.5 - clock.first) / (4 * clock.beatDur)) * 4 * clock.beatDur;   // misses count from the next bar after a breath
     hudUI.hideBell();
     defend.nowBeat = (((ctx.currentTime - clock.first) / clock.beatDur) % defend.loopBeats + defend.loopBeats) % defend.loopBeats;

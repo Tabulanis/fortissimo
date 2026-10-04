@@ -541,7 +541,16 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // GUN CUES (owner, 2026-10-03: arrows can't reach the guns through the shield):
   // a CANNON's fuse burns down — the spark reaches the touch-hole on the beat;
   // a MORTAR's shell drops in from above, landing in the barrel on the beat
-  const FUSE_S = 1.8, DROP_S = 1.3;
+  // ON THE SONG'S BEAT (owner, 2026-10-03: "signals in the timing of the current song"):
+  // every cue lasts a number of BEATS, not seconds, and kicks on each beat of the song
+  // as it counts in — "one, two, HIT" — so a fast song gets quick fuses, a slow one slow
+  let beatFirst = 0, beatDur = 0.6, beatKick = 0;
+  const cueBeats = () => (beatDur < 0.42 ? 4 : 2);   // fast songs: 4 beats, so it's never a blink
+  const cueSpan = () => cueBeats() * beatDur;
+  function updateBeatKick(heardNow) {
+    const s = (heardNow - beatFirst) / beatDur;
+    beatKick = Math.exp(-7 * (s - Math.floor(s)));   // 1 on the beat, dying away before the next
+  }
   const fuseSparks = Array.from({ length: 10 }, () => {
     const head = new THREE.Sprite(new THREE.SpriteMaterial({ map: fireTexture, color: 0xffffff, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true, fog: false }));   // white-hot, never hidden: it must read against the brass
     const trail = Array.from({ length: 3 }, () => new THREE.Sprite(new THREE.SpriteMaterial({ map: fireTexture, color: 0xff7030, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false })));
@@ -559,6 +568,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const _fA = new THREE.Vector3(), _fB = new THREE.Vector3(), _fP = new THREE.Vector3();
   function updateGunCues(heardNow) {
     let fi = 0, si = 0;
+    const FUSE_S = cueSpan(), DROP_S = cueSpan();
     for (const name of ["bass", "treble"]) for (const b of (melodyStations[name] ? melodyStations[name].bars : [])) if (b.buttonMat) b._red = 0;
     for (const c of gunCuesTest || gunCues) {
       const dt = c.time - heardNow, name = c.laneIdx < 6 + BARS ? "bass" : "treble";
@@ -568,7 +578,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       if (b.buttonMat) {
         const span = b.cannon ? FUSE_S : DROP_S;
         const red = dt >= 0 ? Math.max(0, 1 - dt / span) ** 2 : Math.max(0, 1 + dt / 0.15);
-        b._red = Math.max(b._red, red);
+        b._red = Math.max(b._red, dt >= 0 ? red * (0.55 + 0.45 * beatKick) : red);   // a notch brighter on each beat
       }
       if (b.cannon && dt <= FUSE_S && dt >= -0.05 && fi < fuseSparks.length) {
         // the fuse: from the breech's touch-hole down to the button
@@ -577,7 +587,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         _fB.copy(b.top); _fB.y += 0.01;                                  // ...burns down to the button: hit it as it lands
         _fP.copy(_fA).lerp(_fB, f);
         fs.head.position.copy(_fP); fs.head.visible = true;
-        fs.head.scale.setScalar(0.2 + 0.1 * Math.random() + (f > 0.92 ? 0.2 : 0));   // it spits; flares at the end
+        fs.head.scale.setScalar(0.16 + 0.06 * Math.random() + 0.22 * beatKick + (f > 0.92 ? 0.2 : 0));   // it spits, flares on each beat and at the end
         fs.trail.forEach((t, i) => { const ff = Math.max(0, f - (i + 1) * 0.06); t.position.copy(_fA).lerp(_fB, ff); t.position.y += 0.01 * (i + 1); t.scale.setScalar(0.07 * (3 - i) / 3); t.material.opacity = 0.6 - i * 0.15; t.visible = true; });
       } else if (b.mortar && dt <= DROP_S && dt >= -0.03 && si < dropShells.length) {
         // the shell: dropped from above, accelerating, into the barrel
@@ -585,6 +595,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         ds.m.position.copy(b.muzzle); ds.m.position.y += 1.1 * (1 - f * f);
         ds.m.visible = true;
         ds.glint.position.copy(ds.m.position); ds.glint.visible = true;
+        ds.glint.scale.setScalar(0.08 + 0.22 * beatKick);   // it winks on each beat
       }
     }
     for (const name of ["bass", "treble"]) for (const b of (melodyStations[name] ? melodyStations[name].bars : [])) {
@@ -1828,6 +1839,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   function update(heardNow, upcoming, ghosts = []) {
     { const t = performance.now(); fireDt = Math.min(0.05, (t - fireT) / 1000); fireT = t; }
     defense.update(heardNow, fireDt);
+    updateBeatKick(heardNow);
     updateGunCues(heardNow);
     // clouds drift; the sunlight follows how much cloud is over the sun (eased over ~1.5 s)
     cloudRot += fireDt * CLOUD_SPEED;
@@ -2047,7 +2059,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         // ramping hardest at the end — cyan, then white-hot right at the hit
         const pl = pending[lane], ramp = pl * pl * pl;
         fl.glow.visible = true;
-        fl.glow.material.opacity = Math.min(1, 0.2 + 0.8 * pl * pl);
+        fl.glow.material.opacity = Math.min(1, (0.2 + 0.8 * pl * pl) * (0.65 + 0.35 * beatKick));   // throbs on the song's beat
         fl.glow.scale.setScalar(fl.radius * (1.25 + 0.55 * ramp));   // tight on the object (owner)
         _mc.copy(_cyan).lerp(_white, Math.max(0, (pl - 0.65) / 0.35) * 0.9);
         fl.glow.material.color.copy(_mc);
@@ -2367,6 +2379,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       return { type: rt.texture.type, avg: +(sum / n).toFixed(4), peak: +peak.toFixed(4), passes: shieldGlow.passes.length };
     },
     /** per target 0..1: how strongly it glows as "coming up next" */
+    /** the song's beat grid: cues count in on it */
+    setBeat: (first, dur) => { beatFirst = first; beatDur = dur; },
+    cueSpan,
     setPending: (levels) => { pending.fill(0); for (const [i, v] of Object.entries(levels)) pending[+i] = Math.max(pending[+i], v); },
     debugDefense: (heard) => ({ heard: +heard.toFixed(2), ...defense.debug() }),
     /** a missed arrow reached the shield: flash the part in front of that target */
