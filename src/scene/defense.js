@@ -50,7 +50,7 @@ void main() {
   gl_FragColor = vec4(mix(sw * 1.5, uColor, 0.2) + uColor * (0.5 * rim + hit), a);
 }`;
 
-export function createDefense(scene, { fireTexture, layer = 0 } = {}) {
+export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null } = {}) {
   const group = new THREE.Group();
   group.position.copy(CENTER);
   scene.add(group);
@@ -72,6 +72,7 @@ export function createDefense(scene, { fireTexture, layer = 0 } = {}) {
     const geo = new THREE.SphereGeometry(R, 48, 16, mid - Math.PI / 3, (2 * Math.PI) / 3, 0, Math.PI / 2);
     const mesh = new THREE.Mesh(geo, mat);
     mesh.layers.set(layer);
+    if (glowLayer != null) mesh.layers.enable(glowLayer);   // its own channel: only the shield gets the magic bloom
     mesh.visible = false;
     mesh.renderOrder = 5;
     group.add(mesh);

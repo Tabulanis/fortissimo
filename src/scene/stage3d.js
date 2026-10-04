@@ -305,6 +305,12 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
 
   // AO for everything: GTAO (screen-space) between the scene render and output
   const FX_LAYER = 1;
+  // THE SHIELD'S OWN BLOOM (owner, 2026-10-03: "like old 3ds object channels"): the
+  // shield also sits on layer 2; that layer alone is rendered on black, bloomed
+  // hard, tinted a cool blue and added over the finished picture — a magic halo
+  // on the shield only, nothing else blooms more than before
+  const SHIELD_LAYER = 2;
+  let shieldGlow = null, shieldCamera = null, shieldMix = null, shieldOnly = false;
   let composer = null, gtao = null, bloom = null, lens = null, smaa = null;
   if (!LOW) {
   composer = new EffectComposer(renderer);
@@ -337,6 +343,26 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // BLOOM: only what's brighter than white glows (fire, sparks, hit flashes)
   bloom = new UnrealBloomPass(new THREE.Vector2(canvas.clientWidth || 1280, canvas.clientHeight || 720), 0.55, 0.6, 0.85);
   composer.addPass(bloom);
+  {
+    shieldCamera = camera.clone();
+    shieldCamera.layers.set(SHIELD_LAYER);
+    shieldGlow = new EffectComposer(renderer);
+    shieldGlow.renderToScreen = false;
+    const sp = new RenderPass(scene, shieldCamera);
+    sp.clearColor = new THREE.Color(0x000000); sp.clearAlpha = 1;
+    shieldGlow.addPass(sp);
+    shieldGlow.addPass(new UnrealBloomPass(new THREE.Vector2(canvas.clientWidth || 1280, canvas.clientHeight || 720), 1.0, 0.7, 0.15));
+    composer.addPass(new ShaderPass({
+      uniforms: { tDiffuse: { value: null }, tGlow: { value: null }, tint: { value: new THREE.Color(0.22, 0.5, 1.0) }, amount: { value: 0.22 } },   // a deep blue halo, not a fog
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform sampler2D tDiffuse, tGlow; uniform vec3 tint; uniform float amount; varying vec2 vUv;
+        void main(){ vec4 c = texture2D(tDiffuse, vUv); vec3 g = texture2D(tGlow, vUv).rgb;
+          float l = dot(g, vec3(0.299, 0.587, 0.114));
+          gl_FragColor = vec4(c.rgb + tint * l * amount, c.a); }`,   // blue-toned (owner)
+    }));
+    shieldMix = composer.passes[composer.passes.length - 1];
+    shieldMix.uniforms.tGlow.value = shieldGlow.readBuffer.texture;
+  }
   composer.addPass(new OutputPass());
   // LENS FINISH (display space): vignette, a touch of chromatic fringing toward
   // the edges, fine film grain — small amounts, it should be felt not seen
@@ -510,7 +536,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     return new THREE.CanvasTexture(c);
   })();
   // THE DEFENSE you build by playing: the shield dome and the cannons (defense.js)
-  const defense = createDefense(scene, { fireTexture, layer: FX_LAYER });
+  const defense = createDefense(scene, { fireTexture, layer: FX_LAYER, glowLayer: SHIELD_LAYER });
   const _fireA = new THREE.Color(1.0, 0.95, 0.75), _fireB = new THREE.Color(1.0, 0.5, 0.12),
         _fireC = new THREE.Color(0.55, 0.06, 0.02), _fc = new THREE.Color();
   // fire colour along a 0..1 "cooling" value: white-yellow -> orange -> deep red
@@ -1380,7 +1406,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     const w = canvas.clientWidth || 1;
     const h = canvas.clientHeight || 1;
     renderer.setSize(w, h, false);
-    if (composer) { composer.setSize(w, h); gtao.setSize(w, h); bloom.setSize(w, h); }
+    if (composer) { composer.setSize(w, h); gtao.setSize(w, h); bloom.setSize(w, h); if (shieldGlow) shieldGlow.setSize(w, h); }
     camera.aspect = w / h;
     fitFov();
     camera.updateProjectionMatrix();
@@ -1537,7 +1563,12 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     scene.traverse((o) => {
       const m = o.material;
       const glowy = o.isSprite || (m && !Array.isArray(m) && m.blending === THREE.AdditiveBlending);
-      if (glowy) { o.layers.set(FX_LAYER); n++; }
+      if (glowy) {
+        const shield = o.layers.isEnabled(SHIELD_LAYER);   // keep the shield's bloom channel
+        o.layers.set(FX_LAYER);
+        if (shield) o.layers.enable(SHIELD_LAYER);
+        n++;
+      }
     });
     if (n === fxCount) fxSorted = true;   // stable two frames in a row: done
     fxCount = n;
@@ -2117,7 +2148,16 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     if (!fxSorted) sortFx();
     // the composer's passes don't render to a headset: draw straight to it
     if (vrOn() || !composer) renderer.render(scene, camera);
-    else { lens.uniforms.time.value = performance.now() % 1000; composer.render(); }
+    else {
+      lens.uniforms.time.value = performance.now() % 1000;
+      if (shieldGlow) {   // the shield's own glow first, from the same view
+        shieldCamera.position.copy(camera.position); shieldCamera.quaternion.copy(camera.quaternion);
+        shieldCamera.projectionMatrix.copy(camera.projectionMatrix); shieldCamera.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
+        shieldGlow.renderToScreen = shieldOnly;   // harness: show the channel alone
+        shieldGlow.render();
+      }
+      if (!shieldOnly) composer.render();
+    }
   }
 
   /**
@@ -2250,6 +2290,20 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     // per lane: how much of an arrow's flight the camera sees right now (0..1), and whether its launch is on screen
     /** the shield's three parts: { drums|bass|treble: { progress 0..1, up } } */
     setShield: (state) => defense.setShield(state),
+    debugShieldGlowAmount: (v) => { if (shieldMix) shieldMix.uniforms.amount.value = v; },   // harness
+    debugShieldOnly: (on) => { shieldOnly = !!on; },
+    debugShieldInfo: () => {
+      const meshes = []; scene.traverse((o) => { if (o.isMesh && o.material && o.material.uniforms && o.material.uniforms.uTexB) meshes.push({ mask: o.layers.mask, vis: o.visible, strength: +o.material.uniforms.uStrength.value.toFixed(2) }); });
+      return { meshes, camMask: shieldCamera && shieldCamera.layers.mask, camPos: shieldCamera && shieldCamera.position.toArray().map((v) => +v.toFixed(2)), mainPos: camera.position.toArray().map((v) => +v.toFixed(2)) };
+    },
+    /** harness: the shield-glow image's average + peak brightness (is the channel producing anything?) */
+    debugShieldGlow: () => {
+      if (!shieldGlow) return null;
+      const rt = shieldGlow.readBuffer, w = rt.width, h = rt.height, n = 64, px = new Float32Array(4);
+      let sum = 0, peak = 0, buf = rt.texture.type === THREE.UnsignedByteType ? new Uint8Array(4) : new Float32Array(4);
+      for (let i = 0; i < n; i++) { renderer.readRenderTargetPixels(rt, Math.floor((i % 8 + 0.5) / 8 * w), Math.floor((Math.floor(i / 8) + 0.5) / 8 * h), 1, 1, buf); const l = (buf[0] + buf[1] + buf[2]) / 3; sum += l; peak = Math.max(peak, l); }
+      return { type: rt.texture.type, avg: +(sum / n).toFixed(4), peak: +peak.toFixed(4), passes: shieldGlow.passes.length };
+    },
     /** per target 0..1: how strongly it glows as "coming up next" */
     setPending: (levels) => { pending.fill(0); for (const [i, v] of Object.entries(levels)) pending[+i] = Math.max(pending[+i], v); },
     debugDefense: (heard) => ({ heard: +heard.toFixed(2), ...defense.debug() }),
