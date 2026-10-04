@@ -27,6 +27,7 @@ import { normalize, judgeFor, simplifyNotes, scoreMultiplier, levelOf } from "./
 const runName = (r) => { const lv = levelOf(r); return lv ? `Level ${lv}` : "Custom"; };
 import { createMenu } from "./ui/menu.js";
 import { Defend, townDamage, LIFE } from "./game/defend.js";
+import { Siege } from "./game/siege.js";
 import { gradeRound } from "./game/grade.js";
 import { createResults } from "./ui/results.js";
 import { showLocked, showStamp } from "./ui/locked.js";
@@ -137,6 +138,7 @@ const roundsReady = loadRoundFiles().then((songs) => {
 // come for the notes you still need (song time: the "part" is the whole song),
 // a correct hit locks by the run's lock size. Before Start: the old step view.
 let defend = null;
+let siege = null;                // the enemy: arrows always coming, the shield's life (siege.js)
 let defendFrom = 0;              // misses count from here (a breath after Start)
 const occDone = new Set();       // "noteId@pass": that occurrence was hit or counted as a miss
 const offeredAt = new Map();     // noteId -> when it was first offered (its arrow can only come after that)
@@ -318,18 +320,40 @@ function tickDefend(heardNow) {
     lv[i] = Math.max(lv[i] || 0, Math.min(1, Math.max(0, 1 - (tNext - heardNow) / stage3d.cueSpan())));   // over the cue's beats (2, or 4 when fast)
   }
   stage3d.setPending(lv);
+  tickSiege(heardNow);
   defendEvents();
+}
+// THE SIEGE (owner, 2026-10-03): arrows rain in the whole time. The shield rises with
+// the drums; under its height they're zapped, over it they hurt you and the town.
+// Once it's full it has its own life; broken, it drops until locks heal it back.
+function tickSiege(heardNow) {
+  if (!siege || heardNow < defendFrom) return;
+  const drumsDone = defend.partProgress("drums") >= 1;
+  siege.rise = defend.partProgress("drums");
+  if (drumsDone && !siege.full) { siege.full = true; showShield(); hudUI.say("🛡 The shield is up — it takes the hits now", "good", 2600); }
+  siege.paused = life.over;
+  siege.tick(heardNow);
+  for (const e of siege.drain()) {
+    if (e.type === "arrow") stage3d.volley({ part: defend.section || "drums", ...e });
+    else if (e.type === "arrowHit") { life.you -= e.dmg; life.town -= e.dmg; }
+    else if (e.type === "shieldBroken") { showShield(); hudUI.say("The shield broke! Lock notes to raise it", "bad", 2600); }
+    else if (e.type === "shieldBack") { showShield(); hudUI.say("🛡 Shield back up", "good", 2000); }
+  }
+  hudUI.setShield(siege.full ? siege.hp : 100 * siege.rise, siege.full ? (siege.broken ? "broken" : "up") : "building");
 }
 // the dome: each section's part shimmers as it's built and stands once it's up
 function showShield() {
-  const part = (name) => ({ progress: defend.partProgress(name === "drums" ? "drums" : name + " bottom"), up: defend.shield().includes(name === "drums" ? "drums" : name + " bottom") });
-  stage3d.setShield({ drums: part("drums"), bass: part("bass"), treble: part("treble") });
+  // the whole dome rises with the drums (owner: "by the end of drums you get it to the top");
+  // broken, it's down until it's healed back
+  const st = siege && siege.broken ? { progress: 0, up: false } : { progress: defend.partProgress("drums"), up: defend.partProgress("drums") >= 1 };
+  stage3d.setShield({ drums: st, bass: st, treble: st });
 }
 const isGun = (lane) => /^(bass|treble) \d+$/.test(lane);   // every bar is a gun now: cannons on top, mortars below
 function defendEvents() {
   const L = LIFE[RUN.damage] || LIFE.normal;
   for (const e of defend.drain()) {
     if (e.type === "miss") {
+      if (e.note.section !== "drums") continue;   // at the guns a miss just doesn't fire: the enemy is the threat
       // a part that's up catches the arrow (the town takes less, see townDamage)
       const sec = e.note.lane.startsWith("bass") ? "bass" : e.note.lane.startsWith("treble") ? "treble" : "drums";
       if (LANE_INDEX[e.note.lane] != null) stage3d.shieldHit(sec, LANE_INDEX[e.note.lane]);
@@ -344,15 +368,13 @@ function defendEvents() {
         hits: e.notes.map((n) => { const h = e.hits.find((x) => x.id === n.id) || {}; return { lane: n.lane, pos: n.beat * clock.beatDur + (autoCorrect ? 0 : h.offset || 0), velocity: h.velocity ?? 0.9, midi: n.midi }; }) });
       const last = e.notes[e.notes.length - 1], idx = LANE_INDEX[last.lane], p = idx != null && stage3d.drumScreen(idx);
       if (p) showStamp("LOCKED!", p.x, p.y - 30, { size: e.notes.length > 1 ? 56 : 40, ms: 1600 });
+      if (siege) siege.heal();
       showShield();
       stageMessage();
     } else if (e.type === "progress") {
       hudUI.say(`${e.hit} / ${e.of} — keep going, in order`, "good", 1200);
     } else if (e.type === "chunkFail") {
       hudUI.say(`Broke the run (${e.why}) — those come round again`, "bad", 1600);
-    } else if (e.type === "shield") {
-      hudUI.setShield(e.up);
-      hudUI.say(`🛡 Shield ${e.up}/3 up — the town takes ${Math.round((e.up / 3) * 100)}% less`, "good", 2600);
     } else if (e.type === "sectionDone") {
       applyStage();   // turn to the next station
       updateBackLevels();
@@ -718,6 +740,7 @@ function makeStartButton() {
     addBacking();
     defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, beatDur: clock.beatDur });
     stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat
+    siege = new Siege({ miss: (LIFE[RUN.damage] || LIFE.normal).miss, beatDur: clock.beatDur });
     defendFrom = clock.first + Math.ceil((ctx.currentTime + 1.5 - clock.first) / (4 * clock.beatDur)) * 4 * clock.beatDur;   // misses count from the next bar after a breath
     hudUI.hideBell();
     defend.nowBeat = (((ctx.currentTime - clock.first) / clock.beatDur) % defend.loopBeats + defend.loopBeats) % defend.loopBeats;
@@ -1353,7 +1376,7 @@ if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; }, get bell() { return bell; },
   get stageIdx() { return stageIdx; }, get roundIdx() { return roundIdx; },
   setBackLevel: (v) => { for (const g of Object.values(backGain)) g.gain.value = v; },   // harness: backgrounds at full
-  get defend() { return defend; }, get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,
+  get defend() { return defend; }, get siege() { return siege; }, get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,
   get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln, midi) => laneSound(ln, midi),
   backInfo: () => ({ bpm: BPM, songBpm: song().bpm, loopSeconds: +(song().bars * 4 * clock.beatDur).toFixed(3),
     stretched: [...backCache].map(([k, b]) => [k, +b.duration.toFixed(3)]) }),

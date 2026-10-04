@@ -2360,6 +2360,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     // per lane: how much of an arrow's flight the camera sees right now (0..1), and whether its launch is on screen
     /** the shield's three parts: { drums|bass|treble: { progress 0..1, up } } */
     setShield: (state) => defense.setShield(state),
+    volley: (a) => defense.volley(a),
     /** the guns' timing cues: [{laneIdx, time}] — fuses on cannons, falling shells into mortars */
     setGunCues: (cues) => { gunCues = cues; },
     debugGunCues: (cues) => { gunCuesTest = cues; },

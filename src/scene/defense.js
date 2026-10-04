@@ -9,7 +9,7 @@
  *               glowing bolt from its bar at that bar's archer on the roofs,
  *               bursting where it lands.
  *
- * createDefense(scene, { fireTexture, layer }) -> { setShield, shieldHit, fire, update } */
+ * createDefense(scene, { fireTexture, layer }) -> { setShield, shieldHit, volley, fire, update } */
 import * as THREE from "three";
 
 const R = 3.4;                       // dome radius (m): round the player and both stations
@@ -122,22 +122,29 @@ export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null 
       e.v.set(Math.random() - 0.5, 0.6 + Math.random() * 0.8, Math.random() - 0.5).normalize().multiplyScalar(7 + Math.random() * 7);
     }
   };
-  // ATTACKERS (owner, 2026-10-03): while a part of the shield is up, enemy fire
-  // arrows come at that side of the dome — and get ZAPPED where they hit it
-  const ATTACK_S = 1.6;                       // an attacker's flight
-  const attackers = Array.from({ length: 12 }, () => ({ s: mk(0xff9a40, true, fireTexture), from: new THREE.Vector3(), to: new THREE.Vector3(), part: "", t0: 0, live: false }));
+  // ARROWS (owner, 2026-10-03): they rain in the whole time (siege.js decides each
+  // one); this draws them — from far down the side you face, at a HEIGHT on the dome:
+  // one the shield covers is ZAPPED there, one over it flies on into the town
+  const attackers = Array.from({ length: 16 }, () => ({ s: mk(0xff9a40, true, fireTexture), from: new THREE.Vector3(), to: new THREE.Vector3(), part: "", t0: 0, dur: 1.6, blocked: false, live: false }));
   const zaps = Array.from({ length: 12 }, () => ({ flash: mk(0x7fd8ff), sparks: Array.from({ length: 8 }, () => ({ s: mk(0xbfeaff, true, fireTexture), v: new THREE.Vector3() })), at: new THREE.Vector3(), t0: 0, live: false }));
-  const nextAttack = {};                      // part -> heard time of its next attacker
-  const FROM = {                              // where each side's attackers come from (far down its court, high)
+  const ZAP_BLUE = new THREE.Color(0x7fd8ff), SPARK_BLUE = new THREE.Color(0xbfeaff), HIT_ORANGE = new THREE.Color(0xff8a40);
+  const zap = (at, now, through = false) => {   // through: an arrow that got in — an orange burst on the ground
+    const z = zaps.find((x) => !x.live);
+    if (!z) return;
+    z.live = true; z.t0 = now; z.at.copy(at); z.flash.position.copy(at); z.flash.visible = true;
+    z.flash.material.color.copy(through ? HIT_ORANGE : ZAP_BLUE);
+    for (const e of z.sparks) e.s.material.color.copy(through ? HIT_ORANGE : SPARK_BLUE);
+    for (const e of z.sparks) { e.s.position.copy(at); e.s.visible = true; e.v.copy(at).sub(CENTER).normalize().multiplyScalar(2 + Math.random() * 3).add(new THREE.Vector3(Math.random() - 0.5, Math.random(), Math.random() - 0.5).multiplyScalar(3)); }
+  };
+  const FROM = {                              // where each side's arrows come from (far down its court, high)
     drums: () => new THREE.Vector3(-6 + Math.random() * 12, 8 + Math.random() * 3, -34),
     bass: () => new THREE.Vector3(34, 8 + Math.random() * 3, -5 + Math.random() * 10),
     treble: () => new THREE.Vector3(-34, 8 + Math.random() * 3, -5 + Math.random() * 10),
   };
-  const zap = (at, now) => {
-    const z = zaps.find((x) => !x.live);
-    if (!z) return;
-    z.live = true; z.t0 = now; z.at.copy(at); z.flash.position.copy(at); z.flash.visible = true;
-    for (const e of z.sparks) { e.s.position.copy(at); e.s.visible = true; e.v.copy(at).sub(CENTER).normalize().multiplyScalar(2 + Math.random() * 3).add(new THREE.Vector3(Math.random() - 0.5, Math.random(), Math.random() - 0.5).multiplyScalar(3)); }
+  /** the point on the dome at height h (0 floor .. 1 top) on a part's side (world) */
+  const domePoint = (part, h, out) => {
+    const el = Math.min(0.95, Math.max(0.04, h)) * Math.PI / 2, phi = SECTORS[part] + (Math.random() - 0.5) * (Math.PI / 3);
+    return out.set(-R * Math.cos(phi) * Math.cos(el), R * Math.sin(el), R * Math.sin(phi) * Math.cos(el)).add(CENTER);
   };
   const _ap = new THREE.Vector3();
   const queue = [];   // shots waiting for their moment: { at, from, to }
@@ -161,6 +168,15 @@ export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null 
       p.hit = 1;
       p.mat.uniforms.uHitAt.value.copy(at).sub(CENTER).setLength(R);
     },
+    /** an arrow (siege.js "arrow" event): flies launch -> landAt; blocked = stopped at the dome */
+    volley({ part = "drums", h, launch, landAt, blocked }) {
+      const a = attackers.find((x) => !x.live);
+      if (!a) return;
+      a.live = true; a.t0 = launch; a.dur = landAt - launch; a.part = part; a.blocked = blocked; a.from.copy(FROM[part]());
+      if (blocked) domePoint(part, h, a.to);
+      else a.to.set(CENTER.x + (Math.random() - 0.5) * 2.4, 0.15, CENTER.z + (Math.random() - 0.5) * 2.4);   // into the town, round you
+      a.s.visible = false;   // shown from its launch time
+    },
     debug: () => ({ queued: queue.map((q) => +q.at.toFixed(2)), flying: bolts.filter((b) => b.live).map((b) => b.s.position.toArray().map((v) => +v.toFixed(1))), bursts: bursts.filter((u) => u.live).length }),
     /** a cannon shot from a bar (world) to its archer (world), at heard time `at` */
     fire(from, to, at, { arc = 2.2, dur = BOLT_S } = {}) { queue.push({ at, from: from.clone(), to: to.clone(), arc, dur }); },
@@ -175,31 +191,18 @@ export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null 
         p.mat.uniforms.uHit.value = p.hit;
         p.mat.uniforms.uTime.value = heardNow;
       }
-      // attackers: a part that's up draws fire (more parts up, more fire), zapped at the dome
-      const upCount = Object.values(parts).filter((p) => p.up).length;
-      for (const [name, p] of Object.entries(parts)) {
-        if (!p.up) { nextAttack[name] = 0; continue; }
-        if (!nextAttack[name]) nextAttack[name] = heardNow + 0.5 + Math.random();
-        if (heardNow < nextAttack[name]) continue;
-        nextAttack[name] = heardNow + (1.0 + Math.random() * 1.2) * (1.5 / Math.max(1, upCount * 0.75));
-        const a = attackers.find((x) => !x.live);
-        if (!a) continue;
-        a.live = true; a.t0 = heardNow; a.part = name; a.from.copy(FROM[name]());
-        a.to.set(CENTER.x + (Math.random() - 0.5) * 1.5, 1.4 + Math.random(), CENTER.z + (Math.random() - 0.5) * 1.5);
-        a.s.visible = true;
-      }
       for (const a of attackers) {
         if (!a.live) continue;
-        const f = (heardNow - a.t0) / ATTACK_S;
-        _ap.copy(a.from).lerp(a.to, f); _ap.y += 3 * 4 * f * (1 - f);
-        if (_ap.distanceTo(CENTER) <= R || f >= 1) {   // it reached the dome: ZAP
+        const f = (heardNow - a.t0) / a.dur;
+        if (f < 0) continue;
+        if (f >= 1) {   // landed: zapped on the dome, or a burst on the ground inside
           a.live = false; a.s.visible = false;
-          const hitAt = _ap.clone().sub(CENTER).setLength(R).add(CENTER);
-          zap(hitAt, heardNow);
-          const p = parts[a.part]; if (p) { p.hit = 1; p.mat.uniforms.uHitAt.value.copy(hitAt).sub(CENTER); }
+          zap(a.to, heardNow, !a.blocked);
+          const p = parts[a.part]; if (a.blocked && p) { p.hit = 1; p.mat.uniforms.uHitAt.value.copy(a.to).sub(CENTER); }
           continue;
         }
-        a.s.position.copy(_ap); a.s.scale.setScalar(0.9);
+        _ap.copy(a.from).lerp(a.to, f); _ap.y += 3 * 4 * f * (1 - f);
+        a.s.position.copy(_ap); a.s.scale.setScalar(0.9); a.s.visible = true;
       }
       for (const z of zaps) {
         if (!z.live) continue;
@@ -241,7 +244,8 @@ export function createDefense(scene, { fireTexture, layer = 0, glowLayer = null 
         const fl = Math.min(1, t / 0.25);                       // flash: 0.25 s
         u.flash.scale.setScalar(4 + 16 * fl); u.flash.material.opacity = 1 - fl; u.flash.visible = fl < 1;
         const bl = Math.min(1, t / 0.8);                        // fireball: 0.8 s
-        u.ball.scale.setScalar(3 + 9 * Math.sqrt(bl));   // big enough to read from 26 m u.ball.material.opacity = 0.95 * (1 - bl); u.ball.visible = bl < 1;
+        u.ball.scale.setScalar(3 + 9 * Math.sqrt(bl));   // big enough to read from 26 m
+        u.ball.material.opacity = 0.95 * (1 - bl); u.ball.visible = bl < 1;
         const sm = Math.min(1, t / 1.6);                        // smoke: rises and spreads, 1.6 s
         u.smoke.position.set(u.at.x, u.at.y + 1.8 * sm, u.at.z);
         u.smoke.scale.setScalar(3.5 + 8 * sm); u.smoke.material.opacity = 0.5 * Math.sin(Math.PI * Math.min(1, sm * 1.2));

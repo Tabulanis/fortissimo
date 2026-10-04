@@ -1,0 +1,23 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" style="width:1400px;height:900px;border:0"></iframe>
+<script type="module">
+// the siege in a real run: arrows coming in at the drums, zapped under the shield's height or landing inside
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+localStorage.removeItem("gr.run");
+const f = document.getElementById("f");
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  if (w.location.href === "about:blank") return;
+  try {
+    await wait(3500);
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(9000);
+    const grab = () => new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png"))));
+    say("shot_siege", await grab());
+    const S = w.__gr.game.siege;
+    say("info_siege", JSON.stringify({ rise: S.rise, flying: S.flying.length, hp: S.hp, life: w.__gr.game.life }));
+  } catch (e) { say("err_siege", e.message); }
+};
+f.src = "/?quality=high";
+</script>

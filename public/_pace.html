@@ -3,7 +3,7 @@
 <script type="module">
 const out = [], wait = (ms) => new Promise((r) => setTimeout(r, ms));
 localStorage.removeItem("gr.run");   // Easy
-const KEY = { hat: "q", snare: "w", crash: "e", kick: "z", "tom low": "x", "tom high": "c" };
+const KEY = { hat: "q", snare: "w", crash: "e", kick: "a", "tom low": "s", "tom high": "d" };
 for (const k of ["bass", "treble"]) "asdfghjkqwertyui".split("").forEach((c, i) => (KEY[`${k} ${i + 1}`] = c));
 const f = document.getElementById("f"); f.src = "/?quality=low";
 f.onload = async () => {
@@ -18,7 +18,7 @@ f.onload = async () => {
     const at = (T, k) => { const o = G.ctx.getOutputTimestamp(); setTimeout(() => press(k), Math.max(0, o.performanceTime + (T + G.calibration - o.contextTime) * 1000 - w.performance.now())); };
     const planned = new Set(), lockTimes = [], offerTimes = [];
     const MISS_EVERY_OTHER = location.hash === "#miss"; let seen = 0, lastOffer = null, minLife = 100;
-    let locked = D.locked.size, firstArrow = null;
+    let locked = D.locked.size, firstArrow = null; const siegeLog = [];
     const t0 = performance.now();
     while (performance.now() - t0 < 40000) {
       const now = G.ctx.getOutputTimestamp().contextTime;
@@ -28,6 +28,7 @@ f.onload = async () => {
         if (!planned.has(key) && a.time - now < 1.0) { planned.add(key); if (!MISS_EVERY_OTHER || (seen++ % 2 === 0)) at(a.time, KEY[G.laneOf(a.laneIdx)]); }
       }
       minLife = Math.min(minLife, G.life.you);
+      const S = G.siege; if (S && Math.floor((performance.now() - t0) / 5000) > siegeLog.length - 1) siegeLog.push(`${Math.round((performance.now() - t0) / 1000)}s rise ${S.rise.toFixed(2)} full ${S.full} hp ${S.hp} life ${G.life.you.toFixed(1)}/${G.life.town.toFixed(1)}`);
       if (D.locked.size > locked) { locked = D.locked.size; lockTimes.push(+(now).toFixed(1)); }
       for (const a of G.upcoming()) { const k2 = a.laneIdx + "@" + a.time.toFixed(2); if (k2 !== lastOffer && !offerTimes.some((x) => x.k === k2)) { offerTimes.push({ k: k2, t: +a.time.toFixed(1) }); lastOffer = k2; } }
       await wait(50);
@@ -35,6 +36,7 @@ f.onload = async () => {
     const gaps = lockTimes.slice(1).map((t, i) => +(t - lockTimes[i]).toFixed(1));
     const ot = offerTimes.map((x) => x.t); out.push(`arrow moments: ${JSON.stringify(ot)} | gaps: ${JSON.stringify(ot.slice(1).map((t, i) => +(t - ot[i]).toFixed(1)))}`);
     out.push(`40 s, playing only arrows that appear${MISS_EVERY_OTHER ? " (missing every other one)" : ""}: ${lockTimes.length} locks at ${JSON.stringify(lockTimes)} | gaps between locks (s): ${JSON.stringify(gaps)} | life ${G.life.you}/${G.life.town} (lowest ${minLife})`);
+    out.push("siege: " + siegeLog.join(" | "));
   } catch (e) { out.push("ERROR " + e.message + " " + e.stack); }
   fetch("http://127.0.0.1:8899/pace", { method: "POST", body: out.join("\n") });
 };
