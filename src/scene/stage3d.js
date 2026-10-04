@@ -7,7 +7,7 @@
 
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { createCourtyard, ARCHER_ROOF_Y, ARCHER_ROOF_X, ARCHER_ROOF_Z, FAR_WALL, armToWorld } from "./courtyard.js";
+import { createCourtyard, ARCHER_ROOF_Y, ARCHER_ROOF_X, ARCHER_ROOF_Z, FAR_WALL } from "./courtyard.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
@@ -289,7 +289,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   };
   fitFov();
   camera.position.set(0, 2.1, 0.75);           // a little above standing height: more of the battlefield (owner, 2026-10-03; VR uses the headset)
-  camera.lookAt(new THREE.Vector3(0, 1.25, -2.2));  // tilted down: both rows in view, the court beyond
+  camera.lookAt(new THREE.Vector3(0, 0.95, -2.2));  // tilted down: the bottom of the play area and its indicators in view (owner), the court beyond
   // LOOK AROUND (screen mode): arrow keys / thumbsticks turn the view a little
   // off this forward pose; let go and it drifts back to facing the kit
   const baseQuat = camera.quaternion.clone();
@@ -427,7 +427,6 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const drumFace = [];
   const drumLabels = [];
   const drumLabelMats = [];
-  // the countdown numbers: fat, a thick dark outline and a ring, warming 3 yellow -> 2 orange -> 1 red
   // the countdown numbers: fat, a thick dark outline and a ring — 1 red, 2 orange, 3 yellow;
   // 4-9 pale (only shown small, for the NEXT strike queued on the same target)
   const COUNT_COL = { 1: "#ff4a3a", 2: "#ffa53a", 3: "#ffe45a" };
@@ -443,26 +442,6 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     g.fillStyle = col; g.fillText(d, 64, 70);
     const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; return tx;
   })];
-  /** a countdown spot: the next strike's 3-2-1, and a small number beside it when another is queued */
-  const makeCount = (at, size) => {
-    const mk = () => { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: COUNT_N[1], transparent: true, depthWrite: false, depthTest: false, fog: false }));
-      s.renderOrder = 20; s.layers.set(FX_LAYER); s.visible = false; scene.add(s); return s; };
-    return { main: mk(), side: mk(), at: at.clone(), size, n: 0, n2: 0, t: 0 };
-  };
-  const _cdRight = new THREE.Vector3();
-  /** dt1, dt2: seconds to the next and the following strike on this target (Infinity: none) */
-  function showCount(c, dt1, dt2, heardNow) {
-    const n = dt1 / beatDur <= 3 ? Math.ceil(dt1 / beatDur) : 0;
-    const n2 = n && dt2 / beatDur <= 9 ? Math.max(n + 1, Math.ceil(dt2 / beatDur)) : 0;
-    if (n !== c.n) { c.n = n; c.t = heardNow; if (n) c.main.material.map = COUNT_N[n]; }
-    if (n2 !== c.n2) { c.n2 = n2; if (n2) c.side.material.map = COUNT_N[Math.min(9, n2)]; }
-    c.main.visible = n > 0; c.side.visible = n2 > 0;
-    if (!n) return;
-    const s = c.size * (1 + 0.45 * Math.exp(-9 * (heardNow - c.t)));   // pops in on its beat
-    c.main.scale.setScalar(s); c.main.position.copy(c.at);
-    if (n2) { _cdRight.setFromMatrixColumn(camera.matrixWorld, 0); c.side.scale.setScalar(c.size * 0.62); c.side.position.copy(c.at).addScaledVector(_cdRight, c.size * 0.85); c.side.position.y -= c.size * 0.15; }
-  }
-  const countdown = [];   // per drum: { s: sprite, n: the number showing, at: when it changed }
   const labelGeo = new THREE.PlaneGeometry(0.2, 0.2);   // ~half a 0.19-0.2 m drumhead
   const labelTex = (key) => {
     const c = document.createElement("canvas");
@@ -500,10 +479,6 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     drumLabelMats.push(labelMat);
     // COUNTDOWN (owner, 2026-10-03: "telling when to hit the drums is really hard"):
     // a big outlined 3, 2, 1 just above the letter, one per beat; the hit is the beat after 1
-    // smaller, and just UNDER the drum (owner, 2026-10-03)
-    const cdAt = LANES3D[i].upright ? new THREE.Vector3(LANES3D[i].x, LANES3D[i].y - LANES3D[i].radius + 0.01, LANES3D[i].z + LANES3D[i].depth / 2 + 0.05)
-      : new THREE.Vector3(LANES3D[i].x, LANES3D[i].y + LANES3D[i].depth / 2 - 0.03, LANES3D[i].z + LANES3D[i].radius + 0.06);   // on the head's front rim
-    countdown.push(makeCount(cdAt, 0.12));
 
     const mat = new THREE.MeshStandardMaterial({
       color,
@@ -534,16 +509,25 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const BAR_TARGET = { radius: 0.07, depth: 0.04, upright: false, bar: true };
   const stationOf = (i) => (i < 6 ? "drums" : i < 6 + BARS ? "bass" : "treble");
   const TARGET = (i) => (i < 6 ? LANES3D[i] : BAR_TARGET);
-  function laneHex(i) { return i < 6 ? (colors[drumOf(i)] || "#888888") : BAR_HEX[stationOf(i)]; }
+  // the guns: 16 colours round the wheel per station (top row lighter), bass and treble offset
+  const gunHex = (i) => { const slot = (i - 6) % BARS, c = new THREE.Color();
+    c.setHSL(((slot % PER_ROW) / PER_ROW + (stationOf(i) === "treble" ? 1 / 16 : 0)) % 1, 0.95, slot >= PER_ROW ? 0.66 : 0.52);
+    return "#" + c.getHexString(); };
+  function laneHex(i) { return i < 6 ? (colors[drumOf(i)] || "#888888") : gunHex(i); }
+  // each gun's key letter in its lane's colour: a green cart / rocket heads for the green letter
+  for (let i = 6; i < N_T; i++) { const b = melodyStations[stationOf(i)].bars[(i - 6) % BARS]; if (b && b.label) b.label.material.color.copy(hexToColor(laneHex(i))); }
   for (const kind of ["bass", "treble"]) {
     for (const b of melodyStations[kind].bars) { drumFace.push(b.top.clone()); drumMat.push(b.mat); }
   }
   // the bars' archers: fixed spots along their own court's roofs, alternating sides
+  // the CANNONS' rockets (owner, 2026-10-03: "rockets for the top"): straight down their
+  // court on their own lane, lined up with their cannon and spread wider far away, like the drums'
   for (let i = 6; i < N_T; i++) {
-    const k = (i - 6) % BARS, side = k % 2 ? 1 : -1;
-    // far enough down the court that the whole flight stays on screen
-    SPAWNS[i] = armToWorld(stationOf(i), side * ARCHER_ROOF_X, ARCHER_ROOF_Y, -17 - ((k >> 1) % 4) * 4.5 - (k >= PER_ROW ? 2.2 : 0));
-    ARC_LIFT[i] = 2.5;
+    const name = stationOf(i), b = melodyStations[name].bars[(i - 6) % BARS], yaw = STATIONS[name].yaw;
+    const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)), right = new THREE.Vector3(fwd.z * -1, 0, fwd.x);
+    const lat = b.top.clone().sub(new THREE.Vector3(0, 0, 0.3)).dot(right);
+    SPAWNS[i] = new THREE.Vector3(0, 0, 0.3).addScaledVector(fwd, 28).addScaledVector(right, lat * 3.5).setY(3.4);
+    ARC_LIFT[i] = 0.9;
   }
 
   // DRUM STANDS (placeholder): a post from the ground to each drum's body
@@ -624,56 +608,69 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       gl_FragColor = vec4(mix(uColor, vec3(1.0), 0.6 * bar) * (1.0 + 1.5 * bar), min(1.0, a));   // the bars run white-hot
     }`;
   let lanes = null;
+  // a gun lane's own court: down it, and across it
+  const courtFwd = (name) => { const yaw = STATIONS[name].yaw; return new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)); };
+  const LANE_C = new THREE.Vector3(0, 0, 0.3);
+  /** a MORTAR's cart lane, on the paving: from far down its court to just in front of its gun (f 0 -> 1) */
+  function cartPoint(i, f, out) {
+    const name = stationOf(i), b = melodyStations[name].bars[(i - 6) % BARS], fwd = courtFwd(name), right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    // along the paving, then up a short ramp right to the mortar itself (so it plainly arrives AT its gun)
+    const end = b.top.clone().addScaledVector(fwd, 0.1); end.y -= 0.02;
+    const foot = new THREE.Vector3(end.x, 0.04, end.z).addScaledVector(fwd, 1.3);
+    const lat = foot.clone().sub(LANE_C).dot(right);
+    const start = LANE_C.clone().addScaledVector(fwd, 26).addScaledVector(right, lat * 3.5).setY(0.04);
+    const RAMP = 0.9;
+    return f < RAMP ? out.copy(start).lerp(foot, f / RAMP) : out.copy(foot).lerp(end, (f - RAMP) / (1 - RAMP));
+  }
+  function buildLane(i, pointAt, W) {
+    const N = 48, P = new THREE.Vector3(), Q = new THREE.Vector3(), side = new THREE.Vector3();
+    const pos = new Float32Array((N + 1) * 2 * 3), fs = new Float32Array((N + 1) * 2), ss = new Float32Array((N + 1) * 2), idx = [];
+    for (let k = 0; k <= N; k++) {
+      const f = k / N;
+      pointAt(f, P); pointAt(Math.min(1, f + 0.01), Q);
+      if (f >= 1) { pointAt(0.99, Q); Q.subVectors(P, Q).add(P); }
+      side.subVectors(Q, P).cross(UP).normalize().multiplyScalar(W / 2);
+      pos.set([P.x - side.x, P.y - side.y, P.z - side.z, P.x + side.x, P.y + side.y, P.z + side.z], k * 6);
+      fs[k * 2] = fs[k * 2 + 1] = f; ss[k * 2] = -1; ss[k * 2 + 1] = 1;
+      if (k < N) idx.push(k * 2, k * 2 + 1, k * 2 + 2, k * 2 + 1, k * 2 + 3, k * 2 + 2);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("aF", new THREE.BufferAttribute(fs, 1));
+    g.setAttribute("aS", new THREE.BufferAttribute(ss, 1));
+    g.setIndex(idx);
+    const m = new THREE.ShaderMaterial({ vertexShader: LANE_VERT, fragmentShader: LANE_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, fog: false,
+      uniforms: { uColor: { value: hexToColor(laneHex(i)) }, uNow: { value: 0 }, uFirst: { value: 0 }, uBeat: { value: 0.6 }, uA: { value: APPROACH_S }, uOn: { value: 0 }, uHot: { value: 0 } } });
+    const mesh = new THREE.Mesh(g, m);
+    mesh.layers.set(FX_LAYER); mesh.renderOrder = 2; mesh.frustumCulled = false; mesh.visible = false;
+    scene.add(mesh);
+    return { i, mesh, m, station: i < 6 ? "drums" : stationOf(i), cart: i >= 6 && (i - 6) % BARS < PER_ROW, seen: 0 };
+  }
   function buildLanes() {
     lanes = [];
-    const N = 48, W = 0.1,   // thin (owner)
-      e = { spawn: null, face: null, laneIdx: 0 }, P = new THREE.Vector3(), Q = new THREE.Vector3(), side = new THREE.Vector3();
-    for (let i = 0; i < 6; i++) {
-      e.spawn = SPAWNS[i]; e.face = drumFace[i]; e.laneIdx = i;
-      const pos = new Float32Array((N + 1) * 2 * 3), fs = new Float32Array((N + 1) * 2), ss = new Float32Array((N + 1) * 2), idx = [];
-      for (let k = 0; k <= N; k++) {
-        const f = k / N;
-        pathPoint(e, f, P); pathPoint(e, Math.min(1, f + 0.01), Q);
-        if (f >= 1) { pathPoint(e, 0.99, Q); Q.subVectors(P, Q).add(P); }
-        side.subVectors(Q, P).cross(UP).normalize().multiplyScalar(W / 2);
-        pos.set([P.x - side.x, P.y - side.y, P.z - side.z, P.x + side.x, P.y + side.y, P.z + side.z], k * 6);
-        fs[k * 2] = fs[k * 2 + 1] = f; ss[k * 2] = -1; ss[k * 2 + 1] = 1;
-        if (k < N) idx.push(k * 2, k * 2 + 1, k * 2 + 2, k * 2 + 1, k * 2 + 3, k * 2 + 2);
-      }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      g.setAttribute("aF", new THREE.BufferAttribute(fs, 1));
-      g.setAttribute("aS", new THREE.BufferAttribute(ss, 1));
-      g.setIndex(idx);
-      const m = new THREE.ShaderMaterial({ vertexShader: LANE_VERT, fragmentShader: LANE_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
-        blending: THREE.AdditiveBlending, fog: false,
-        uniforms: { uColor: { value: hexToColor(laneHex(i)) }, uNow: { value: 0 }, uFirst: { value: 0 }, uBeat: { value: 0.6 }, uA: { value: APPROACH_S }, uOn: { value: 0 }, uHot: { value: 0 } } });
-      const mesh = new THREE.Mesh(g, m);
-      mesh.layers.set(FX_LAYER); mesh.renderOrder = 2; mesh.frustumCulled = false;
-      scene.add(mesh);
-      lanes.push({ mesh, m });
+    const e = { spawn: null, face: null, laneIdx: 0 };
+    const air = (i) => (f, out) => { e.spawn = SPAWNS[i]; e.face = drumFace[i]; e.laneIdx = i; return pathPoint(e, f, out); };
+    for (let i = 0; i < N_T; i++) {
+      const gun = i >= 6, mortar = gun && (i - 6) % BARS < PER_ROW;
+      lanes.push(buildLane(i, mortar ? (f, out) => cartPoint(i, f, out) : air(i), gun ? 0.07 : 0.1));
     }
   }
   function updateLanes(heardNow) {
     if (!lanes) buildLanes();
-    const atDrums = station === "drums";
-    for (let i = 0; i < lanes.length; i++) {
-      const u = lanes[i].m.uniforms, want = atDrums && drumVisible[i] ? 1 : 0;
+    for (const L of lanes) {
+      const u = L.m.uniforms;
+      // something coming down it: an arrow / rocket (drums, cannons) or a cart (mortars)
+      let hot = 0;
+      if (L.cart) { for (const c of carts) if (c.live && c.laneIdx === L.i) hot = 1; }
+      else for (const e of activeNotes) if (e.laneIdx === L.i && !e.hit && e.time > heardNow) hot = 1;
+      if (L.station !== station) L.seen = 0;   // a fresh section: guides start dark
+      else if (hot) L.seen = 1;
+      // drums: every drum in the song keeps its lane; guns: a lane lights when used, then stays as a faint guide
+      const want = station !== L.station ? 0 : L.i < 6 ? (drumVisible[L.i] ? 1 : 0) : L.seen ? (hot ? 1 : 0.45) : 0;
       u.uOn.value += (want - u.uOn.value) * Math.min(1, fireDt * 3);
-      lanes[i].mesh.visible = u.uOn.value > 0.01;
-      u.uNow.value = heardNow; u.uFirst.value = beatFirst; u.uBeat.value = beatDur;
-      let hot = 0;   // an arrow on this lane lights it up
-      for (const e of activeNotes) if (e.laneIdx === i && !e.hit && e.time > heardNow) hot = 1;
+      L.mesh.visible = u.uOn.value > 0.01;
       u.uHot.value += (hot - u.uHot.value) * Math.min(1, fireDt * 6);
-    }
-  }
-  /** each drum's next note: 3, 2, 1 over the last three beats before it, popping as it changes */
-  function updateCountdown(heardNow, upcoming) {
-    for (let i = 0; i < countdown.length; i++) {
-      let a = Infinity, b = Infinity;   // the next two strikes on this drum
-      for (const u of upcoming) if (u.laneIdx === i && u.time > heardNow) { if (u.time < a) { b = a; a = u.time; } else if (u.time < b) b = u.time; }
-      if (!drumVisible[i]) a = b = Infinity;
-      showCount(countdown[i], a - heardNow, b - heardNow, heardNow);
     }
   }
   function updateBeatKick(heardNow) {
@@ -693,17 +690,49 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     glint.scale.setScalar(0.1); glint.layers.set(FX_LAYER); m.visible = false; glint.visible = false; scene.add(m, glint);
     return { m, glint };
   });
+  // AMMO CARTS (owner, 2026-10-03): the MORTARS' tell — a little wagon in its lane's colour,
+  // shells piled on it, rolling down its lane on the paving to its gun, there on the beat,
+  // its 3-2-1 riding above it (the cannons get rockets, like the drums)
+  const cartBody = new THREE.BoxGeometry(0.14, 0.09, 0.2), cartWheel = new THREE.CylinderGeometry(0.04, 0.04, 0.02, 12), cartShell = new THREE.SphereGeometry(0.035, 10, 8);
+  cartWheel.rotateZ(Math.PI / 2);   // axles across the cart
+  const WHEEL_MAT = new THREE.MeshStandardMaterial({ color: 0x2a1c12, roughness: 0.8 }), SHELL_MAT = new THREE.MeshStandardMaterial({ color: 0x2a2622, metalness: 0.6, roughness: 0.5 });
+  const carts = Array.from({ length: 16 }, () => {
+    const g = new THREE.Group(), mat = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
+    const body = new THREE.Mesh(cartBody, mat); body.position.y = 0.09; g.add(body);
+    const wheels = [[-0.08, -0.07], [0.08, -0.07], [-0.08, 0.07], [0.08, 0.07]].map(([x, z]) => { const w = new THREE.Mesh(cartWheel, WHEEL_MAT); w.position.set(x, 0.04, z); g.add(w); return w; });
+    for (const [x, z] of [[-0.05, -0.03], [0.04, 0.02], [0, -0.01]]) { const s = new THREE.Mesh(cartShell, SHELL_MAT); s.position.set(x, 0.17, z); g.add(s); }
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: fireTexture, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+    glow.position.y = 0.12; glow.scale.setScalar(0.35); g.add(glow);
+    const num = new THREE.Sprite(new THREE.SpriteMaterial({ map: COUNT_N[3], transparent: true, depthWrite: false, depthTest: false, fog: false }));
+    num.renderOrder = 21; num.layers.set(FX_LAYER); num.visible = false; scene.add(num);
+    g.scale.setScalar(1.6); g.visible = false; scene.add(g);
+    return { g, mat, glow, wheels, num, n: 0, live: false, laneIdx: -1 };
+  });
+  const _cp = new THREE.Vector3(), _cq = new THREE.Vector3();
   let gunCues = [], gunCuesTest = null;   // gunCuesTest: harness only
   const _fA = new THREE.Vector3(), _fB = new THREE.Vector3(), _fP = new THREE.Vector3();
   function updateGunCues(heardNow) {
-    let fi = 0, si = 0;
+    let fi = 0, si = 0, ci = 0;
     const FUSE_S = cueSpan(), DROP_S = cueSpan();
-    for (const name of ["bass", "treble"]) for (const b of (melodyStations[name] ? melodyStations[name].bars : [])) if (b.buttonMat) { b._red = 0; b._cdNext = Infinity; b._cdNext2 = Infinity; }
+    for (const name of ["bass", "treble"]) for (const b of (melodyStations[name] ? melodyStations[name].bars : [])) if (b.buttonMat) b._red = 0;
     for (const c of gunCuesTest || gunCues) {
       const dt = c.time - heardNow, name = c.laneIdx < 6 + BARS ? "bass" : "treble";
       const b = melodyStations[name] && melodyStations[name].bars[(c.laneIdx - 6) % BARS];
       if (!b || !drumVisible[c.laneIdx]) continue;
-      if (dt > 0) { if (dt < b._cdNext) { b._cdNext2 = b._cdNext; b._cdNext = dt; } else if (dt < b._cdNext2) b._cdNext2 = dt; }   // its countdown: the next two
+      // a MORTAR's ammo cart rolls in down its lane, arriving on the beat
+      if (b.mortar && dt > -0.1 && dt <= APPROACH_S && ci < carts.length) {
+        const k = carts[ci++], f = Math.min(1, 1 - dt / APPROACH_S);
+        if (k.laneIdx !== c.laneIdx) { k.laneIdx = c.laneIdx; const col = hexToColor(laneHex(c.laneIdx)); k.mat.color.copy(col); k.glow.material.color.copy(col); }
+        k.live = true; k.g.visible = dt > 0;
+        cartPoint(c.laneIdx, f, _cp); cartPoint(c.laneIdx, Math.min(1, f + 0.01), _cq);
+        k.g.position.copy(_cp);
+        k.g.lookAt(_cq.x, _cp.y, _cq.z);
+        for (const w of k.wheels) w.rotation.x = -f * 26 / 0.064;   // rolling
+        const nb = dt > 0 ? Math.ceil(dt / beatDur) : 0, ns = nb <= 3 ? nb : 0;
+        if (ns !== k.n) { k.n = ns; if (ns) k.num.material.map = COUNT_N[ns]; }
+        k.num.visible = ns > 0 && dt > 0;
+        if (k.num.visible) { const dcam = _cp.distanceTo(camera.position); k.num.position.copy(_cp); k.num.position.y += 0.45 + 0.012 * dcam; k.num.scale.setScalar(0.07 * Math.max(1.2, dcam)); }
+      }
       // the BUTTON lights red, fading in to full on the beat, then out fast (owner, 2026-10-03)
       if (b.buttonMat) {
         const span = b.cannon ? FUSE_S : DROP_S;
@@ -731,10 +760,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     for (const name of ["bass", "treble"]) for (const b of (melodyStations[name] ? melodyStations[name].bars : [])) {
       if (!b.buttonMat) continue;
       b.buttonMat.emissive.setRGB(2.6 * b._red, 0.1 * b._red, 0.04 * b._red);   // dark red -> bright red
-      // the same countdown as the drums, smaller, just under the button (owner, 2026-10-03)
-      if (!b._cd) { const at = b.top.clone(); at.y -= 0.07; b._cd = makeCount(at, b.mortar ? 0.07 : 0.085); }
-      showCount(b._cd, b._cdNext, b._cdNext2, heardNow);
     }
+    for (; ci < carts.length; ci++) { carts[ci].live = false; carts[ci].g.visible = false; carts[ci].num.visible = false; }
     for (; fi < fuseSparks.length; fi++) { fuseSparks[fi].head.visible = false; for (const t of fuseSparks[fi].trail) t.visible = false; }
     for (; si < dropShells.length; si++) { dropShells[si].m.visible = false; dropShells[si].glint.visible = false; }
   }
@@ -767,12 +794,17 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const tubeGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.22, 10); tubeGeo.translate(0.042, 0.06, 0);
   const capGeo = new THREE.ConeGeometry(0.03, 0.06, 10); capGeo.translate(0.042, 0.2, 0);
   const TUBE_MAT = new THREE.MeshBasicMaterial({ color: 0x8a1e14, fog: false }), CAP_MAT = new THREE.MeshBasicMaterial({ color: 0x2a1a10, fog: false });
+  const _lc = new THREE.Color(), _white3 = new THREE.Color(1, 1, 1);
   const pool = [];
   for (let i = 0; i < 40; i++) {
     const group = new THREE.Group();
     const shaft = new THREE.Mesh(shaftGeo, SHAFT_MAT);
     const head = new THREE.Mesh(headGeo, HEAD_MAT);
-    const tube = new THREE.Mesh(tubeGeo, TUBE_MAT), cap = new THREE.Mesh(capGeo, CAP_MAT);
+    const tubeMat = TUBE_MAT.clone();   // its own: painted its lane's colour
+    const tube = new THREE.Mesh(tubeGeo, tubeMat), cap = new THREE.Mesh(capGeo, CAP_MAT);
+    // its COUNTDOWN rides with it (owner, 2026-10-03: "put the countdown on the rocket")
+    const num = new THREE.Sprite(new THREE.SpriteMaterial({ map: COUNT_N[3], transparent: true, depthWrite: false, depthTest: false, fog: false }));
+    num.renderOrder = 21; num.layers.set(FX_LAYER); num.visible = false; scene.add(num);
     shaft.castShadow = true; head.castShadow = true;
     group.scale.setScalar(ROCKET_SCALE);
     const flame = new THREE.Sprite(new THREE.SpriteMaterial({ fog: false,
@@ -800,7 +832,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     scene.add(group);
     pool.push({
       id: "a" + i,      // fire-simulation emitter id
-      group,
+      group, tubeMat, num, numN: 0,
       flame,
       glow,
       active: false,
@@ -2022,9 +2054,12 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         e.hitAt = -1;
         e.stuckUntil = 0;
         e.group.visible = true;
-        e.flame.material.color.setRGB(1, 1, 1);   // the fire texture carries the colour
+        // its lane's colour: the tube, a tint in the flame, a small glow (owner: tell them apart, not a big bloom)
+        _lc.copy(hexToColor(laneHex(u.laneIdx)));
+        e.tubeMat.color.copy(_lc);
+        e.flame.material.color.copy(_lc).lerp(_white3, 0.35);
         e.flame.material.opacity = 1;              // a recycled glance left these faded
-        e.glow.material.opacity = 0.42;
+        e.glow.material.opacity = 0.3;
         e.glow.material.color.copy(hexToColor(laneHex(u.laneIdx)));
         e.spawn.copy(SPAWNS[u.laneIdx]);
         e.face.copy(drumFace[u.laneIdx]);
@@ -2039,7 +2074,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       if (e.time > heardNow && e.seen !== _frameNo && !e.hit) recycle(e);
     }
 
-    updateCountdown(heardNow, upcoming);
+    // (the countdown rides on each rocket arrow now — owner, 2026-10-03 — not under the drum)
     updateLanes(heardNow);
     // position + flame flicker + retirement
     for (const e of activeNotes) {
@@ -2163,7 +2198,12 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       // so distant arrows are sharp points of fire, not blobs
       const s = 0.28 * Math.min(far, 5) * (0.9 + 0.2 * Math.random());   // hot core; the sim is the fire
       e.flame.scale.setScalar(s);
-      e.glow.scale.setScalar(1.4 * Math.min(far, 1.8) * (0.9 + 0.2 * Math.random()));
+      e.glow.scale.setScalar(0.6 * Math.min(far, 1.8) * (0.9 + 0.2 * Math.random()));
+      // the countdown it carries: 3, 2, 1 over its last three beats, the same size on screen at any distance
+      const nLeft = dt > 0 ? Math.ceil(dt / beatDur) : 0, nShow = nLeft <= 3 ? nLeft : 0;
+      if (nShow !== e.numN) { e.numN = nShow; if (nShow) e.num.material.map = COUNT_N[nShow]; }
+      e.num.visible = nShow > 0;
+      if (nShow) { e.num.position.copy(e.group.position); e.num.position.y += 0.22 + 0.012 * e.group.position.distanceTo(camera.position); e.num.scale.setScalar(0.07 * Math.max(1.2, e.group.position.distanceTo(camera.position))); }
       // FIRE: the head pours flame into the simulation as it flies (world-space
       // head = group position + 0.3 m along the heading). Far arrows emit
       // bigger flames so they stay readable, like the core sprite.
@@ -2504,7 +2544,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     /** the guns' timing cues: [{laneIdx, time}] — fuses on cannons, falling shells into mortars */
     setGunCues: (cues) => { gunCues = cues; },
     debugGunCues: (cues) => { gunCuesTest = cues; },
-    debugCountdown: () => countdown.map((c) => c.n), debugCountdown2: () => countdown.map((c) => c.n2),
+    debugCountdown: () => [0, 1, 2, 3, 4, 5].map((i) => Math.max(0, ...activeNotes.filter((e) => e.laneIdx === i && e.num.visible).map((e) => e.numN))),
     debugGunInfo: () => ({ sparks: fuseSparks.filter((f) => f.head.visible).map((f) => [f.head.position.toArray().map((v) => +v.toFixed(3)), +f.head.scale.x.toFixed(3), f.head.layers.mask]), shells: dropShells.filter((d) => d.m.visible).length }),
     debugShieldGlowAmount: (v) => { if (shieldMix) shieldMix.uniforms.amount.value = v; },   // harness
     debugShieldOnly: (on) => { shieldOnly = !!on; },

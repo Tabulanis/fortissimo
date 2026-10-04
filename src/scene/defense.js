@@ -59,7 +59,7 @@ void main() {
   // CLEAR LOW DOWN (owner, 2026-10-03: "it gotta not cover the foreground"): below head
   // height the dome is see-through — the drums, guns and court stay clean; the magic is
   // overhead. The rising edge line and the hit flashes still show low down.
-  float overhead = smoothstep(1.2, 2.2, vP.y);
+  float overhead = smoothstep(2.2, 3.2, vP.y);   // above the (2.1 m) camera: clear in front of you
   float a = (uStrength * (pow(lum, 1.6) * 1.1 + 0.15 * rim) * risen * overhead + uStrength * edge * 0.3 + hit * (0.4 + lum)) * floorFade;
   gl_FragColor = vec4(mix(sw * 1.5, uColor, 0.2) + uColor * (0.5 * rim + hit + 0.5 * edge), a);
 }`;

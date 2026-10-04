@@ -61,9 +61,10 @@ const unlockedLevel = () => { try { return +localStorage.getItem(UNLOCKED_KEY) |
 const CALIB_KEY = "gr.calib";
 
 // --- drum colours (hex strings; shared by the 3D stage and the chart) ------
+// every lane its OWN colour, strong and easy to tell apart (owner, 2026-10-03)
 const DRUM_COLOR = {
-  hat: "#8ac", snare: "#f8a", crash: "#ce8",
-  kick: "#a8f", tomLow: "#da6", tomHigh: "#fa4",
+  hat: "#3adcff", snare: "#ff4fa0", crash: "#a8ff3a",
+  kick: "#9a5cff", tomLow: "#ffd23a", tomHigh: "#ff5a24",
 };
 
 // --- the 3D stage (created once at load; canvas#stage becomes WebGL) --------
@@ -1178,11 +1179,13 @@ function frame() {
       }
       if (heardNow > hint.end + 0.4) hint = null;
     }
-    // arrows for the drums; the guns get their own cues (a fuse, a falling shell) — arrows can't pass the shield
     const up = buildUpcoming(heardNow);
     lastUp = up;
+    // drums and CANNONS get rockets down their lanes; mortars get ammo carts (stage3d's gun cues);
+    // every gun keeps its fuse / falling shell / red button too
+    const rocketLane = (i) => i < 6 || (i - 6) % BARS >= 8;
     stage3d.setGunCues(defend ? up.filter((u) => u.laneIdx >= 6) : []);
-    stage3d.update(heardNow, defend ? up.filter((u) => u.laneIdx < 6) : up, ghostHits);
+    stage3d.update(heardNow, defend ? up.filter((u) => rocketLane(u.laneIdx)) : up, ghostHits);
     if (defend) tickDefend(heardNow);
   } else {
     // before Start: keep the courtyard (and its drums) visible, no arrows
