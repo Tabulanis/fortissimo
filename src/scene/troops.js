@@ -14,6 +14,7 @@
  */
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { clone as skelClone } from "three/examples/jsm/utils/SkeletonUtils.js";
 
 // joints: 0 head, 1 lSh, 2 rSh, 3 lHip, 4 rHip, 5 lEl, 6 lHand, 7 rEl, 8 rHand, 9 lKnee, 10 lFoot, 11 rKnee, 12 rFoot
 const N = 13;
@@ -60,7 +61,7 @@ function pose(out, ph, attacking, t, thrash = 0) {
   set(11, 0.13, 0.5 + lift2, -0.22 * sw + 0.05); set(12, 0.14, 0.03 + lift2, -0.35 * sw);
 }
 
-export function createTroops(scene, { court, center, layer = 0, fireTexture = null } = {}) {
+export function createTroops(scene, { court, center, layer = 0, fireTexture = null, models = true } = {}) {
   const box = new THREE.BoxGeometry(1, 1, 1);
   const ball = new THREE.SphereGeometry(0.5, 12, 10);
   // SELF-LIT (owner, 2026-10-03: "increase lighting of enemies so we can see em"): their own
@@ -88,6 +89,55 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
     };
   };
   const rigs = Array.from({ length: MAX }, () => makeRig("soldier"));
+  // THE SOLDIER MODEL (owner's Meshy "Canyon Sentinel", 2026-10-04; built like the cyclops): every
+  // rig gets its own skinned copy and mixer — walks or spear-walks in (runs when far), slashes at the
+  // wall; dead, it's thrown tumbling like the box ragdoll was, lies there, then sinks. Cheap tiers
+  // (models: false) keep the box rigs.
+  const sent = { template: null, clips: {} };
+  const attachModel = (r) => {
+    const root = skelClone(sent.template); root.visible = false;
+    root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+    scene.add(root);
+    r.model = { root, mixer: new THREE.AnimationMixer(root), action: null, name: null, v: new THREE.Vector3(), spin: new THREE.Vector3(), walk: Math.random() < 0.5 ? "Walking" : "Spear_Walk" };
+  };
+  if (models) new GLTFLoader().load("/models/Sentinel.glb", (gltf) => {
+    sent.template = gltf.scene;
+    gltf.scene.traverse((o) => { if (o.isMesh && o.material) { o.material.emissive = new THREE.Color(0x3a2418); o.material.emissiveIntensity = 0.55; } });   // a little self-light: they read in the dusk shade
+    for (const c of gltf.animations) sent.clips[c.name] = c;
+    for (const r of rigs) attachModel(r);
+  }, undefined, (err) => console.warn("Sentinel model failed to load — the box soldiers stand in", err));
+  const modelPlay = (m, name, speed = 1) => {
+    if (!sent.clips[name]) return;
+    if (m.name === name) { if (m.action) m.action.timeScale = speed; return; }
+    const a = m.mixer.clipAction(sent.clips[name]); a.reset(); a.timeScale = speed; a.paused = false; a.setLoop(THREE.LoopRepeat, Infinity);
+    if (m.action && m.action !== a) m.action.crossFadeTo(a, 0.2, false);
+    a.play(); m.action = a; m.name = name;
+  };
+  const _mf = new THREE.Vector3(), _Zm = new THREE.Vector3(0, 0, 1);
+  /** a living soldier's model: on the rig's spot, facing the dome, its clip by state */
+  const drawModel = (r, dt) => {
+    const m = r.model, e = r.enemy, c = court(e.side);
+    r.g.visible = false; m.root.visible = true;
+    m.root.position.copy(r.base); m.root.scale.setScalar(r.scale);
+    m.root.quaternion.setFromUnitVectors(_Zm, _mf.copy(c.fwd).negate());
+    if (e.kind === "balloon") { modelPlay(m, "Walking", 1); if (m.action) { m.action.paused = true; m.action.time = 0.35; } }
+    else if (e.attacking) modelPlay(m, "Right_Hand_Sword_Slash", 1);
+    else if (e.dist > 16) modelPlay(m, "Running", 0.9 * (e.speed || 1.6) / 1.6);
+    else modelPlay(m, m.walk, (e.speed || 1.6) / 1.6);
+    m.mixer.update(dt);
+  };
+  /** a dead soldier's model: thrown, tumbling, bouncing once, then lying, then sinking */
+  const deadModel = (r, dt) => {
+    const m = r.model, age = r.t - r.deadAt;
+    if (m.action) m.action.paused = true;
+    if (age < DEAD_S) {
+      m.root.position.addScaledVector(m.v, dt); m.v.y -= 9.8 * dt;
+      if (m.root.position.y < 0) { m.root.position.y = 0; m.v.y = Math.abs(m.v.y) * 0.25; m.v.x *= 0.6; m.v.z *= 0.6; m.spin.multiplyScalar(0.5); if (m.v.y < 0.6) m.v.set(0, 0, 0); }
+      const w = m.spin.length();
+      if (w > 0.01) { m.root.rotateOnAxis(_mf.copy(m.spin).divideScalar(w), w * dt); if (m.v.lengthSq() < 1e-4) m.spin.multiplyScalar(Math.exp(-dt * 4)); }
+    } else m.root.position.y = -(age - DEAD_S) / SINK_S * 1.2 * r.scale;
+    if (age > DEAD_S + SINK_S) { r.live = false; m.root.visible = false; r.enemy = null; }
+  };
   // BALLOON GUYS (owner, 2026-10-04): a soldier in a basket under an envelope; a shell POPS the envelope and he drops
   const envMat = new THREE.MeshStandardMaterial({ color: 0xe04a30, roughness: 0.6, emissive: 0x501208, emissiveIntensity: 0.8, transparent: true, opacity: 0.95 });
   const balloons = Array.from({ length: 6 }, () => {
@@ -160,6 +210,7 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
     pose(r.local, r.ph, e.attacking, r.t, thrash);
     place(e, _base);
     if (e.kind === "soldier") _base.addScaledVector(court(e.side).right, Math.sin(r.t * 1.7 + r.ph0) * 0.22);   // a loose mob: they weave as they come
+    (r.base || (r.base = new THREE.Vector3())).copy(_base);
     _fwd.copy(court(e.side).fwd).negate();   // they face the dome
     _q.setFromUnitVectors(_Z, _fwd);
     for (let i = 0; i < N; i++) {
@@ -225,6 +276,7 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
       if (!r) return;
       r.live = true; r.dead = false; r.enemy = e; r.t = 0; r.g.visible = true; r.ph0 = Math.random() * 6; r.thrashAt = null; r.thrashing = null;
       r.scale = e.kind === "boss" ? 3.2 : e.kind === "balloon" ? 1.0 : 1.0 + Math.random() * 0.25;   // human-sized (owner: "they are huge"), the boss three men tall
+      if (r.model) { const m = r.model; m.mixer.stopAllAction(); m.action = null; m.name = null; m.root.quaternion.identity(); m.root.visible = false; m.v.set(0, 0, 0); m.spin.set(0, 0, 0); }
       if (e.kind === "balloon") { const bl = balloons.find((x) => !x.rig); if (bl) { bl.rig = r; bl.pop = -1; bl.env.visible = bl.basket.visible = true; bl.env.scale.setScalar(1); bl.env.material.opacity = 0.95; } }
       posed(r, e, 0);
       for (let i = 0; i < N; i++) r.prev[i].copy(r.pos[i]);
@@ -248,6 +300,11 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
         _v.y = (7 + 5 * Math.random() + (i === 0 ? 2 : 0)) * big;   // up and over
         _v.x += (Math.random() - 0.5) * 2.5; _v.z += (Math.random() - 0.5) * 2.5;
         r.prev[i].copy(r.pos[i]).addScaledVector(_v, -STEP);   // Verlet: a speed is the step back
+      }
+      if (r.model) {   // the model is thrown whole: the joints' mean kick, and a tumble
+        const m = r.model; m.v.set(0, 0, 0);
+        for (let i = 0; i < N; i++) m.v.add(_v.copy(r.pos[i]).sub(r.prev[i]).divideScalar(STEP));
+        m.v.divideScalar(N); m.spin.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize().multiplyScalar(5 + 5 * Math.random());
       }
       if (e.kind === "boss") bar.visible = false;
     },
@@ -289,12 +346,15 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
             else if (thrashing) { if (cyc.name !== "Double_Combo_Attack") cycPlay("Double_Combo_Attack", { speed: 1.1 }); }
             else cycPlay("Walking", { speed: 0.35 });
             bar.position.copy(cyc.root.position).setY(1.7 * r.scale + 0.6);
+          } else if (r.model && sent.template) {
+            drawModel(r, dt);
           } else {
             draw(r);
             if (r === bossRig) bar.position.copy(r.pos[0]).setY(r.pos[0].y + 0.9 * r.scale * 0.5 + 0.6);
           }
           continue;
         }
+        if (r.model && sent.template) { r.t += dt; deadModel(r, dt); continue; }
         if (useModel) {   // down: it topples forward over a second, lies there, then sinks away
           r.t += dt;
           const age = r.t - r.deadAt;

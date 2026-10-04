@@ -584,7 +584,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const courtOf = (side) => { const yaw = STATIONS[side].yaw, fx = -Math.sin(yaw), fz = -Math.cos(yaw);
     return { fwd: new THREE.Vector3(fx, 0, fz), right: new THREE.Vector3(-fz, 0, fx) }; };
   const COURTS = { bass: courtOf("bass"), treble: courtOf("treble") };
-  const troops = createTroops(scene, { court: (side) => COURTS[side], center: new THREE.Vector3(0, 0, 0.3), layer: FX_LAYER, fireTexture });
+  const troops = createTroops(scene, { court: (side) => COURTS[side], center: new THREE.Vector3(0, 0, 0.3), layer: FX_LAYER, fireTexture, models: !LOW });   // cheap tiers: box soldiers
   // THE LIGHTNING GUN (treble, owner 2026-10-04): crystal hits arc into the orb, which fills
   // with charge; charged, a jagged BOLT leaps from the orb to the boss
   const LG = melodyStations.treble.lightning;

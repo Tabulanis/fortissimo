@@ -14,10 +14,16 @@ import io, json, struct, sys
 from pathlib import Path
 from PIL import Image
 
+# usage: build-cyclops.py <unzipped Meshy folder> <OutName> [colour px] [metal/rough px]
+#   e.g. build-cyclops.py .../Meshy_AI_Canyon_Sentinel_biped Sentinel 512 256
 SRC = Path(sys.argv[1] if len(sys.argv) > 1 else "/tmp/fortissimo-dev")
+OUT_NAME = sys.argv[2] if len(sys.argv) > 2 else "Cyclops"
+CAP_COLOR = int(sys.argv[3]) if len(sys.argv) > 3 else 1024
+CAP_MR = int(sys.argv[4]) if len(sys.argv) > 4 else 512
 ROOT = Path(__file__).resolve().parent.parent / "public"
-PREFIX = "Meshy_AI_Canyon_Cyclops_biped_Animation_"
-CLIPS = ["Walking", "Attack", "Double_Combo_Attack", "Hit_Reaction", "Running", "Shield_Push_Left"]
+PREFIX = SRC.name + "_Animation_"
+CLIPS = sorted(p.name[len(PREFIX):-len("_withSkin.glb")] for p in SRC.glob(f"{PREFIX}*_withSkin.glb"))
+CLIPS.sort(key=lambda c: (c != "Walking", c))   # Walking first: it's the base
 
 
 def read_glb(p):
@@ -57,11 +63,11 @@ def write_glb(j, chunks, out):
 
 
 def build(cap_color, cap_mr, out):
-    base_j, base_d = read_glb(SRC / f"{PREFIX}Walking_withSkin.glb")
+    base_j, base_d = read_glb(SRC / f"{PREFIX}{CLIPS[0]}_withSkin.glb")
     chunks = [view_bytes(base_j, base_d, i) for i in range(len(base_j["bufferViews"]))]
     node_names = [n.get("name") for n in base_j["nodes"]]
     # the first clip is the base's own
-    base_j["animations"][0]["name"] = "Walking"
+    base_j["animations"][0]["name"] = CLIPS[0]
     for clip in CLIPS[1:]:
         j, d = read_glb(SRC / f"{PREFIX}{clip}_withSkin.glb")
         assert [n.get("name") for n in j["nodes"]] == node_names, f"{clip}: a different skeleton"
@@ -105,5 +111,5 @@ def build(cap_color, cap_mr, out):
 
 
 if __name__ == "__main__":
-    build(1024, 512, ROOT / "models" / "Cyclops.glb")
-    build(512, 256, ROOT / "small" / "models" / "Cyclops.glb")
+    build(CAP_COLOR, CAP_MR, ROOT / "models" / f"{OUT_NAME}.glb")
+    build(CAP_COLOR // 2, CAP_MR // 2, ROOT / "small" / "models" / f"{OUT_NAME}.glb")
