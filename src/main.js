@@ -127,24 +127,12 @@ const roundsReady = loadRoundFiles().then((songs) => {
   if (typeof applyStage === "function") applyStage();
   bootlog("rounds from files", { n: songs.length, warnings: songs.flatMap((r) => r.warnings) });
 }).catch((e) => { console.warn("round files unavailable — playing the built-in songs", e); bootlog("rounds: built-in", { why: String(e) }); });
-// THE CORE LOOP (defend.js, owner 2026-10-03): no bell — the song runs, arrows
-// come for the notes you still need (song time: the "part" is the whole song),
-// a correct hit locks by the run's lock size. Before Start: nothing is offered.
+// THE CORE LOOP (defend.js, owner 2026-10-04): the song's notes STREAM at you in song
+// order, a few always in flight; a correct hit locks (by the run's keep rule). Before Start: nothing.
 let defend = null;
 let siege = null;                // the enemy: arrows always coming, the shield's life, the army (siege.js)
 let waveSection = null;          // the section whose army is out
 let defendFrom = 0;              // misses count from here (a breath after Start)
-const occDone = new Set();       // "noteId@pass": that occurrence was hit or counted as a miss
-const offeredAt = new Map();     // noteId -> when it was first offered (its arrow can only come after that)
-// LEAD TIME (owner, 2026-10-03): a newly offered note's target glows "coming up"
-// (fading in) for this long before its arrow may come. Easy: 3 s, getting
-// shorter as the song fills in (1.2 s near the end) — it speeds up toward the end.
-const leadFor = () => {
-  if (RUN.lock !== 1) return 4;
-  const done = defend ? defend.locked.size / Math.max(1, defend.notes.length) : 0;
-  return 3 - 1.8 * done;
-};
-const readyAt = (id) => (offeredAt.has(id) ? offeredAt.get(id) + leadFor() : Infinity);
 const songDone = () => !!defend && defend.done;
 const currentPart = () => (defend ? defend.offered() : []);
 const partObj = () => (defend && !defend.done ? { mode: defend.section, bars: song().bars, part: defend.offered() } : null);
@@ -245,33 +233,19 @@ function stageMessage() {
 // miss (hurts you and the town); then whatever the engine reports happens
 function tickDefend(heardNow) {
   if (!defend || life.over) return;
-  const loop = 4 * song().bars * clock.beatDur, box = judgeDiff().window;
-  // where the song is, and the lead, for picking Easy's next note (it comes just after the lead)
-  defend.nowBeat = (((heardNow - clock.first) / clock.beatDur) % defend.loopBeats + defend.loopBeats) % defend.loopBeats;
-  defend.leadBeats = leadFor() / clock.beatDur;
-  if (!defend.done) for (const n of defend.offered()) {
-    if (!offeredAt.has(n.id)) offeredAt.set(n.id, heardNow);
-    const k = Math.floor((heardNow - box - clock.first - n.beat * clock.beatDur) / loop);
-    const t = clock.first + k * loop + n.beat * clock.beatDur;
-    if (t < defendFrom || heardNow < t + box) continue;
-    // only once its lead is over and its arrow had time to fly in (fair: nothing unannounced counts)
-    if (t < readyAt(n.id)) continue;
-    const key = n.id + "@" + k;
-    if (occDone.has(key)) continue;
-    occDone.add(key);
-    defend.miss(n.id);
-    offeredAt.delete(n.id);   // if it's offered again later, it gets a fresh lead
-  }
-  // the targets of what's offered glow "coming up"
-  // ...over the last few BEATS before its note (owner: in the song's timing), throbbing on each beat
+  // the STREAM (defend.js): the engine gets the time in beats, how far ahead the rockets fly, the hitbox
+  defend.now = (heardNow - clock.first) / clock.beatDur;
+  defend.windowBeats = APPROACH_S / clock.beatDur;
+  defend.graceBeats = judgeDiff().window / clock.beatDur;
+  defend.missFrom = (defendFrom - clock.first) / clock.beatDur;
+  defend.tick();   // what went by unhit is a miss
+  // the targets glow up WITH their rocket / cart (owner, 2026-10-04): the rocket's progress down the lane
   const lv = {};
-  if (!defend.done) for (const n of defend.offered()) {
+  for (const n of defend.offered()) {
     const i = LANE_INDEX[n.lane];
     if (i == null) continue;
-    const from = Math.max(readyAt(n.id), heardNow - box);
-    const k = Math.ceil((from - clock.first - n.beat * clock.beatDur) / loop);
-    const tNext = clock.first + k * loop + n.beat * clock.beatDur;   // its next moment that counts
-    lv[i] = Math.max(lv[i] || 0, Math.min(1, Math.max(0, 1 - (tNext - heardNow) / stage3d.cueSpan())));   // over the cue's beats (2, or 4 when fast)
+    const t = clock.first + n.at * clock.beatDur;
+    lv[i] = Math.max(lv[i] || 0, Math.min(1, Math.max(0, 1 - (t - heardNow) / APPROACH_S)));
   }
   stage3d.setPending(lv);
   tickSiege(heardNow);
@@ -684,8 +658,6 @@ function makeStartButton() {
     stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat
     siege = new Siege({ miss: (LIFE[RUN.damage] || LIFE.normal).miss, beatDur: clock.beatDur });
     defendFrom = clock.first + Math.ceil((ctx.currentTime + 1.5 - clock.first) / (4 * clock.beatDur)) * 4 * clock.beatDur;   // misses count from the next bar after a breath
-    defend.nowBeat = (((ctx.currentTime - clock.first) / clock.beatDur) % defend.loopBeats + defend.loopBeats) % defend.loopBeats;
-    defend.leadBeats = leadFor() / clock.beatDur;   // so even the first note comes just after its lead
     defend.drain();
     session = new SessionLog({
       bpm: BPM,
@@ -976,8 +948,6 @@ function hitLane(idx, lane, press, padVel = 1) {
     const box = judgeDiff().window, inBox = found && Math.abs(j.offset) <= box;
     const p = stage3d.drumScreen(idx);
     if (inBox) {
-      const loop = 4 * song().bars * clock.beatDur;
-      occDone.add(found.id + "@" + Math.round((j.time - clock.first - found.beat * clock.beatDur) / loop));   // this occurrence is hit, not a miss
       const r = defend.hit(found.id, { offset: j.offset, velocity: vel });
       if (isGun(lane.name)) fireGun(idx, lane.name, ctx.getOutputTimestamp().contextTime);   // your gun
       if (r !== "wrong") { const L = LIFE[RUN.damage] || LIFE.normal; life.you += L.heal; life.town += L.heal; }
@@ -1095,13 +1065,12 @@ const APPROACH_S = 4.0;   // must match stage3d.js
 function buildUpcoming(heardNow) {
   // arrows only for the part you're learning; none in free play
   if (mode === "free" || songDone()) return [];
-  const part = (window.__gr && window.__gr.game && window.__gr.game.testPart) || currentPart();   // testPart: harness only
-  // an arrow only for an occurrence after its note's lead time
-  const loop = 4 * partBars() * clock.beatDur, out = [];
-  for (const n of part) for (const a of partArrows([n], (x) => LANE_INDEX[x], clock.first, loop, clock.beatDur, heardNow - 0.6, heardNow + APPROACH_S)) {
-    if (a.time >= readyAt(n.id)) out.push(a);
-  }
-  return out.sort((a, b) => a.time - b.time);
+  const part = window.__gr && window.__gr.game && window.__gr.game.testPart;   // testPart: harness only, a fixed part looped
+  if (part) return partArrows(part, (n) => LANE_INDEX[n], clock.first, 4 * partBars() * clock.beatDur, clock.beatDur, heardNow - 0.6, heardNow + APPROACH_S);
+  // the STREAM's window: every occurrence in flight, at its own time
+  return defend.offered().map((n) => ({ laneIdx: LANE_INDEX[n.lane], time: clock.first + n.at * clock.beatDur }))
+    .filter((a) => a.laneIdx != null && a.time >= heardNow - 0.6 && a.time <= heardNow + APPROACH_S)
+    .sort((a, b) => a.time - b.time);
 }
 
 // --- timing chart (its own canvas) ------------------------------------------

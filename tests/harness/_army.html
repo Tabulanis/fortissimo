@@ -16,7 +16,7 @@ f.onload = async () => {
     [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
     await wait(1500);
     const G = w.__gr.game, s = w.__gr.stage3d, D = G.defend;
-    const skip = (sec) => { while (D.section === sec) D.hit(D.offered()[0].id); };
+    const skip = (sec) => { while (D.section === sec) D.lockAll(); };
     skip("drums");
     await wait(11000);
     log.push("bass, before firing: " + JSON.stringify(s.debugTroops()));

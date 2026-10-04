@@ -1629,7 +1629,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     }
   }
   const _red = new THREE.Color(0xff1408);
-  const _cyan = new THREE.Color(0x6fe6ff);
+  const laneCol = [];   // each lane's colour, built on first use
   const _shot = new THREE.Vector3();
   const pending = new Float32Array(64);   // per target 0..1: "coming up" (set by the game)
 
@@ -2234,13 +2234,14 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       if (mat && mat.color && !mat.userData.base) mat.userData.base = mat.color.clone();
       let tint = 0;
       if (pending[lane] > 0.01 && drumVisible[lane]) {
-        // ONE FLASH (owner, 2026-10-03): a single glow building over the last ~2 s,
-        // ramping hardest at the end — cyan, then white-hot right at the hit
+        // the target glows up WITH its rocket / cart (owner, 2026-10-04): the game feeds its
+        // progress down the lane — dim at launch, climbing, white-hot right on the beat — in the lane's colour
         const pl = pending[lane], ramp = pl * pl * pl;
+        if (!laneCol[lane]) laneCol[lane] = hexToColor(laneHex(lane));
         fl.glow.visible = true;
         fl.glow.material.opacity = Math.min(1, (0.2 + 0.8 * pl * pl) * (0.65 + 0.35 * beatKick));   // throbs on the song's beat
         fl.glow.scale.setScalar(fl.radius * (1.25 + 0.55 * ramp));   // tight on the object (owner)
-        _mc.copy(_cyan).lerp(_white, Math.max(0, (pl - 0.65) / 0.35) * 0.9);
+        _mc.copy(laneCol[lane]).lerp(_white, Math.max(0, (pl - 0.65) / 0.35) * 0.9);
         fl.glow.material.color.copy(_mc);
         if (frame) { frame.visible = true; frame.material.opacity = Math.min(1, 0.3 + 0.9 * pl); frame.material.color.copy(_mc); }
         if (mat && mat.userData.base) { mat.color.copy(mat.userData.base).lerp(_mc, 0.35 + 0.55 * ramp); }
