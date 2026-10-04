@@ -39,7 +39,10 @@ export const ARMY = {
   bossDps: 5,           // play-tested 2026-10-03: at 9 the boss + escort broke the shield and took the town 99 -> 31 against a robot hitting every note
   bossHpPerNote: 2,     // the boss's life: 2 hits per treble note you'll play
   blast: 2.6,           // m: a shell kills soldiers this close
-  lanes: 4.6,           // m either side of the court's middle (some walk past either side of the guns)
+  lanes: 5.2,           // m: how far out to the sides they come
+  sides: 2.6,           // m: they keep OUT of the middle (owner, 2026-10-04: the cues come down the middle)
+  wallSlots: 6,         // at most this many hack at the wall; the rest hang back behind them
+  bossStandoff: 3.5,    // the boss stops this far behind the wall and swings from there
   // BALLOON GUYS (owner, 2026-10-04): float in high over the bass court, hover, and fire rockets
   // at the cannons that hurt the TOWN; the cannons' shells pop them (mortars can't reach)
   balloonEvery: 7, balloonSpeed: 0.8, balloonAlt: 7, balloonHover: 11, rocketEvery: 3.2, rocketFlight: 1.6, rocketDmg: 2,
@@ -172,15 +175,17 @@ export class Siege {
     if (w && !this.paused) {
       if (w.nextAt == null) w.nextAt = now + 0.5;
       if (now >= w.nextAt) {
-        const n = 1 + Math.floor(this.rng() * 3), lat = (this.rng() * 2 - 1) * ARMY.lanes;   // a clump of 1-3, loosely together
-        for (let i = 0; i < n; i++) { const s = this._spawn(w.side, "soldier", Math.max(-ARMY.lanes, Math.min(ARMY.lanes, lat + (this.rng() - 0.5) * 2.5))); s.dist += this.rng() * 2; }
+        const n = 1 + Math.floor(this.rng() * 3), side = this.rng() < 0.5 ? -1 : 1;   // a clump of 1-3, loosely together, down one SIDE
+        const lat = side * (ARMY.sides + this.rng() * (ARMY.lanes - ARMY.sides));
+        for (let i = 0; i < n; i++) { const s = this._spawn(w.side, "soldier", side * Math.max(ARMY.sides, Math.min(ARMY.lanes, Math.abs(lat + (this.rng() - 0.5) * 2)))); s.dist += this.rng() * 2; }
         w.nextAt = now + ARMY.soldierEvery * (w.kind === "boss" ? 2 : 1) * (0.7 + 0.6 * this.rng());
       }
       if (w.side === "bass") {   // the balloon guys, over the bass court
         if (w.nextBalloon == null) w.nextBalloon = now + 3;
-        if (now >= w.nextBalloon) { this._spawn("bass", "balloon", (this.rng() * 2 - 1) * 5); w.nextBalloon = now + ARMY.balloonEvery * (0.7 + 0.6 * this.rng()); }
+        if (now >= w.nextBalloon) { this._spawn("bass", "balloon", (this.rng() < 0.5 ? -1 : 1) * (3.5 + this.rng() * 2.5)); w.nextBalloon = now + ARMY.balloonEvery * (0.7 + 0.6 * this.rng()); }
       }
     }
+    let atWall = this.enemies.filter((e) => e.alive && e.attacking && e.kind === "soldier").length;
     for (const e of this.enemies) {
       if (!e.alive) continue;
       if (e.kind === "balloon") {   // drifts in, hovers, and fires rockets at the cannons — they hurt the TOWN
@@ -192,8 +197,10 @@ export class Siege {
         continue;
       }
       if (!e.attacking) {
-        e.dist -= e.speed * dt;
-        if (e.dist <= ARMY.wall) { e.dist = ARMY.wall; e.attacking = true; }
+        // the boss stands off behind; soldiers queue up behind the ones at the wall when it's full
+        const stop = e.kind === "boss" ? ARMY.wall + ARMY.bossStandoff : atWall >= ARMY.wallSlots ? ARMY.wall + 2.2 + (e.id % 5) * 0.5 : ARMY.wall;
+        if (e.dist > stop) e.dist = Math.max(stop, e.dist - e.speed * dt);
+        if (e.dist <= ARMY.wall + 1e-6 || (e.kind === "boss" && e.dist <= stop + 1e-6)) { e.attacking = true; if (e.kind === "soldier") atWall++; }
       } else if (dt > 0) {
         const dmg = (e.kind === "boss" ? ARMY.bossDps : ARMY.soldierDps) * dt;
         if (this.standing) this.damageShield(dmg);

@@ -110,5 +110,7 @@ console.log("army ok");
   // soldiers come in loose clumps at their own speeds
   const sp = ev.filter((e) => e.type === "spawn" && e.enemy.kind === "soldier").map((e) => e.enemy);
   assert.ok(new Set(sp.map((e) => +e.speed.toFixed(3))).size > 1 || sp.length < 2, "soldiers walk at their own pace");
+  assert.ok(sp.every((e) => Math.abs(e.lat) >= ARMY.sides - 1e-9), "soldiers keep out of the middle (the cues' lanes)");
+  assert.ok(s2.enemies.filter((e) => e.alive && e.attacking && e.kind === "soldier").length <= ARMY.wallSlots, "no more than wallSlots at the wall");
   console.log("balloons ok");
 }

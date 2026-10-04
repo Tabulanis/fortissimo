@@ -207,8 +207,8 @@ hudUI.setLife(100, 100);
 hudUI.setShield(0);
 
 function applyStage() {
-  const used = new Set(song().notes.map((n) => LANE_INDEX[n.lane]));   // only the drums this song uses
-  for (let i = 0; i < 6; i++) stage3d.setDrumVisible(i, used.has(i));
+  const used = new Set(song().notes.map((n) => LANE_INDEX[n.lane]));   // only the drums this song uses; the guns it never plays are dimmed
+  for (let i = 0; i < 6 + 2 * BARS; i++) stage3d.setDrumVisible(i, used.has(i));
   stage3d.setStation(isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left
   if (audioStarted) updateBackLevels();                      // the sections' background music follows progress
   stageMessage();
@@ -1203,11 +1203,10 @@ function frame() {
       if (heardNow > hint.end + 0.4) hint = null;
     }
     const up = buildUpcoming(heardNow);
-    // drums and CANNONS get rockets down their lanes; mortars get ammo carts (stage3d's gun cues);
-    // every gun keeps its fuse / falling shell / red button too
-    const rocketLane = (i) => i < 6 || (i - 6) % BARS >= 8;
+    // ONE cue everywhere (owner, 2026-10-04): a rocket down its lane, for drums and every gun;
+    // the guns' red buttons (stage3d's gun cues) light with them
     stage3d.setGunCues(defend ? up.filter((u) => u.laneIdx >= 6) : []);
-    stage3d.update(heardNow, defend ? up.filter((u) => rocketLane(u.laneIdx)) : up, ghostHits);
+    stage3d.update(heardNow, up, ghostHits);
     if (defend) tickDefend(heardNow);
   } else {
     // before Start: keep the courtyard (and its drums) visible, no arrows
