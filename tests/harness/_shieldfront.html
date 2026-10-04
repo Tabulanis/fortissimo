@@ -20,5 +20,5 @@ f.onload = async () => {
     say("shot_sf", await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png")))));
   } catch (e) { say("err_sf", e.message); }
 };
-f.src = "/?quality=" + (location.hash.slice(1) || "high");
+f.src = "/?autobegin=1&quality=" + (location.hash.slice(1) || "high");
 </script>

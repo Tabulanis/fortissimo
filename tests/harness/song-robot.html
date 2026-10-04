@@ -8,7 +8,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const KEY = { hat: "q", snare: "w", crash: "e", kick: "a", "tom low": "s", "tom high": "d" };
 for (const k of ["bass", "treble"]) "asdfhjkl".split("").forEach((c, i) => (KEY[`${k} ${i + 1}`] = c));
 const f = document.getElementById("f");
-if (location.hash === "#p4m") { f.style.width = "384px"; f.style.height = "673px"; f.src = "/?quality=mobile"; } else f.src = "/";
+if (location.hash === "#p4m") { f.style.width = "384px"; f.style.height = "673px"; f.src = "/?autobegin=1&quality=mobile"; } else f.src = "/";
 f.onload = async () => {
   const w = f.contentWindow, d = w.document;
   w.addEventListener("error", e => say("jserror", e.message));

@@ -27,5 +27,5 @@ f.onload = async () => {
   } catch (e) { out.push("ERROR " + e.message + " " + e.stack); }
   fetch("http://127.0.0.1:8899/menu", { method: "POST", body: out.join("\n") });
 };
-f.src = "/?quality=low";
+f.src = "/?autobegin=1&quality=low";
 </script>

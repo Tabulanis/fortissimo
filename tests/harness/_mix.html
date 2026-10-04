@@ -3,7 +3,7 @@
 <script type="module">
 const out = [], wait = (ms) => new Promise((r) => setTimeout(r, ms));
 localStorage.removeItem("gr.run2");
-const f = document.getElementById("f"); f.src = "/?quality=low";
+const f = document.getElementById("f"); f.src = "/?autobegin=1&quality=low";
 f.onload = async () => {
   const w = f.contentWindow, d = w.document;
   w.addEventListener("error", (e) => out.push("JSERROR " + e.message));

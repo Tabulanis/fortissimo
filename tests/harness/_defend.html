@@ -7,7 +7,7 @@ if (lockQ) localStorage.setItem("gr.run2", JSON.stringify({ hitbox: 0.07, tempo:
 else localStorage.removeItem("gr.run2");   // Easy: lock size 1
 const KEY = { hat: "q", snare: "w", crash: "e", kick: "z", "tom low": "x", "tom high": "c" };
 for (const k of ["bass", "treble"]) "asdfghjkqwertyui".split("").forEach((c, i) => (KEY[`${k} ${i + 1}`] = c));
-const f = document.getElementById("f"); f.src = "/?quality=low";
+const f = document.getElementById("f"); f.src = "/?autobegin=1&quality=low";
 f.onload = async () => {
   const w = f.contentWindow, d = w.document;
   w.addEventListener("error", (e) => out.push("JSERROR " + e.message));

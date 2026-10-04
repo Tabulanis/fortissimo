@@ -643,6 +643,20 @@ function makeCalibrateButton() {
   return btn;
 }
 
+// the song begins on the first key / tap / pad press after Start: 3, 2, 1, go
+let beginSong = null, armed = false, counting = false;
+const AUTO_BEGIN = new URLSearchParams(location.search).has("autobegin");
+function beginCount() {
+  if (!armed || clock || counting) return;
+  counting = true;
+  const beat = 60 / BPM, cx = window.innerWidth / 2, cy = window.innerHeight * 0.38;
+  hudUI.say("");
+  [3, 2, 1].forEach((n, i) => setTimeout(() => {
+    showStamp(String(n), cx, cy, { size: 140, color: n === 1 ? "#ff4a3a" : n === 2 ? "#ffa53a" : "#ffe45a", ms: beat * 900 });
+    pool.noteOn({ channel: 0, midi: n === 1 ? 84 : 72, baseNote: 60, buffer: drums.click, velocity: 0.9, when: ctx.currentTime, destination: mixer.metronome, settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
+  }, i * beat * 1000));
+  setTimeout(() => { beginSong(); counting = false; }, 3 * beat * 1000);
+}
 function makeStartButton() {
   const btn = document.createElement("button");
   btn.textContent = "Start";
@@ -669,7 +683,10 @@ function makeStartButton() {
     await buildMelodyVoices();   // fallback bar voices
     await loadRoundSamples();    // the round's own sounds (from Hackbeat)
     pool = new VoicePool(ctx, { max: IS_TOUCH ? 12 : 24 });   // phones: fewer voices at once (crackle when busy)
-
+    btn.remove();
+    // READY (owner, 2026-10-04): the song doesn't just start — press a key, tap, or a pad
+    // button, and it counts 3, 2, 1 in. (Harnesses: ?autobegin=1 skips the wait.)
+    beginSong = () => {
     clock = startClock(ctx, {
       bpm: BPM,
       onBeat: (time, n) => {
@@ -705,9 +722,11 @@ function makeStartButton() {
     setInterval(scheduleBack, 25);
     audioStarted = true;
     applyStage();   // with the audio up: background levels, and Easy previews the first step
-
-    btn.remove();
     hud.textContent = modeStr();
+    };
+    armed = true;
+    if (AUTO_BEGIN) beginSong();
+    else hudUI.say(IS_TOUCH ? "Tap to begin" : padConnected ? "Press a button to begin" : "Press any key to begin", "good");
   });
   document.body.appendChild(btn);
   return btn;
@@ -826,6 +845,7 @@ function scheduleGhosts() {
 // channel; timing only changes loudness (velocityFor) — never delay or snap
 // the sound. Calibration keeps its old F/Space taps against the metronome.
 function onKey(e) {
+  if (armed && !clock && !e.repeat) { e.preventDefault(); beginCount(); return; }   // READY: the first key starts the count
   // start-up guard: drums, pool and clock must all exist before a press
   if (e.repeat || !ctx || !drums || !pool || !clock) return;
 
@@ -914,6 +934,7 @@ const pads = createPads({
   melodyMode: () => isMelody(),
   onHint: () => playHint(),
   onMelody: (slot, force, ts) => {
+    if (armed && !clock) { beginCount(); return; }
     if (!ctx || !drums || !pool || !clock) return;
     const o = ctx.getOutputTimestamp();
     const press = o.contextTime + (ts - o.performanceTime) / 1000 - calibration;
@@ -921,6 +942,7 @@ const pads = createPads({
     hitLane(entry.idx, entry.ln, press, force);
   },
   onHit: (laneName, force, ts) => {
+    if (armed && !clock) { beginCount(); return; }
     if (!ctx || !drums || !pool || !clock) return;
     const entry = KEYMAP_BY_LANE[laneName];
     if (!entry) return;
@@ -1227,6 +1249,7 @@ const recentTaps = [];     // dev log: where taps landed and which drum they pic
 stage.style.touchAction = "none";
 stage.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "touch") lastTouch = performance.now();
+  if (armed && !clock) { beginCount(); return; }   // READY: the first tap starts the count
   // phone Easy: a tap snaps to the nearest target this step wants, from well off it
   // a big hitbox reaches in space too: a tap snaps to the nearest target this step wants
   const reach = RUN.hitbox >= 0.1 ? Math.round(40 + RUN.hitbox * 650) : 0;   // 0.14 -> 131 px, 0.25 -> 202 px

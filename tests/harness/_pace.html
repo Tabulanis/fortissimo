@@ -5,7 +5,7 @@ const out = [], wait = (ms) => new Promise((r) => setTimeout(r, ms));
 localStorage.removeItem("gr.run2");   // Easy
 const KEY = { hat: "q", snare: "w", crash: "e", kick: "a", "tom low": "s", "tom high": "d" };
 for (const k of ["bass", "treble"]) "asdfghjkqwertyui".split("").forEach((c, i) => (KEY[`${k} ${i + 1}`] = c));
-const f = document.getElementById("f"); f.src = "/?quality=low";
+const f = document.getElementById("f"); f.src = "/?autobegin=1&quality=low";
 f.onload = async () => {
   const w = f.contentWindow, d = w.document;
   w.addEventListener("error", (e) => out.push("JSERROR " + e.message));
