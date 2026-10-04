@@ -1,0 +1,31 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" style="width:1400px;height:900px;border:0"></iframe>
+<script type="module">
+// the drum countdown in a real run: log every change (time vs the note), screenshot while a number shows
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+localStorage.removeItem("gr.run");
+const f = document.getElementById("f");
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  if (w.location.href === "about:blank") return;
+  try {
+    await wait(3500);
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(1000);
+    const G = w.__gr.game, s = w.__gr.stage3d, log = [];
+    let last = "", shot = false, stuck = 0;
+    const t0 = performance.now();
+    while (performance.now() - t0 < 12000) {
+      const now = G.ctx.getOutputTimestamp().contextTime, cd = s.debugCountdown().join("");
+      if (cd !== last) { const up = G.upcoming().filter((u) => u.laneIdx < 6)[0]; log.push(`${now.toFixed(2)} [${cd}] next note ${up ? up.time.toFixed(2) + " lane " + up.laneIdx : "-"}`); last = cd; }
+      if (!shot && cd.includes("2")) { shot = true; say("shot_count", await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png"))))); }
+      if (shot && !stuck && cd === "000000") stuck = performance.now();
+      if (stuck > 0 && performance.now() - stuck > 200) { stuck = -1; say("shot_stuck", await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png"))))); }
+      await wait(20);
+    }
+    say("info_count", `beat ${G.clock.beatDur}\n` + log.join("\n"));
+  } catch (e) { say("err_count", e.message); }
+};
+f.src = "/?quality=high";
+</script>

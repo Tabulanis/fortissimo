@@ -25,6 +25,7 @@ import { bootlog } from "../bootlog.js";
 
 const APPROACH_S = 3.2;   // seconds of visible flight: launched from the far wall, tracked all the way
 const STUCK_S = 0.6;      // seconds an unhit arrow stays stuck at the face
+const ARROW_TIP = 0.36;   // the head's tip, along the arrow from its origin: the TIP stops on the drum, never past it (owner)
 
 // module-level temps: no per-frame allocations
 const UP = new THREE.Vector3(0, 1, 0);
@@ -414,6 +415,19 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const drumFace = [];
   const drumLabels = [];
   const drumLabelMats = [];
+  // the countdown numbers: fat, a thick dark outline and a ring, warming 3 yellow -> 2 orange -> 1 red
+  const COUNT_TEX = [["3", "#ffe45a"], ["2", "#ffa53a"], ["1", "#ff4a3a"]].map(([d, col]) => {
+    const c = document.createElement("canvas"); c.width = c.height = 128;
+    const g = c.getContext("2d");
+    g.beginPath(); g.arc(64, 64, 54, 0, Math.PI * 2);
+    g.fillStyle = "rgba(20,8,4,0.55)"; g.fill();
+    g.lineWidth = 9; g.strokeStyle = col; g.stroke();
+    g.font = "900 92px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+    g.lineJoin = "round"; g.lineWidth = 16; g.strokeStyle = "#1a0802"; g.strokeText(d, 64, 70);
+    g.fillStyle = col; g.fillText(d, 64, 70);
+    const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; return tx;
+  });
+  const countdown = [];   // per drum: { s: sprite, n: the number showing, at: when it changed }
   const labelGeo = new THREE.PlaneGeometry(0.2, 0.2);   // ~half a 0.19-0.2 m drumhead
   const labelTex = (key) => {
     const c = document.createElement("canvas");
@@ -449,6 +463,14 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     scene.add(label);
     drumLabels.push(label);
     drumLabelMats.push(labelMat);
+    // COUNTDOWN (owner, 2026-10-03: "telling when to hit the drums is really hard"):
+    // a big outlined 3, 2, 1 just above the letter, one per beat; the hit is the beat after 1
+    const cd = new THREE.Sprite(new THREE.SpriteMaterial({ map: COUNT_TEX[0], transparent: true, depthWrite: false, depthTest: false, fog: false }));
+    cd.renderOrder = 20; cd.visible = false;
+    if (LANES3D[i].upright) cd.position.set(LANES3D[i].x, LANES3D[i].y + 0.2, LANES3D[i].z + LANES3D[i].depth / 2 + 0.06);
+    else cd.position.set(LANES3D[i].x, LANES3D[i].y + LANES3D[i].depth / 2 + 0.24, LANES3D[i].z);
+    scene.add(cd);
+    countdown.push({ s: cd, n: 0, at: 0 });
     const mat = new THREE.MeshStandardMaterial({
       color,
       emissive: 0x000000,
@@ -547,6 +569,18 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   let beatFirst = 0, beatDur = 0.6, beatKick = 0;
   const cueBeats = () => (beatDur < 0.42 ? 4 : 2);   // fast songs: 4 beats, so it's never a blink
   const cueSpan = () => cueBeats() * beatDur;
+  /** each drum's next note: 3, 2, 1 over the last three beats before it, popping as it changes */
+  function updateCountdown(heardNow, upcoming) {
+    for (let i = 0; i < countdown.length; i++) {
+      let next = Infinity;
+      for (const u of upcoming) if (u.laneIdx === i && u.time > heardNow && u.time < next) next = u.time;
+      const left = (next - heardNow) / beatDur, n = left <= 3 && drumVisible[i] ? Math.ceil(left) : 0;
+      const c = countdown[i];
+      if (n !== c.n) { c.n = n; c.at = heardNow; if (n) c.s.material.map = COUNT_TEX[3 - n]; }
+      c.s.visible = n > 0;
+      if (n) c.s.scale.setScalar(0.21 * (1 + 0.5 * Math.exp(-9 * (heardNow - c.at))));   // pops in on its beat
+    }
+  }
   function updateBeatKick(heardNow) {
     const s = (heardNow - beatFirst) / beatDur;
     beatKick = Math.exp(-7 * (s - Math.floor(s)));   // 1 on the beat, dying away before the next
@@ -1898,6 +1932,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       if (e.time > heardNow && e.seen !== _frameNo && !e.hit) recycle(e);
     }
 
+    updateCountdown(heardNow, upcoming);
     // position + flame flicker + retirement
     for (const e of activeNotes) {
       const dt = e.time - heardNow;
@@ -1925,10 +1960,10 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
             recycle(e);
             continue;
           }
-          e.group.position.copy(e.face);
           pathPoint(e, 1, _pA);
           pathPoint(e, 0.99, _pB);
           e.group.quaternion.setFromUnitVectors(UP, _tan.copy(_pA).sub(_pB).normalize());
+          e.group.position.copy(e.face).addScaledVector(_tan, -ARROW_TIP);   // stuck IN the face, not through it
           const fade = 1 - g;
           e.flame.material.opacity = fade;
           e.glow.material.opacity = 0.35 * fade;
@@ -1938,12 +1973,12 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
           if (e.stuckUntil === 0) {
             // first frame past the time: arm the timer, park at the face
             e.stuckUntil = e.time + STUCK_S;
-            e.group.position.copy(e.face);
             // backward difference: at f = 1 a forward step is zero-length
             pathPoint(e, 1, _pA);
             pathPoint(e, 0.99, _pB);
             _tan.copy(_pA).sub(_pB).normalize();
             e.group.quaternion.setFromUnitVectors(UP, _tan);
+            e.group.position.copy(e.face).addScaledVector(_tan, -ARROW_TIP);   // the tip in the face
             // arm the smouldering at the head
             const sm = freeSmould();
             if (sm) {
@@ -2001,8 +2036,6 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       }
       const f = 1 - dt / APPROACH_S;   // 0 at spawn, 1 at the face
       const clamped = Math.min(1, Math.max(0, f));
-      pathPoint(e, clamped, _pB);
-      e.group.position.copy(_pB);
       // orient along the path tangent: side-on, never a dot
       // backward difference, so a stuck arrow (clamped = 1) keeps its heading
       const f1 = Math.max(0, Math.min(clamped, 1) - 0.01);
@@ -2010,6 +2043,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       pathPoint(e, f1, _pB);
       _tan.copy(_pA).sub(_pB).normalize();
       e.group.quaternion.setFromUnitVectors(UP, _tan);
+      // the path is the TIP's: it reaches the face on the beat and never goes past it
+      pathPoint(e, clamped, _pB);
+      e.group.position.copy(_pB).addScaledVector(_tan, -ARROW_TIP);
       // flame flicker
       // grow with distance so a far arrow is still a clear burning point,
       // not a speck that seems to fade out (screen size ~constant beyond 5 m)
@@ -2358,6 +2394,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     /** the guns' timing cues: [{laneIdx, time}] — fuses on cannons, falling shells into mortars */
     setGunCues: (cues) => { gunCues = cues; },
     debugGunCues: (cues) => { gunCuesTest = cues; },
+    debugCountdown: () => countdown.map((c) => c.n),
     debugGunInfo: () => ({ sparks: fuseSparks.filter((f) => f.head.visible).map((f) => [f.head.position.toArray().map((v) => +v.toFixed(3)), +f.head.scale.x.toFixed(3), f.head.layers.mask]), shells: dropShells.filter((d) => d.m.visible).length }),
     debugShieldGlowAmount: (v) => { if (shieldMix) shieldMix.uniforms.amount.value = v; },   // harness
     debugShieldOnly: (on) => { shieldOnly = !!on; },
