@@ -18,7 +18,9 @@ f.onload = async () => {
     const G = w.__gr.game, s = w.__gr.stage3d, D = G.defend;
     const skip = (sec) => { while (D.section === sec) D.lockAll(); };
     skip("drums");
-    await wait(11000);
+    const seen = new Set(); const t0 = performance.now();   // the SWITCH call-outs are HTML stamps: watch for them
+    while (performance.now() - t0 < 11000) { for (const el of d.querySelectorAll(".gr-stamp")) if (/SWITCH/.test(el.textContent)) seen.add(el.textContent.trim()); await wait(100); }
+    log.push("SWITCH stamps seen at bass: " + JSON.stringify([...seen]));
     log.push("bass, before firing: " + JSON.stringify(s.debugTroops()));
     say("shot_army1", await grab());
     for (let k = 0; k < 10; k++) { G.fireGun(6 + (k % 8) + (k % 2 ? 8 : 0), `bass ${1 + (k % 8) + (k % 2 ? 8 : 0)}`); if (k === 9) { await wait(70); say("shot_army6", await grab()); } await wait(350); }   // army6: the moment a cannon fires

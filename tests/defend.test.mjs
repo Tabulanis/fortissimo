@@ -97,28 +97,41 @@ console.log("defend ok (stream)");
 // FILLERS ARE THE SONG: a long wait is filled with the section's own notes — locked ones replayed
 // (bonus: score, lock nothing), or notes from a later layer brought forward (real: they lock)
 {
-  // the strong-beat layer is just treble 9 on 0 and 12 (a 12-beat wait); treble 1 (the tune) sits on the off-beats
-  const song = { bars: 4, notes: [...[1, 3, 5, 7, 9, 11, 13, 15].map((b) => ({ lane: "treble 1", beat: b, midi: 72 })), { lane: "treble 9", beat: 0 }, { lane: "treble 9", beat: 12 }] };
+  // the groove layer is just two kicks (a 12-beat wait); the crash (a later layer) sits on the odd beats
+  const song = { bars: 4, notes: [...[1, 3, 5, 7, 9, 11, 13, 15].map((b) => ({ lane: "crash", beat: b, midi: 49 })), { lane: "kick", beat: 0 }, { lane: "kick", beat: 12 }] };
   const d = new Defend(song, { keep: "any" }); d.windowBeats = 16; d.graceBeats = 0.3; d.missFrom = 0; d.now = 0;
-  // the long wait is filled by the tune, brought forward (real)
+  // the long wait is filled by the crash, brought forward (real)
   let w = d.offered();
-  assert.ok(w.some((n) => n.lane === "treble 9") && w.some((n) => n.lane === "treble 1" && !n.bonus), `the song fills its own gaps (${ids(w)})`);
+  assert.ok(w.some((n) => n.lane === "kick") && w.some((n) => n.lane === "crash" && !n.bonus), `the song fills its own gaps (${ids(w)})`);
   for (let i = 1; i < w.length; i++) assert.ok(w[i].at - w[i - 1].at <= STREAM.any.maxGap + 1e-9, "never a long wait");
   assert.ok(w.every((n) => !n.bonus), "nothing locked yet: the fillers are real notes, brought forward");
-  // once the tune is locked, its notes come back as replays (bonus) in the gaps — same lane, same pitch
+  // once the crash is locked, its notes come back as replays (bonus) in the gaps — same lane, same pitch
   const d2 = new Defend(song, { keep: "any" }); d2.windowBeats = 16; d2.graceBeats = 0.3; d2.missFrom = 0; d2.now = 0;
-  for (const n of d2.notes) if (n.lane === "treble 1") d2.locked.add(n.id);
+  for (const n of d2.notes) if (n.lane === "crash") d2.locked.add(n.id);
   w = d2.offered();
   const bonus = w.filter((n) => n.bonus);
-  assert.ok(bonus.length >= 2 && bonus.every((n) => n.lane === "treble 1" && n.midi === 72), `the band's notes replayed as fillers (${ids(w)})`);
+  assert.ok(bonus.length >= 2 && bonus.every((n) => n.lane === "crash" && n.midi === 49), `the band's notes replayed as fillers (${ids(w)})`);
   assert.ok(bonus.every((n, i) => !i || n.at - bonus[i - 1].at >= 2 - 1e-9), "fillers never closer than 2 beats");
   assert.equal(d2.hit(bonus[0].id), "bonus");
-  assert.ok(d2.drain().some((e) => e.type === "bonusHit") && d2.progress("treble") === 8 / 10, "a replay scores but locks nothing");
+  assert.ok(d2.drain().some((e) => e.type === "bonusHit") && d2.progress("drums") === 8 / 10, "a replay scores but locks nothing");
   // a missed replay doesn't break a Medium pattern
   const m = new Defend(song, { lockSize: 2, keep: "half" }); m.windowBeats = 16; m.graceBeats = 0.3; m.missFrom = 0; m.now = 0;
-  for (const n of m.notes) if (n.lane === "treble 1") m.locked.add(n.id);
+  for (const n of m.notes) if (n.lane === "crash") m.locked.add(n.id);
   const mw = m.offered(), real = mw.find((n) => !n.bonus), rep = mw.find((n) => n.bonus && n.at > real.at);
   m.hit(real.id); m.drain(); m.now = rep.at + 1; m.tick();
   assert.ok(!m.drain().some((e) => e.type === "chunkFail"), "a missed replay leaves the pattern alone");
   console.log("fillers ok");
+}
+
+// PHRASES at the guns: three on the bottom row, SWITCH, three on the top — both rows from the start
+{
+  const song = { bars: 4, notes: [] };
+  for (let b = 0; b < 16; b++) { song.notes.push({ lane: `bass ${1 + (b % 8)}`, beat: b }); song.notes.push({ lane: `bass ${9 + (b % 8)}`, beat: b + 0.5 }); }
+  const d = new Defend(song, { keep: "any" });   // no drum notes: it starts at bass
+  d.windowBeats = 16; d.graceBeats = 0.3; d.missFrom = 0; d.now = 0;
+  const w = d.offered(), rows = w.map((n) => (+n.lane.split(" ")[1] >= 9 ? "T" : "B")).join("");
+  assert.ok(/^(BBBTTT)+/.test(rows), `three bottom, three top, from the start (${rows})`);
+  const sw = w.map((n, i) => (n.switch ? i : -1)).filter((i) => i >= 0);
+  assert.deepEqual(sw.slice(0, 2), [3, 6], `SWITCH marks the first of each new row (${sw})`);
+  console.log("phrases ok");
 }

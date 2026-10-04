@@ -63,6 +63,7 @@ export class Defend {
     this._bonus = [];                 // the filler notes made so far (ids continue after the song's)
     this._done = new Set();           // "id@k": that occurrence was hit, or counted as a miss
     this._run = [];                   // Medium / Hard: the hits of the pattern under way
+    this._switch = new Set();         // "id@k": the first note of a new row phrase at the guns (SWITCH)
     this.events = [];                 // what happened since the last drain()
     this._skipEmpty();
   }
@@ -86,14 +87,7 @@ export class Defend {
         const lo = Math.min(...open.map((n) => laneRank(n.lane))), t = lo < 3 ? 3.6 : lo + 0.9;
         layer = open.filter((n) => laneRank(n.lane) <= t);
       }
-      else {
-        let rows = open;
-        if (this.keep === "any" && this.section === "bass") {   // EASY at bass: one row at a time (owner) — mortars first, then the cannons; the boss (treble) uses both
-          const pick = open.filter((n) => +n.lane.split(" ")[1] < 9);
-          rows = pick.length ? pick : open;
-        }
-        const t = Math.min(...rows.map((n) => beatWeight(n.beat))) + 1; layer = rows.filter((n) => beatWeight(n.beat) <= t);
-      }
+      else layer = open;   // the guns: both rows from the start (owner, 2026-10-04: "we need top and bottom or you die fast") — see PHRASES below
     }
     const { gap, together, maxGap } = STREAM[this.keep] || STREAM.none;
     const cands = [...layer].sort((a, b) => a.beat - b.beat || laneRank(a.lane) - laneRank(b.lane) || a.id - b.id);
@@ -104,13 +98,30 @@ export class Defend {
     const SLACK = gap >= 1 ? 1 : 0.5;
     let last = -Infinity, i = 0;
     const used = {};   // lane -> the beat it was last picked at: the instrument left alone longest goes next
+    // PHRASES at the guns (owner, 2026-10-04): three on the bottom row, SWITCH, three on the top,
+    // SWITCH... — so both rows (soldiers AND balloons / the boss) get played; the first note of
+    // each new row is marked `switch` for the game to call out
+    const guns = this.section !== "drums" && this.keep !== "none", PHRASE = 3, rowOf = (n) => (+n.lane.split(" ")[1] >= 9 ? 1 : 0);
+    let rowWant = 0, rowCount = 0, callSwitch = false;
     while (i < cands.length) {
       while (i < cands.length && cands[i].beat - last < gap - 1e-6) i++;
       if (i >= cands.length) break;
       const b0 = cands[i].beat;
-      let pick = cands[i], best = Infinity;
-      for (let j = i; j < cands.length && cands[j].beat <= b0 + SLACK + 1e-6; j++) { const u = used[cands[j].lane] ?? -Infinity; if (u < best) { best = u; pick = cands[j]; } }
+      let pick = null, best = Infinity;
+      if (guns) {   // the wanted row first: in the slack window, else up to two beats further on
+        for (let j = i; j < cands.length && cands[j].beat <= b0 + SLACK + 2 + 1e-6; j++) {
+          if (rowOf(cands[j]) !== rowWant) continue;
+          const far = cands[j].beat > b0 + SLACK + 1e-6, u = (used[cands[j].lane] ?? -Infinity) + (far ? 1e6 : 0);
+          if (u < best) { best = u; pick = cands[j]; }
+        }
+      }
+      if (!pick) { best = Infinity; for (let j = i; j < cands.length && cands[j].beat <= b0 + SLACK + 1e-6; j++) { const u = used[cands[j].lane] ?? -Infinity; if (u < best) { best = u; pick = cands[j]; } } }
       plan.push(pick); last = pick.beat; used[pick.lane] = pick.beat;
+      if (guns) {
+        if (callSwitch) { this._switch.add(pick.id + "@" + k); callSwitch = false; }
+        if (rowOf(pick) !== rowWant) { rowWant = rowOf(pick); rowCount = 0; }
+        if (++rowCount >= PHRASE) { rowWant ^= 1; rowCount = 0; callSwitch = true; }
+      }
       let at = 1;   // together: two hands at most, a different instrument each
       for (let j = i; j < cands.length && cands[j].beat <= last + 1e-6; j++) { const n = cands[j]; if (n !== pick && Math.abs(n.beat - last) < 1e-6 && at < together && n.lane !== pick.lane) { plan.push(n); used[n.lane] = n.beat; at++; } }
       while (i < cands.length && cands[i].beat <= last + 1e-6) i++;
@@ -153,7 +164,7 @@ export class Defend {
         const n = this.note(id), t = k * L + n.beat;
         if (t < this.now - this.graceBeats || t > this.now + this.windowBeats) continue;
         seen.add(id);
-        out.push({ ...n, at: t, k });
+        out.push({ ...n, at: t, k, switch: this._switch.has(id + "@" + k) });
       }
     }
     return out.sort((a, b) => a.at - b.at);

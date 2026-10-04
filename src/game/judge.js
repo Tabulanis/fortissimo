@@ -35,19 +35,19 @@ export function nearestOnGrid(first, beatDur, t) {
 }
 
 /**
- * Map timing error to a velocity (loudness/brightness) weight.
- * |offset| <= 0.020 -> 1.0 ; |offset| >= 0.150 -> 0.15 ; linear between.
+ * Timing error -> how loud the note plays (owner, 2026-10-04): every hit sounds at
+ * least HALF, a perfect one 110%. Dead on (<= 20 ms) = 1.1, falling on a dB curve
+ * to 0.5 at the edge of the box (250 ms) and staying there past it. 50 ms off ~0.94,
+ * 125 ms off ~0.72.
  */
+export const VEL_PERFECT = 1.1, VEL_FLOOR = 0.5;
 export function velocityFor(offsetSec) {
-  // Loudness is heard in decibels, not linear gain: a linear ramp left a note
-  // 50 ms off at 80% (only ~2 dB down) and misses sounded nearly as loud as
-  // blocks. Full volume when you block it (<= 20 ms), falling on a dB curve to
-  // -24 dB at 150 ms. 50 ms off ~ -8 dB, 100 ms off ~ -17 dB.
   const a = Math.abs(offsetSec);
-  if (a <= 0.020) return 1.0;
-  if (a >= 0.150) return MISS_VEL;
-  const x = (a - 0.020) / (0.150 - 0.020);
-  return Math.pow(10, (-24 * Math.pow(x, 0.8)) / 20);
+  if (a <= 0.020) return VEL_PERFECT;
+  if (a >= 0.250) return VEL_FLOOR;
+  const x = (a - 0.020) / (0.250 - 0.020);
+  const dropDb = 20 * Math.log10(VEL_PERFECT / VEL_FLOOR);   // ~6.85 dB from perfect to the floor
+  return VEL_PERFECT * Math.pow(10, (-dropDb * Math.pow(x, 0.8)) / 20);
 }
 
 /** Velocity at / beyond the miss edge: -24 dB. */
