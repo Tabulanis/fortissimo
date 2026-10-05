@@ -210,9 +210,9 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
     if (row === 1 && kind === "treble") {
       if (j === 0 || j === 4) {
         const zc = colZ(j === 0 ? (COLS - 1) * 0.25 : (COLS - 1) * 0.75), sh = shared[j === 0 ? 0 : COLS - 1];
-        const b = makeCrystal(rg, i, zc, 1.4);   // smaller (owner, 2026-10-05)
-        b.top = b.centre.clone(); b.radius = 0.14; b.normal = new THREE.Vector3(0, 1, 0); b.buttonMat = sh.mat; b.column = -1;
-        b.label.scale.setScalar(0.1); b.label.position.set(s * 0.14, 0.5, zc); rg.add(b.label);   // its key, over the crystal
+        const b = makeCrystal(rg, i, zc, 1.0);   // smaller again (owner, 2026-10-05)
+        b.top = b.centre.clone(); b.radius = 0.11; b.normal = new THREE.Vector3(0, 1, 0); b.buttonMat = sh.mat; b.column = -1;
+        b.label.scale.setScalar(0.09); b.label.position.set(s * 0.14, 0.38, zc); rg.add(b.label);   // its key, over the crystal
         bars.push(b);
       } else bars.push(makeStub(rg, 0));
       continue;
