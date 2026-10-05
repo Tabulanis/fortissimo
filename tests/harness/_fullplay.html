@@ -7,6 +7,8 @@ const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const JITTER = +(new URLSearchParams(location.hash.slice(1)).get("jitter") || 60) / 1000;
 localStorage.removeItem("gr.run2");
+// #round=1 plays Round 2 (the game remembers the menu's pick in gr.level)
+localStorage.setItem("gr.level", new URLSearchParams(location.hash.slice(1)).get("round") || "0");
 const KEY = { hat: "q", snare: "w", crash: "e", kick: "a", "tom low": "s", "tom high": "d" };
 for (const k of ["bass", "treble"]) "asdfghjkqwertyui".split("").forEach((c, i) => (KEY[`${k} ${i + 1}`] = c));
 const f = document.getElementById("f");

@@ -8,14 +8,16 @@
   },
   {
     "name": "Round 2",
-    "title": "Shuffle (placeholder)",
+    "title": "Fortuna (demo)",
     "file": "round2.json",
-    "swing": 0
+    "swing": 0,
+    "project": "Carmina-demo"
   },
   {
     "name": "Round 3",
-    "title": "Breakdown (placeholder)",
+    "title": "The Forge (demo)",
     "file": "round3.json",
-    "swing": 0
+    "swing": 0,
+    "project": "Carmina-forge"
   }
 ]
