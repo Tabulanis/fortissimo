@@ -86,7 +86,19 @@ const _eWhite = new THREE.Color(0xffffff);
  * @param {Object<string,string>} colors drum-name -> hex colour string
  * @returns {{resize: Function, update: Function, hit: Function, press: Function}}
  */
+/** the drums this ROUND builds (kit.js): the present ones are laid out staggered and centred; the rest stand far off, hidden */
+function layoutDrums(presentLanes, layout) {
+  const names = [...layout.top, ...layout.bottom].map((l) => l.name);
+  const order = [3, 0, 4, 1, 5, 2];   // left to right: kick, hat, tom low, snare, tom high, crash
+  const here = order.filter((i) => presentLanes.includes(names[i]));
+  for (let i = 0; i < 6; i++) LANES3D[i].x = 50;   // off-stage
+  here.forEach((i, k) => { LANES3D[i].x = (k - (here.length - 1) / 2) * 0.6; });
+}
 export function createStage3D(canvas, layout, colors, opts = {}) {
+  // THE KIT FOR THIS ROUND (owner, 2026-10-04: "16 max, but few if not needed"): which drums and gun
+  // slots to build. Default: everything.
+  const KIT = opts.kit || { drums: [...layout.top, ...layout.bottom].map((l) => l.name), bass: { bottom: [0, 1, 2, 3, 4, 5, 6, 7], top: [0, 1, 2, 3, 4, 5, 6, 7] }, treble: { bottom: [0, 1, 2, 3, 4, 5, 6, 7], top: [0, 4] } };
+  layoutDrums(KIT.drums, layout);
   let skyMatRef = null;   // the sky dome's material (clouds animate on it)
   const TIER = ["high", "medium", "low", "lowest", "potato"].includes(opts.tier) ? opts.tier : "high";
   // no multisampling below medium: it multiplies every pixel's cost on a weak GPU
@@ -416,7 +428,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // the environment mock-up (owner's reference: sandstone colonnade courtyard)
   bootlog("courtyard: start");
   const courtyard = createCourtyard(scene);
-  const melodyStations = { bass: createStation(scene, "bass", { lamp: !MOBILE }), treble: createStation(scene, "treble", { lamp: !MOBILE }) };
+  const melodyStations = { bass: createStation(scene, "bass", { lamp: !MOBILE, slots: KIT.bass }), treble: createStation(scene, "treble", { lamp: !MOBILE, slots: KIT.treble }) };
   bootlog("courtyard: done");
   // the reflecting pool (drawn with the fx layer: after the scene, so the
   // AO's extra scene render doesn't re-render its mirror a second time)
@@ -2565,7 +2577,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         hand.rest.copy(HAND_RESTS[name][h]);
         if (!hand.active && !vrOn()) { hand.group.position.copy(hand.rest); hand.group.quaternion.setFromUnitVectors(UP, restDir); }
       });
-    }, get station() { return station; }, melodyStations, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
+    }, get station() { return station; }, melodyStations, kit: KIT, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */

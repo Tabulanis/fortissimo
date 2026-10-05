@@ -23,7 +23,7 @@ import { ROUNDS, partArrows, songOf } from "./game/stages.js";
 import { loadRoundFiles } from "./game/roundfiles.js";
 import { backLevel } from "./game/backing.js";
 import { normalize, judgeFor, simplifyNotes, scoreMultiplier, levelOf } from "./game/run.js";
-import { fillKit } from "./game/kit.js";
+import { fillKit, kitPlan } from "./game/kit.js";
 const runName = (r) => { const lv = levelOf(r); return lv ? `Level ${lv}` : "Custom"; };
 import { createMenu } from "./ui/menu.js";
 import { Defend, LIFE } from "./game/defend.js";
@@ -82,21 +82,19 @@ try { savedTier = localStorage.getItem("gr.autoTier"); } catch { /* storage bloc
 const TIER = urlQ === "mobile" ? "medium" : TIERS.includes(urlQ) ? urlQ
   : !AUTO_GFX && TIERS.includes(SET.quality) ? SET.quality
   : TIERS.includes(savedTier) ? savedTier : IS_TOUCH ? "medium" : "high";
-const stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR, { tier: TIER });
-bootlog("stage3d built");
+let stage3d = null;   // built for the round once the songs are known (buildStage): its kit depends on the song
 stage.addEventListener("webglcontextlost", () => bootlog("WEBGL CONTEXT LOST"));
 // once running: a heartbeat with the frame rate, so a later crash shows when
 { let frames = 0; const tick = () => { frames++; requestAnimationFrame(tick); }; requestAnimationFrame(tick);
   setInterval(() => {
-    const a = stage3d.debugArrows ? stage3d.debugArrows() : {};
+    const a = stage3d && stage3d.debugArrows ? stage3d.debugArrows() : {};
     bootlog("alive", { fps: Math.round(frames / 5), started: !!ctx,
       round: roundIdx + 1, wants: [...new Set(currentPart().map((n) => n.lane))],
       flying: a.flying, shown: a.shown && a.shown.map((v) => (v ? 1 : 0)).join(""), taps: recentTaps.splice(0) });
     frames = 0;
   }, 5000); }
 if (IS_TOUCH) document.documentElement.classList.add("touch");   // touch layout (no keyboard hints)
-if (IS_TOUCH) { stage3d.hideDrumLabels(); for (const k of ["bass", "treble"]) stage3d.melodyStations[k].setLabels(Array(16).fill("")); }   // no letters on a tablet (owner)
-window.__gr = { stage3d };   // debug handle for the browser harness
+window.__gr = {};   // debug handle for the browser harness (stage3d joins it when built)
 
 // --- the song: parts unlock two drums at a time; the ghost bell locks them ---
 const BARS = 16;                          // per station: bottom row 1-8, top row 9-16 (owner, 2026-10-03)
@@ -124,9 +122,10 @@ const toCrystals = (n) => { const m = /^treble (\d+)$/.exec(n.lane); if (!m || +
 const DRUM_LANES = [...LAYOUT.top, ...LAYOUT.bottom].map((l) => l.name);
 const ROW_LANES = (kind, lo) => Array.from({ length: 8 }, (_, i) => `${kind} ${lo + i}`);
 const KIT_GROUPS = [DRUM_LANES, ROW_LANES("bass", 1), ROW_LANES("bass", 9), ROW_LANES("treble", 1)];   // treble's top row is the crystals
+const kitFor = (s) => (s._kit ||= fillKit(s.notes.map(toCrystals), KIT_GROUPS));   // the round's kit: computed once per song
 function buildLessons() {
   LESSONS = SONGS.map((s) => {
-    const { notes, aliases } = fillKit(s.notes.map(toCrystals), KIT_GROUPS);
+    const { notes, aliases } = kitFor(s);
     const sounds = { ...(s.sounds || {}) };
     for (const [standIn, owner] of Object.entries(aliases)) if (sounds[owner]) sounds[standIn] = sounds[owner];   // a stand-in plays its owner's sample
     const { play, backing } = simplifyNotes(notes, RUN.patterns);
@@ -221,6 +220,7 @@ hudUI.setLife(100, 100);
 hudUI.setShield(0);
 
 function applyStage() {
+  if (!stage3d) return;
   const used = new Set(song().notes.map((n) => LANE_INDEX[n.lane]));   // every drum stands (owner); the guns the song never plays are dimmed
   for (let i = 0; i < 6 + 2 * BARS; i++) stage3d.setDrumVisible(i, i < 6 || used.has(i));
   stage3d.setStation(isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left
@@ -311,13 +311,33 @@ function showShield() {
   const st = siege && siege.broken ? { progress: 0, up: false } : { progress: defend.progress("drums"), up: defend.progress("drums") >= 1 };
   stage3d.setShield({ drums: st, bass: st, treble: st });
 }
+/** keyboard: letter k of a row -> the bar slot (0..15) of the k-th gun present in this round's kit, or null */
+function slotForKey(kind, letterIdx) {
+  const row = letterIdx < 8 ? "bottom" : "top", k = letterIdx % 8, slots = stage3d ? stage3d.kit[kind][row] : [0, 1, 2, 3, 4, 5, 6, 7];
+  return slots[k] == null ? null : slots[k] + (row === "top" ? 8 : 0);
+}
+/** the round's letters for a station: present guns get A S D... / Q W E... left to right; the rest none */
+function lettersFor(kind) {
+  const out = Array(16).fill(""), kit = stage3d.kit[kind];
+  kit.bottom.forEach((slot, k) => { out[slot] = "ASDFGHJK"[k]; });
+  if (kind === "treble") { out[8] = "Q"; out[12] = "T"; } else kit.top.forEach((slot, k) => { out[8 + slot] = "QWERTYUI"[k]; });
+  return out;
+}
+function padLabelsFor(kind) {
+  const out = Array(16).fill(""), st = stage3d.melodyStations[kind];
+  st.grid.bottom.forEach((bar, c) => { if (bar >= 0) out[bar] = PAD_ROW[c]; else if (st.grid.top[c] >= 0) out[st.grid.top[c]] = PAD_ROW[c]; });
+  if (kind === "treble") { out[8] = "LB"; out[12] = "RB"; }
+  return out;
+}
 // ONE BUTTON PER COLUMN (owner, 2026-10-04): a press on a gun column fires whichever of its two
 // guns has a note due nearest the press; nothing due: the row the stream is on (else the bottom).
 // rowForce "top" / "bottom" (the pad's LT / RT) overrides, for free play.
-function resolveGun(idx, press, rowForce = null) {
-  const base = idx < 6 + BARS ? 6 : 6 + BARS, col = (idx - 6) % PER_ROW_GUNS;
-  const bottom = base + col, top = base + PER_ROW_GUNS + col;
-  if (base === 6 + BARS) return KEYMAP_BY_IDX[bottom];   // the boss station: the top row is the two crystals (LB / RB), columns are mortars
+function resolveColumn(kind, col, press, rowForce = null) {
+  const st = stage3d.melodyStations[kind], base = kind === "bass" ? 6 : 6 + BARS;
+  if (col < 0 || col >= st.grid.cols) return null;
+  const bottom = st.grid.bottom[col] >= 0 ? base + st.grid.bottom[col] : null, top = st.grid.top[col] >= 0 ? base + st.grid.top[col] : null;
+  if (bottom == null && top == null) return null;
+  if (bottom == null || top == null) return KEYMAP_BY_IDX[bottom ?? top];   // one gun in this column
   if (rowForce === "top") return KEYMAP_BY_IDX[top];
   if (rowForce === "bottom") return KEYMAP_BY_IDX[bottom];
   let best = null, bestD = Infinity, rowNext = null, nextAt = Infinity;
@@ -329,6 +349,11 @@ function resolveGun(idx, press, rowForce = null) {
     if (d < bestD) { bestD = d; best = i; }
   }
   return KEYMAP_BY_IDX[best != null && bestD <= 0.6 ? best : rowNext != null ? rowNext : bottom];
+}
+/** a gun lane (touch / VR hit its column's button): the column's due gun */
+function resolveGun(idx, press, rowForce = null) {
+  const kind = idx < 6 + BARS ? "bass" : "treble", b = stage3d.melodyStations[kind].bars[(idx - 6) % BARS];
+  return (b && b.column >= 0 ? resolveColumn(kind, b.column, press, rowForce) : null) || KEYMAP_BY_IDX[idx];
 }
 const PER_ROW_GUNS = 8;
 // a gun fires: siege.js aims the shell at the enemy nearest the wall (it lands where they'll be)
@@ -491,7 +516,10 @@ const MELODY_KEYS = Object.fromEntries(MELODY_LETTERS.map((c, i) => [c.toLowerCa
 // the pad: the same 8 buttons for both rows (hold LT = top row); drawn as D-pad arrows / face letters
 // the pad (owner, 2026-10-04): D-pad + X A B Y = the 8 COLUMNS; the game picks the row — one label per column
 const PAD_ROW = ["dL", "dD", "dR", "dU", "X", "A", "B", "Y"];
-const PAD_LABELS = { bass: [...PAD_ROW, ...Array(8).fill("")], treble: [...PAD_ROW, "LB", "", "", "", "RB", "", "", ""] };   // the boss's crystals: the bumpers
+function relabel() {   // the letters / pad buttons on the guns and drums, for this round's kit and the controls in hand
+  for (const k of ["bass", "treble"]) stage3d.melodyStations[k].setLabels(padConnected ? padLabelsFor(k) : IS_TOUCH ? NO_LABELS : lettersFor(k));
+  if (padConnected || IS_TOUCH) stage3d.hideDrumLabels(); else stage3d.showDrumLabels();   // no letters on the drums with a pad in hand (owner)
+}
 const NO_LABELS = Array(16).fill("");   // tablets: no letters anywhere (owner, 2026-10-04) — unless a controller is plugged in
 const MELODY_ENTRY = { bass: [], treble: [] };
 for (const kind of ["bass", "treble"]) {
@@ -780,6 +808,7 @@ function makeStartButton() {
     };
     armed = true;
     if (AUTO_BEGIN) beginSong();
+    else if (autoFromMenu) beginCount();
     else hudUI.say(IS_TOUCH ? "Tap to begin" : padConnected ? "Press a button to begin" : "Press any key to begin", "good");
   });
   document.body.appendChild(btn);
@@ -899,6 +928,7 @@ function scheduleGhosts() {
 // channel; timing only changes loudness (velocityFor) — never delay or snap
 // the sound. Calibration keeps its old F/Space taps against the metronome.
 function onKey(e) {
+  if (autoFromMenu && !ctx && !e.repeat) { e.preventDefault(); startBtn.click(); return; }   // after a round switch: this key is the audio's gesture
   if (armed && !clock && !e.repeat) { e.preventDefault(); beginCount(); return; }   // READY: the first key starts the count
   // start-up guard: drums, pool and clock must all exist before a press
   if (e.repeat || !ctx || !drums || !pool || !clock) return;
@@ -916,6 +946,8 @@ function onKey(e) {
     if (slot != null) {
       e.preventDefault();
       if (partMode() === "treble" && slot >= 8) { hitCrystal(slot < 12 ? 0 : 1, press); return; }   // the boss's two crystals: Q W E R left, T Y U I right
+      slot = slotForKey(partMode(), slot);   // the k-th letter of a row is the k-th gun this round built
+      if (slot == null) return;
       const entry = MELODY_ENTRY[partMode()][slot];
       hitLane(entry.idx, entry.ln, press, 1);
       return;
@@ -995,14 +1027,16 @@ const pads = createPads({
     hitCrystal(side === "left" ? 0 : 1, o.contextTime + (ts - o.performanceTime) / 1000 - calibration);
   },
   onMelody: (col, force, ts, rowForce) => {
+    if (autoFromMenu && !ctx) { startBtn.click(); return; }
     if (armed && !clock) { beginCount(); return; }
     if (!ctx || !drums || !pool || !clock) return;
     const o = ctx.getOutputTimestamp();
     const press = o.contextTime + (ts - o.performanceTime) / 1000 - calibration;
-    const entry = resolveGun(MELODY_ENTRY[partMode()][col].idx, press, rowForce);
-    hitLane(entry.idx, entry.ln, press, force);
+    const entry = resolveColumn(partMode(), col, press, rowForce);
+    if (entry) hitLane(entry.idx, entry.ln, press, force);
   },
   onHit: (laneName, force, ts) => {
+    if (autoFromMenu && !ctx) { startBtn.click(); return; }
     if (armed && !clock) { beginCount(); return; }
     if (!ctx || !drums || !pool || !clock) return;
     const entry = KEYMAP_BY_LANE[laneName];
@@ -1014,8 +1048,7 @@ const pads = createPads({
   onStatus: (st) => {
     // a controller in hand: the bars show its buttons instead of keyboard letters
     padConnected = st.pads.length > 0;
-    for (const k of ["bass", "treble"]) stage3d.melodyStations[k].setLabels(padConnected ? PAD_LABELS[k] : IS_TOUCH ? NO_LABELS : MELODY_LETTERS);
-    if (padConnected || IS_TOUCH) stage3d.hideDrumLabels(); else stage3d.showDrumLabels();   // no letters on the drums with a pad in hand (owner)
+    if (stage3d) relabel();
     stageMessage();
     const parts = [...st.midi.map((n) => "🥁 " + n), ...st.pads.map((n) => "🎮 " + n.split("(")[0].trim())];
     if (parts.length) hudUI.say("Connected: " + parts.join(" · "), "good", 3000);
@@ -1026,6 +1059,7 @@ const pads = createPads({
 const KEYMAP_BY_IDX = [];
 for (const e of Object.values(KEYMAP)) KEYMAP_BY_IDX[e.idx] = e;
 for (const kind of ["bass", "treble"]) for (const e of MELODY_ENTRY[kind]) KEYMAP_BY_IDX[e.idx] = e;
+function wireStage() {
 stage3d.setVrHitHandler((idx, force, ms) => {
   if (!ctx || !drums || !pool || !clock) return;
   const o = ctx.getOutputTimestamp(), press = o.contextTime + (ms - o.performanceTime) / 1000 - calibration;
@@ -1035,6 +1069,12 @@ stage3d.setVrHitHandler((idx, force, ms) => {
   hitLane(entry.idx, entry.ln, press, force);
 });
 stage3d.addVrButton();
+stage3d.setLoop(frame);
+window.__gr.stage3d = stage3d;
+relabel();
+applyStage();
+resize();   // now there's a stage to size
+}
 
 function hitLane(idx, lane, press, padVel = 1) {
 
@@ -1242,7 +1282,7 @@ function drawChart() {
 }
 
 function resize() {
-  stage3d.resize();
+  if (stage3d) stage3d.resize();   // the stage is built once the songs load; the chart below is sized regardless
   const dpr = window.devicePixelRatio || 1;
   chart.width = Math.round(chart.clientWidth * dpr);
   chart.height = Math.round(chart.clientHeight * dpr);
@@ -1311,6 +1351,7 @@ const recentTaps = [];     // dev log: where taps landed and which drum they pic
 stage.style.touchAction = "none";
 stage.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "touch") lastTouch = performance.now();
+  if (autoFromMenu && !ctx) { startBtn.click(); return; }
   if (armed && !clock) { beginCount(); return; }   // READY: the first tap starts the count
   // phone Easy: a tap snaps to the nearest target this step wants, from well off it
   // a big hitbox reaches in space too: a tap snaps to the nearest target this step wants
@@ -1361,7 +1402,25 @@ window.addEventListener("mousemove", (e) => {
 
 const startBtn = makeStartButton();
 // THE START MENU: level (unlocked ones) -> the run's settings -> Start
+function buildStage() {
+  const s = SONGS[roundIdx] || SONGS[0];
+  const plan = kitPlan(kitFor(s).present);
+  stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR, { tier: TIER, kit: plan });
+  bootlog("stage3d built", { round: roundIdx + 1, kit: plan });
+  wireStage();
+}
+let autoFromMenu = false;   // the menu picked another round: the page reloaded into it — the next key starts it
 roundsReady.then(() => {
+  try { roundIdx = Math.max(0, Math.min(SONGS.length - 1, +(localStorage.getItem("gr.level") || 0))); } catch { roundIdx = 0; }
+  buildStage();
+  let auto = null;
+  try { auto = JSON.parse(sessionStorage.getItem("gr.autostart") || "null"); sessionStorage.removeItem("gr.autostart"); } catch { auto = null; }
+  if (auto) {   // straight into the round the menu picked: no menu, "press any key" (the key is the audio's gesture)
+    Object.assign(RUN, normalize(auto)); buildLessons(); showDifficulty(); applyStage();
+    autoFromMenu = true; startBtn.style.display = "none";
+    hudUI.say(IS_TOUCH ? "Tap to begin" : padConnected ? "Press a button to begin" : "Press any key to begin", "good");
+    return;
+  }
   const list = LESSONS;
   let at = "title";
   try { at = sessionStorage.getItem("gr.menuAt") || "title"; sessionStorage.removeItem("gr.menuAt"); } catch { /* storage blocked: title */ }
@@ -1371,7 +1430,12 @@ roundsReady.then(() => {
     level: +(localStorage.getItem("gr.level") || 0),
     run: RUN, startAt: at,
     onStart: (level, run) => {
-      try { localStorage.setItem("gr.run2", JSON.stringify({ ...run, lock: run.lock === Infinity ? "all" : run.lock })); localStorage.setItem("gr.level", level); } catch { /* not remembered */ }
+      const saved = { ...run, lock: run.lock === Infinity ? "all" : run.lock };
+      try { localStorage.setItem("gr.run2", JSON.stringify(saved)); localStorage.setItem("gr.level", level); } catch { /* not remembered */ }
+      if (level !== roundIdx) {   // another round: its stage is built fresh on a reload, which goes straight to "press any key"
+        try { sessionStorage.setItem("gr.autostart", JSON.stringify(saved)); } catch { /* fine */ }
+        location.reload(); return;
+      }
       Object.assign(RUN, run);
       roundIdx = level;
       buildLessons();
@@ -1384,7 +1448,6 @@ makeCalibrateButton();
 window.addEventListener("keydown", onKey);
 resize();
 window.addEventListener("resize", resize);
-stage3d.setLoop(frame);
 // test hook (the harness robot reads the song state through this)
 if (window.__gr) window.__gr.game = {
   get clock() { return clock; }, get ctx() { return ctx; },

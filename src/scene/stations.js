@@ -60,7 +60,13 @@ function labelTexture(text) {
  * @param {{labels?: string[]}} opts
  */
 export const KEY_LABELS = [..."ASDFGHJK", ..."QWERTYUI"];
-export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp = true } = {}) {
+/** slots: which bar slots (0..7 per row) this ROUND builds (kit.js) — the rest are stubs, never shown */
+export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp = true, slots = null } = {}) {
+  const present = { 0: slots ? slots.bottom : [0, 1, 2, 3, 4, 5, 6, 7], 1: slots ? slots.top : [0, 1, 2, 3, 4, 5, 6, 7] };
+  // the GRID: both rows on the same centred columns; a row with fewer guns sits in the middle columns
+  const COLS = kind === "treble" ? Math.max(present[0].length, 2) : Math.max(present[0].length, present[1].length, 1);
+  const colOf = (row, k) => Math.floor((COLS - present[row].length) / 2) + k;   // the k-th present gun of a row -> its column
+  const colZ = (col) => BAR_MID_Z + s * (col - (COLS - 1) / 2) * PITCH;
   const K = KIND[kind];
   const s = K.side;   // +1 right (+x), -1 left (-x)
   const group = new THREE.Group();
@@ -175,49 +181,53 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
     group.add(g);
     return g;
   });
-  const zLo = BAR_MID_Z - (PER_ROW - 1) / 2 * PITCH - BAR_W / 2 - 0.05, zHi = BAR_MID_Z + (PER_ROW - 1) / 2 * PITCH + BAR_W / 2 + 0.05;
+  const zLo = BAR_MID_Z - (COLS - 1) / 2 * PITCH - BAR_W / 2 - 0.05, zHi = BAR_MID_Z + (COLS - 1) / 2 * PITCH + BAR_W / 2 + 0.05;
   // ONE BUTTON PER COLUMN (owner, 2026-10-04): it sits in the middle, behind the mortar and under
   // the raised cannon, and serves BOTH guns of its column — the game picks which one fires
   const BTN_X = (rowNear[1] - rowNear[0]) + 0.06, BTN_H = 0.26, rg0 = rowGroups[0];   // up on a pedestal: clear of the mortars, under the raised cannons
   const shared = [];
-  for (let j = 0; j < PER_ROW; j++) {
-    const z = BAR_MID_Z + s * (j - (PER_ROW - 1) / 2) * PITCH;
+  for (let j = 0; j < COLS; j++) {
+    const z = colZ(j);
     const btn = makeButton(rg0, s * BTN_X, z, BTN_H);
     rg0.updateMatrixWorld(true);
     shared.push({ top: btn.clone().applyMatrix4(rg0.matrixWorld), mat: btn.mat, normal: new THREE.Vector3(0, 1, 0).applyQuaternion(rg0.quaternion), z });
   }
   // a gun's key letter stands at the shared button: the bottom gun's low in front, the top gun's higher behind
   // the bottom gun's key letter stands over the shared button; the top gun's sits on the cannon itself (behind the rack's edge it hid)
-  const labelAt = (i, lab) => { const row = i < PER_ROW ? 0 : 1, z = shared[i % PER_ROW].z;
+  const labelAt = (i, lab, col) => { const row = i < PER_ROW ? 0 : 1, z = shared[col].z;
     if (row) { lab.position.set(s * 0.0, 0.1, z); rowGroups[1].add(lab); } else { lab.position.set(s * (BTN_X - 0.07), BTN_H + 0.1, z); rg0.add(lab); } };
+  const makeStub = (rg, col) => {   // a slot this round doesn't use: nothing there, nothing plays it
+    const sh = shared[Math.max(0, Math.min(COLS - 1, col))];
+    const lab = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(""), transparent: true, depthWrite: false })); lab.visible = false;
+    const stub = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), crystalMat.clone()); stub.visible = false; rg.add(stub);
+    return { mesh: stub, mat: stub.material, label: lab, top: sh.top, normal: sh.normal, radius: 0.05, len: 0.17, row: 1, stub: true, muzzle: sh.top.clone(), buttonMat: sh.mat, column: col };
+  };
   for (let i = 0; i < BARS; i++) {
-    const row = i < PER_ROW ? 0 : 1, j = i % PER_ROW;
-    const z = BAR_MID_Z + s * (j - (PER_ROW - 1) / 2) * PITCH;
-    const rg = rowGroups[row];
+    const row = i < PER_ROW ? 0 : 1, j = i % PER_ROW, rg = rowGroups[row];
     // every bar is a GUN (owner, 2026-10-03): cannons on the top row, mortars on the bottom —
     // except the BOSS station's top row: TWO big crystals (owner, 2026-10-04), on bars 9 and 13,
-    // between the columns; the other six top slots are stubs (nothing there, nothing plays them)
-    const sh = shared[j];
+    // spread across the grid; the other six top slots are stubs
     if (row === 1 && kind === "treble") {
-      const isC = j === 0 || j === 4;
-      if (isC) {
-        const zc = BAR_MID_Z + s * ((j + 1.5) - (PER_ROW - 1) / 2) * PITCH;
+      if (j === 0 || j === 4) {
+        const zc = colZ(j === 0 ? (COLS - 1) * 0.25 : (COLS - 1) * 0.75), sh = shared[j === 0 ? 0 : COLS - 1];
         const b = makeCrystal(rg, i, zc, 2.2);
-        b.top = b.centre.clone(); b.radius = 0.2; b.normal = new THREE.Vector3(0, 1, 0); b.buttonMat = sh.mat; b.column = j;
+        b.top = b.centre.clone(); b.radius = 0.2; b.normal = new THREE.Vector3(0, 1, 0); b.buttonMat = sh.mat; b.column = -1;
         b.label.scale.setScalar(0.12); b.label.position.set(s * 0.14, 0.72, zc); rg.add(b.label);   // its key, over the crystal
         bars.push(b);
-      } else {
-        const lab = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(""), transparent: true, depthWrite: false })); lab.visible = false;
-        const stub = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.01, 0.01), crystalMat.clone()); stub.visible = false; rg.add(stub);
-        bars.push({ mesh: stub, mat: stub.material, label: lab, top: sh.top, normal: sh.normal, radius: 0.05, len: 0.17, row: 1, stub: true, muzzle: sh.top.clone(), buttonMat: sh.mat, column: j });
-      }
+      } else bars.push(makeStub(rg, 0));
       continue;
     }
+    const k = present[row].indexOf(j);
+    if (k < 0) { bars.push(makeStub(rg, 0)); continue; }
+    const col = colOf(row, k), z = colZ(col), sh = shared[col];
     const b = row === 1 ? makeCannon(rg, i, z) : makeMortar(rg, i, z);
-    b.top = sh.top; b.normal = sh.normal; b.buttonMat = sh.mat; b.column = j;
-    labelAt(i, b.label);
+    b.top = sh.top; b.normal = sh.normal; b.buttonMat = sh.mat; b.column = col;
+    labelAt(i, b.label, col);
     bars.push(b);
   }
+  // the grid, for the controls: per column, which bar (index 0..15) sits on each row (-1: none)
+  const grid = { cols: COLS, bottom: Array(COLS).fill(-1), top: Array(COLS).fill(-1) };
+  bars.forEach((b, i) => { if (!b.stub && !b.crystal && b.column >= 0) grid[i < PER_ROW ? "bottom" : "top"][b.column] = i; });
   // THE TESLA TOWER (treble; owner, 2026-10-04: "make the orb a tesla tower, and shiny"): a tall
   // post ringed with copper coils, a mirror-bright sphere on top that fills with charge
   let lightning = null;
@@ -261,7 +271,7 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
   }
 
   return {
-    kind, group, bars, lightning,
+    kind, group, bars, lightning, grid,
     setLabels(texts) { bars.forEach((b, i) => { b.label.material.map.dispose(); b.label.material.map = labelTexture(texts[i]); b.label.material.needsUpdate = true; }); },
   };
 }
