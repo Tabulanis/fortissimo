@@ -315,8 +315,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const PITCH0 = new THREE.Euler().setFromQuaternion(baseQuat, "YXZ").x;   // the drums' downward look
   const STATIONS = {
     drums:  { yaw: 0,            pos: new THREE.Vector3(0, 2.1, TOUCH ? 1.05 : 0.75) },
-    bass:   { yaw: -Math.PI / 2, pos: new THREE.Vector3(TOUCH ? -0.6 : -0.35, 2.1, 0.6) },
-    treble: { yaw: Math.PI / 2,  pos: new THREE.Vector3(TOUCH ? 0.6 : 0.35, 2.1, 0.6) },
+    bass:   { yaw: -Math.PI / 2, pos: new THREE.Vector3(TOUCH ? -0.05 : -0.35, TOUCH ? 1.8 : 2.1, 0.6) },   // phones: right up at the rack, a little lower — the guns fill the screen
+    treble: { yaw: Math.PI / 2,  pos: new THREE.Vector3(TOUCH ? 0.05 : 0.35, TOUCH ? 1.8 : 2.1, 0.6) },
   };
   let station = "drums";
   const st = { yaw: 0, pos: STATIONS.drums.pos.clone() };
@@ -1639,7 +1639,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     glow.scale.setScalar(2.2 * TARGET(i).radius);
     glow.visible = false;
     scene.add(glow);
-    firelights.push({ glow, radius: TARGET(i).radius, base: hexToColor(laneHex(i)).clone() });
+    firelights.push({ glow, radius: i < 6 ? TARGET(i).radius : 0.13, base: hexToColor(laneHex(i)).clone() });   // a gun's halo: drum-like, on its button
   }
 
   // BUTTON FRAMES: a glowing outline round each column's shared button (owner, 2026-10-04: one
@@ -2274,7 +2274,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       const gunK = lane >= 6 ? (lane - 6) % BARS : -1;
       if (gunK >= PER_ROW) { if (fl) fl.glow.visible = false; continue; }
       if (gunK >= 0) { const topLane = lane + PER_ROW; pending[lane] = Math.max(pending[lane], pending[topLane]); previewAt[lane] = Math.max(previewAt[lane], previewAt[topLane]); }
-      const frame = lane >= 6 ? barFrames[(lane >= 6 + BARS ? PER_ROW : 0) + gunK] : null;
+      const frame = null;   // no square frames on the guns (owner, 2026-10-05): the halo alone, like the drums
       // the RED cue: the target itself warms to red as its arrow arrives, reddest on the beat
       const mat = drumMat[lane];
       if (mat && mat.color && !mat.userData.base) mat.userData.base = mat.color.clone();
