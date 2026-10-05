@@ -189,23 +189,29 @@ settingsUI.setAutoNote(`Auto — measures this device (now: ${TIER})`);
 // AUTO GRAPHICS CHECK: after a 2.5 s warm-up, count frames for 4 s (only while
 // the page is visible). Under 28 fps -> step down a level and reload (or, once
 // a game has started, just remember it for next time).
-if (AUTO_GFX) {
+// Measured TWICE: on the loaded stage (a very slow device drops a tier and reloads before
+// it ever plays) and again IN PLAY, once the battle is on (2026-10-05: a phone passed the
+// quiet check at 60 fps and then played at 21). Each verdict is kept for next time.
+function measureFps(delayMs, onDone) {
   let frames = 0, t0 = 0, measuring = false, done = false;
   const begin = () => { frames = 0; t0 = performance.now(); measuring = document.visibilityState === "visible"; };
-  setTimeout(begin, 2500);
-  document.addEventListener("visibilitychange", () => { if (!done && document.visibilityState === "visible") begin(); else measuring = false; });
+  const onVis = () => { if (document.visibilityState === "visible") begin(); else measuring = false; };
   const count = () => {
     if (done) return;
-    if (measuring && ++frames && performance.now() - t0 >= 4000) { done = true; judgeGraphics(frames / ((performance.now() - t0) / 1000)); return; }
+    if (measuring && ++frames && performance.now() - t0 >= 4000) {
+      done = true; document.removeEventListener("visibilitychange", onVis);
+      onDone(frames / ((performance.now() - t0) / 1000)); return;
+    }
     requestAnimationFrame(count);
   };
-  requestAnimationFrame(count);
+  setTimeout(() => { begin(); document.addEventListener("visibilitychange", onVis); requestAnimationFrame(count); }, delayMs);
 }
-function judgeGraphics(measured) {
+if (AUTO_GFX) measureFps(2500, (fps) => judgeGraphics(fps, "loaded"));
+function judgeGraphics(measured, when) {
   const fake = +new URLSearchParams(location.search).get("fakefps");   // TEST ONLY: pretend this frame rate
   const fps = fake || measured;
   const i = TIERS.indexOf(TIER), next = TIERS[i + 1];
-  bootlog("graphics check", { tier: TIER, fps: Math.round(fps) });
+  bootlog("graphics check", { tier: TIER, fps: Math.round(fps), when });
   const remember = (t) => { try { localStorage.setItem("gr.autoTier", t); } catch { /* fine */ } };
   if (fps >= 28 || !next) { remember(TIER); return; }
   remember(next);
@@ -549,13 +555,25 @@ async function loadRoundSamples() {
   if (!ctx) return;
   const paths = [...new Set([...Object.values(song().sounds || {}).map((x) => x.path),
     ...Object.values(song().back || {}).flat().map((e) => e.path)])].filter((p) => !sampleCache.has(p));
+  // the small copy first: the same sound as Opus (.ogg, tools/compress-samples.sh, ~1/25 the
+  // bytes of the WAV); a browser that can't decode it gets the WAV. Counted so device.log shows which.
+  const got = { ogg: 0, wav: 0, failed: 0, fellBack: [] };   // fellBack: which WAVs had to stand in, and why
+  const fetchDecoded = async (q) => {
+    const r = await fetch("/rounds/samples/" + q);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return ctx.decodeAudioData(await r.arrayBuffer());
+  };
   await Promise.all(paths.map(async (p) => {
+    const ogg = p.replace(/\.wav$/i, ".ogg");
     try {
-      const r = await fetch("/rounds/samples/" + p);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      sampleCache.set(p, await ctx.decodeAudioData(await r.arrayBuffer()));
-    } catch (e) { sampleCache.set(p, null); console.warn(`sample ${p} failed: ${e}`); }
+      if (ogg !== p) {
+        try { sampleCache.set(p, await fetchDecoded(ogg)); got.ogg++; return; }
+        catch (e) { got.fellBack.push(`${p.split("/").pop()}: ${String(e).slice(0, 60)}`); console.warn(`sample ${ogg} not usable here, trying the WAV: ${e}`); }
+      }
+      sampleCache.set(p, await fetchDecoded(p)); got.wav++;
+    } catch (e) { sampleCache.set(p, null); got.failed++; console.warn(`sample ${p} failed: ${e}`); }
   }));
+  if (paths.length) bootlog("samples", got);
   if (BAKE) await bakeRound();   // phones: each track's sound through its effects, once
   if (mixer && song().tracks) mixer.setHackbeatMix(song().masterVol, song().tracks.length);   // Hackbeat's own master + headroom
   prepareBackBuffers();   // stretch the background recordings to the game's tempo now, not mid-song
@@ -790,6 +808,7 @@ function makeStartButton() {
     addBacking();
     defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, keep: RUN.keep, beatDur: clock.beatDur });
     stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat
+    if (AUTO_GFX) measureFps(8000, (fps) => judgeGraphics(fps, "in play"));   // the real test: with the battle on
     siege = new Siege({ miss: (LIFE[RUN.damage] || LIFE.normal).miss, beatDur: clock.beatDur });
     defendFrom = clock.first + Math.ceil((ctx.currentTime + 1.5 - clock.first) / (4 * clock.beatDur)) * 4 * clock.beatDur;   // misses count from the next bar after a breath
     defend.drain();

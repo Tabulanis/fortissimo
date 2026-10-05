@@ -193,6 +193,60 @@
         "loop": false
       },
       "transpose": -10
+    },
+    {
+      "path": "mixdowns/untitled_Bass-drum+snare+hihat+crash-2.wav",
+      "name": "untitled_Bass-drum+snare+hihat+crash-2",
+      "voice": {
+        "attack": 0.002,
+        "hold": 0,
+        "decay": 0.08,
+        "sustain": 1,
+        "release": 0.12,
+        "cutoff": 1,
+        "reso": 0,
+        "velToCutoff": 0.6,
+        "glide": 0,
+        "pan": 0,
+        "gain": 1,
+        "loop": false
+      }
+    },
+    {
+      "path": "mixdowns/untitled_Bass-instrument-top+Bass-instrument-bottom.wav",
+      "name": "untitled_Bass-instrument-top+Bass-instrument-bottom",
+      "voice": {
+        "attack": 0.002,
+        "hold": 0,
+        "decay": 0.08,
+        "sustain": 1,
+        "release": 0.12,
+        "cutoff": 1,
+        "reso": 0,
+        "velToCutoff": 0.6,
+        "glide": 0,
+        "pan": 0,
+        "gain": 1,
+        "loop": false
+      }
+    },
+    {
+      "path": "mixdowns/untitled_Bass-drum+snare+hihat+crash.wav",
+      "name": "untitled_Bass-drum+snare+hihat+crash",
+      "voice": {
+        "attack": 0.002,
+        "hold": 0,
+        "decay": 0.08,
+        "sustain": 1,
+        "release": 0.12,
+        "cutoff": 1,
+        "reso": 0,
+        "velToCutoff": 0.6,
+        "glide": 0,
+        "pan": 0,
+        "gain": 1,
+        "loop": false
+      }
     }
   ],
   "channels": [
@@ -245,7 +299,7 @@
       "solo": false,
       "fx": {
         "nudge": 0,
-        "vol": 0.43,
+        "vol": 0.58,
         "pan": 0.05,
         "eq": {
           "low": 15,
@@ -272,7 +326,7 @@
         },
         "reverb": {
           "on": true,
-          "send": 0.38
+          "send": 0.44
         },
         "filter": {
           "on": false,
@@ -546,20 +600,20 @@
       "solo": false,
       "fx": {
         "nudge": 0,
-        "vol": 0.85,
+        "vol": 0.09,
         "pan": 0,
         "eq": {
-          "low": 0,
-          "mid": 0,
-          "high": 0
+          "low": -10,
+          "mid": -1,
+          "high": -1.5
         },
         "dist": {
-          "on": false,
-          "drive": 0.4
+          "on": true,
+          "drive": 0.6
         },
         "crush": {
           "on": false,
-          "bits": 8
+          "bits": 2
         },
         "chorus": {
           "on": false,
@@ -569,11 +623,11 @@
         },
         "delay": {
           "on": false,
-          "send": 0.3
+          "send": 0.56
         },
         "reverb": {
-          "on": false,
-          "send": 0.3
+          "on": true,
+          "send": 0.13
         },
         "filter": {
           "on": false,
@@ -589,25 +643,25 @@
       "solo": false,
       "fx": {
         "nudge": 0,
-        "vol": 0.85,
+        "vol": 0.4,
         "pan": 0,
         "eq": {
-          "low": 0,
-          "mid": 0,
-          "high": 0
+          "low": -2.5,
+          "mid": -11.5,
+          "high": -15
         },
         "dist": {
           "on": false,
-          "drive": 0.4
+          "drive": 0.06
         },
         "crush": {
           "on": false,
           "bits": 8
         },
         "chorus": {
-          "on": false,
-          "rate": 1.5,
-          "depth": 0.01,
+          "on": true,
+          "rate": 0.9,
+          "depth": 0.002,
           "mix": 0.5
         },
         "delay": {
@@ -615,8 +669,8 @@
           "send": 0.3
         },
         "reverb": {
-          "on": false,
-          "send": 0.3
+          "on": true,
+          "send": 1
         },
         "filter": {
           "on": false,
@@ -711,8 +765,16 @@
             "inst": 12,
             "vol": null
           },
-          null,
-          null,
+          {
+            "note": 60,
+            "inst": 13,
+            "vol": null
+          },
+          {
+            "note": 60,
+            "inst": 14,
+            "vol": null
+          },
           null
         ],
         [
@@ -2604,7 +2666,7 @@
           null,
           {
             "note": 62,
-            "inst": 5,
+            "inst": 6,
             "vol": null
           },
           null,
@@ -2676,7 +2738,7 @@
           null,
           {
             "note": 65,
-            "inst": 5,
+            "inst": 6,
             "vol": null
           },
           {
@@ -2746,11 +2808,7 @@
           },
           null,
           null,
-          {
-            "note": 68,
-            "inst": 5,
-            "vol": null
-          },
+          null,
           null,
           {
             "note": 72,
@@ -2792,7 +2850,12 @@
           null,
           null,
           null,
-          null,
+          {
+            "note": 68,
+            "inst": 9,
+            "vol": null,
+            "off": -0.125
+          },
           null,
           null,
           null,
@@ -2817,11 +2880,17 @@
             "inst": 4,
             "vol": null
           },
-          null,
+          {
+            "note": 80,
+            "inst": 9,
+            "vol": null,
+            "off": 0.1
+          },
           {
             "note": 64,
             "inst": 6,
-            "vol": null
+            "vol": null,
+            "off": 0.075
           },
           {
             "note": 60,
@@ -2868,12 +2937,7 @@
           null,
           null,
           null,
-          {
-            "note": 68,
-            "inst": 9,
-            "vol": null,
-            "off": -0.1
-          },
+          null,
           null,
           null,
           null,
@@ -2890,16 +2954,8 @@
             "vol": null
           },
           null,
-          {
-            "note": 80,
-            "inst": 9,
-            "vol": null
-          },
-          {
-            "note": 67,
-            "inst": 5,
-            "vol": null
-          },
+          null,
+          null,
           null,
           null,
           null,
@@ -2956,20 +3012,20 @@
     0
   ],
   "fxBus": {
-    "reverbDecay": 2.45,
+    "reverbDecay": 3.45,
     "delayTime": 0.3,
-    "delayFb": 0.35
+    "delayFb": 0.47
   },
   "ui": {
     "curPattern": 0,
-    "curInstrument": 8,
+    "curInstrument": 13,
     "cursor": {
       "row": 0,
       "ch": 9,
       "sub": 0,
       "slot": 0
     },
-    "octave": 6,
+    "octave": 5,
     "masterVol": 1,
     "showWave": true,
     "showVU": true,
