@@ -1405,7 +1405,7 @@ const startBtn = makeStartButton();
 function buildStage() {
   const s = SONGS[roundIdx] || SONGS[0];
   const plan = kitPlan(kitFor(s).present);
-  stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR, { tier: TIER, kit: plan });
+  stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR, { tier: TIER, kit: plan, touch: IS_TOUCH });
   bootlog("stage3d built", { round: roundIdx + 1, kit: plan });
   wireStage();
 }

@@ -87,18 +87,21 @@ const _eWhite = new THREE.Color(0xffffff);
  * @returns {{resize: Function, update: Function, hit: Function, press: Function}}
  */
 /** the drums this ROUND builds (kit.js): the present ones are laid out staggered and centred; the rest stand far off, hidden */
-function layoutDrums(presentLanes, layout) {
+function layoutDrums(presentLanes, layout, spacing = 0.6) {
   const names = [...layout.top, ...layout.bottom].map((l) => l.name);
   const order = [3, 0, 4, 1, 5, 2];   // left to right: kick, hat, tom low, snare, tom high, crash
   const here = order.filter((i) => presentLanes.includes(names[i]));
   for (let i = 0; i < 6; i++) LANES3D[i].x = 50;   // off-stage
-  here.forEach((i, k) => { LANES3D[i].x = (k - (here.length - 1) / 2) * 0.6; });
+  here.forEach((i, k) => { LANES3D[i].x = (k - (here.length - 1) / 2) * spacing; });
 }
 export function createStage3D(canvas, layout, colors, opts = {}) {
   // THE KIT FOR THIS ROUND (owner, 2026-10-04: "16 max, but few if not needed"): which drums and gun
   // slots to build. Default: everything.
   const KIT = opts.kit || { drums: [...layout.top, ...layout.bottom].map((l) => l.name), bass: { bottom: [0, 1, 2, 3, 4, 5, 6, 7], top: [0, 1, 2, 3, 4, 5, 6, 7] }, treble: { bottom: [0, 1, 2, 3, 4, 5, 6, 7], top: [0, 4] } };
-  layoutDrums(KIT.drums, layout);
+  // PHONES (owner, 2026-10-05: "you can't get to all the drums"): the kit comes in closer, and the
+  // camera sits back a little and looks down more, so the whole kit is on the screen
+  const TOUCH = !!opts.touch;
+  layoutDrums(KIT.drums, layout, TOUCH ? 0.46 : 0.6);
   let skyMatRef = null;   // the sky dome's material (clouds animate on it)
   const TIER = ["high", "medium", "low", "lowest", "potato"].includes(opts.tier) ? opts.tier : "high";
   // no multisampling below medium: it multiplies every pixel's cost on a weak GPU
@@ -302,8 +305,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     camera.fov = Math.min(v, 120);
   };
   fitFov();
-  camera.position.set(0, 2.1, 0.75);           // a little above standing height: more of the battlefield (owner, 2026-10-03; VR uses the headset)
-  camera.lookAt(new THREE.Vector3(0, 0.95, -2.2));  // tilted down: the bottom of the play area and its indicators in view (owner), the court beyond
+  camera.position.set(0, 2.1, TOUCH ? 1.05 : 0.75);           // a little above standing height: more of the battlefield (owner, 2026-10-03; VR uses the headset); phones: back a touch
+  camera.lookAt(new THREE.Vector3(0, TOUCH ? 0.7 : 0.95, -2.2));  // tilted down: the bottom of the play area and its indicators in view (owner), the court beyond
   // LOOK AROUND (screen mode): arrow keys / thumbsticks turn the view a little
   // off this forward pose; let go and it drifts back to facing the kit
   const baseQuat = camera.quaternion.clone();
@@ -311,9 +314,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // camera turns between them (in VR you turn yourself); look-around rides on top.
   const PITCH0 = new THREE.Euler().setFromQuaternion(baseQuat, "YXZ").x;   // the drums' downward look
   const STATIONS = {
-    drums:  { yaw: 0,            pos: new THREE.Vector3(0, 2.1, 0.75) },
-    bass:   { yaw: -Math.PI / 2, pos: new THREE.Vector3(-0.35, 2.1, 0.6) },
-    treble: { yaw: Math.PI / 2,  pos: new THREE.Vector3(0.35, 2.1, 0.6) },
+    drums:  { yaw: 0,            pos: new THREE.Vector3(0, 2.1, TOUCH ? 1.05 : 0.75) },
+    bass:   { yaw: -Math.PI / 2, pos: new THREE.Vector3(TOUCH ? -0.6 : -0.35, 2.1, 0.6) },
+    treble: { yaw: Math.PI / 2,  pos: new THREE.Vector3(TOUCH ? 0.6 : 0.35, 2.1, 0.6) },
   };
   let station = "drums";
   const st = { yaw: 0, pos: STATIONS.drums.pos.clone() };
