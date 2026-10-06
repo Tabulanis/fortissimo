@@ -80,6 +80,31 @@ literally what you played. The garden shows how the band is doing.
 - Rounds are authored as Hackbeat projects (channels named like the drums,
   plus "bass" / "treble"); see src/game/hackbeat.js.
 
+## Round 4 — the DJ set at the sea gate (decided 2026-10-06)
+- **Rounds 1–3 record the stems, round 4 mixes them.** Round 1 = the song's verse, 2 = the
+  middle, 3 = the finale; each round locks drums, bass and treble for its section. Round 4
+  turns you around to the gate BEHIND you, and what you locked plays on as the band
+  (spirit players). You stop playing notes and DJ.
+- **The booth: three channel faders** (drums / bass / treble — bring a stem in, cut it,
+  ride it) and **three records** (verse / middle / finale — which section the band plays).
+  **The drop:** cut on a bar line, slam back on the one. **The build:** hold a riser across
+  bars; it charges the dome, the drop pays it off. Timing lives on the BAR, not the beat.
+  Miss the bar and the stem stumbles in late — you hear it (music is the punishment).
+- **Everything comes at once, each answering a stem:** soldiers break on the drums,
+  minotaurs on the bass, the cyclops on the treble + lightning; arrows are stopped by the
+  dome only while the FULL mix is up. **The hydra** is the orchestration test: each head
+  falls to the drop on its stem and regrows if that stem has been cut too long. All heads
+  down → the finale plays itself through with the full band; you keep the pulse with the
+  bell. The export is the set you played.
+- **The place — Clash of the Titans:** through the gate, a cove. Sea ahead (the pool's
+  reflecting water, scaled up), cliffs closing in on both sides, a dock running out into
+  the water with the booth at its end, a ship run up on the beach — the troops pour down
+  its gangplank; the hydra rises from the sea. Blocked out in placeholder geometry first
+  (src/scene/cove.js); his Meshy pieces replace parts as they come (Hydra needs a rigged
+  export with clips: rise, bite, hit, death).
+- Build order: cove blockout + the back gate opened → faders driving the ghost stems + the
+  drop on the bar (no monsters: is mixing fun?) → records → enemies by stem → hydra.
+
 ## VR mode (later) — the drum IS the hit box
 - A hit = the moment the controller's stick tip ENTERS a drum's hit volume
   (the drumhead). That moment is the press time; auto-correct applies to it

@@ -223,12 +223,10 @@ export function createCourtyard(scene) {
   }
 
   // --- behind the player: a closing wall with a (shut) gate, cornice
-  box(19.2, 7.6, 1.0, stone, 0, 3.8, 8.6);
-  box(3.2, 4.4, 0.1, shadowy, 0, 2.2, 8.05);                           // the gate
-  const gateArch = new THREE.Mesh(new THREE.CircleGeometry(1.6, 24, 0, Math.PI), shadowy);
-  gateArch.rotation.y = Math.PI;
-  gateArch.position.set(0, 4.4, 8.05);
-  root.add(gateArch);
+  for (const side of [-1, 1]) box(7.1, 7.6, 1.0, stone, side * 6.05, 3.8, 8.6);   // the wall, with a doorway in the middle
+  box(5.0, 2.6, 1.0, stone, 0, 6.3, 8.6);                                            // over the doorway
+  // the gate itself is the owner's Gate.glb (placed below with the courts' gates), OPEN
+  // onto the cove behind (round 4, cove.js): the wall has a 5 m doorway here
   box(19.6, 0.5, 1.6, stoneDark, 0, 7.85, 8.6);
   // --- corner piers where the courts meet (close the gaps between their walls)
   for (const x of [-8.8, 8.8]) for (const z of [-8.8, 8.8]) box(2.4, 8.2, 2.4, stone, x, 4.1, z);
@@ -276,7 +274,8 @@ export function createCourtyard(scene) {
   const arms = Object.fromEntries([...root.children].filter((c) => c.name.startsWith("arm-")).map((c) => [c.name.slice(4), c]));
   // GATES at all three courts (owner): the broken portcullis stands in each far archway,
   // its pillars just outside the 4 m opening, its back against the wall face
-  placeGlb("/models/Gate.glb", Object.entries(ARMS).map(([name, A]) => ({ parent: arms[name], x: 0, z: -A.length + 2.3 })), { width: 5.2 });
+  placeGlb("/models/Gate.glb", [...Object.entries(ARMS).map(([name, A]) => ({ parent: arms[name], x: 0, z: -A.length + 2.3 })),
+    { x: 0, z: 8.6 - 2.3, yaw: Math.PI }], { width: 5.2 });   // + the sea gate behind the player, facing the cove
   // MINOTAURS at the guns, not the boss or the drums (owner): a statue each side of the
   // mouth of the bass and treble courts, by the colonnades, facing the plaza
   placeGlb("/models/Minotaur.glb", ["bass", "treble"].flatMap((name) => [-1, 1].map((side) => ({ parent: arms[name], x: side * 5.4, z: -2.5 }))), { height: 2.6 });

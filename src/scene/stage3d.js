@@ -9,6 +9,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { createCourtyard, ARCHER_ROOF_Y, ARCHER_ROOF_X, ARCHER_ROOF_Z, FAR_WALL } from "./courtyard.js";
 import { createBraziers } from "./braziers.js";
+import { createCove, BOOTH_POS } from "./cove.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
@@ -319,6 +320,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     drums:  { yaw: 0,            pos: new THREE.Vector3(0, 2.1, TOUCH ? 1.05 : 0.75) },
     bass:   { yaw: -Math.PI / 2, pos: new THREE.Vector3(TOUCH ? -0.05 : -0.35, TOUCH ? 1.8 : 2.1, 0.6) },   // phones: right up at the rack, a little lower — the guns fill the screen
     treble: { yaw: Math.PI / 2,  pos: new THREE.Vector3(TOUCH ? 0.05 : 0.35, TOUCH ? 1.8 : 2.1, 0.6) },
+    sea:    { yaw: Math.PI,      pos: new THREE.Vector3(0, 2.1, BOOTH_POS.z - 0.75) },   // round 4: at the booth on the dock, facing the sea (cove.js)
   };
   let station = "drums";
   const st = { yaw: 0, pos: STATIONS.drums.pos.clone() };
@@ -433,6 +435,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // the environment mock-up (owner's reference: sandstone colonnade courtyard)
   bootlog("courtyard: start");
   const courtyard = createCourtyard(scene);
+  createCove(scene);   // round 4's cove behind the sea gate (blockout)
   const melodyStations = { bass: createStation(scene, "bass", { lamp: !MOBILE, slots: KIT.bass }), treble: createStation(scene, "treble", { lamp: !MOBILE, slots: KIT.treble }) };
   bootlog("courtyard: done");
   // the reflecting pool (drawn with the fx layer: after the scene, so the
@@ -957,6 +960,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     drums:  [new THREE.Vector3(-0.66, 0.98, -0.1), new THREE.Vector3(0.66, 0.98, -0.1)],
     bass:   [new THREE.Vector3(0.4, 0.98, BAR_MID_Z - 0.75), new THREE.Vector3(0.4, 0.98, BAR_MID_Z + 0.75)],
     treble: [new THREE.Vector3(-0.4, 0.98, BAR_MID_Z + 0.75), new THREE.Vector3(-0.4, 0.98, BAR_MID_Z - 0.75)],
+    sea:    [new THREE.Vector3(0.66, 0.98, BOOTH_POS.z + 0.35), new THREE.Vector3(-0.66, 0.98, BOOTH_POS.z + 0.35)],   // over the booth's faders
   };
 
   const hands = [];
