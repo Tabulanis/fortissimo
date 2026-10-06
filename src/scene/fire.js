@@ -14,6 +14,7 @@
                              evenly along the distance moved since last call,
                              so fast arrows leave an unbroken ribbon
      smoulder(pos, rate, dt) a small steady fire (stuck arrows, landed decoys)
+     blaze(pos, rate, dt, radius, scale) a big steady fire (the braziers)
      burst(pos, power)       an impact: fireball, sparks, a puff of smoke
      steam(pos, power)       fire meets water: a hiss of steam that rises and drifts
      forget(id)              the arrow is gone: next trail() starts fresh */
@@ -85,7 +86,7 @@ const smokeFrag = /* glsl */ `
     float r = length(d) * 2.0;
     float n = fbm(vUv * 2.0 + vec2(vSeed * 11.0, -vAge * 1.5 - uTime * 0.2));
     float shape = smoothstep(1.0, 0.0, r + (n - 0.5) * 0.8);
-    if (vKind > 1.5) {                                   // STEAM: pale, soft, lit warm by the dusk
+    if (vKind > 2.5) {                                   // STEAM (kind 3): pale, soft, lit warm by the dusk — was > 1.5, which drew SMOKE (2) pale too (fixed 2026-10-06)
       float a = shape * shape * 0.2 * smoothstep(0.0, 0.08, vAge) * pow(1.0 - vAge, 1.8);   // wispy, thins as it spreads
       gl_FragColor = vec4(vec3(0.62, 0.58, 0.62), a);
     } else {
@@ -195,6 +196,21 @@ export function createFire(scene, { layer = 0, maxFire = 14000, maxSmoke = 3000 
     }
   }
 
+  /** a BIG steady fire (the braziers, 2026-10-06): flames born across a bowl of `radius`,
+   *  tall and long-lived enough to clear the rim and lick a metre up, embers and smoke to match */
+  function blaze(p, rate, dt, radius = 0.4, scale = 1) {
+    let n = rate * dt;
+    while (n > 0) {
+      if (n < 1 && Math.random() > n) break;
+      n -= 1;
+      const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * radius;
+      spawn(fire, p.x + Math.cos(a) * r, p.y + rnd(0, 0.1), p.z + Math.sin(a) * r,
+        rnd(-0.25, 0.25), rnd(1.1, 2.2), rnd(-0.25, 0.25), rnd(0.55, 1.1), rnd(0.22, 0.42) * scale, FLAME);
+      if (Math.random() < 0.12) spawn(fire, p.x, p.y + 0.2, p.z, rnd(-0.8, 0.8), rnd(1.5, 3.2), rnd(-0.8, 0.8), rnd(0.8, 1.6), 0.035, EMBER);
+      if (Math.random() < 0.1) spawn(smoke, p.x, p.y + 0.5, p.z, rnd(-0.15, 0.15), rnd(0.6, 1.0), rnd(-0.15, 0.15), rnd(2.0, 3.5), rnd(0.35, 0.6) * scale, SMOKE);
+    }
+  }
+
   /** impact: a fireball blown out of the drumhead, sparks, smoke; power 0..1 */
   function burst(p, power = 1, toward = null) {
     const P = Math.max(0.25, Math.min(1, power));
@@ -281,5 +297,5 @@ export function createFire(scene, { layer = 0, maxFire = 14000, maxSmoke = 3000 
     }
   }
 
-  return { trail, smoulder, burst, steam, forget, update, get count() { return fire.geo.instanceCount + smoke.geo.instanceCount; } };
+  return { trail, smoulder, blaze, burst, steam, forget, update, get count() { return fire.geo.instanceCount + smoke.geo.instanceCount; } };
 }

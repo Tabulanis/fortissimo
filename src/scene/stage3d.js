@@ -8,6 +8,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { createCourtyard, ARCHER_ROOF_Y, ARCHER_ROOF_X, ARCHER_ROOF_Z, FAR_WALL } from "./courtyard.js";
+import { createBraziers } from "./braziers.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
@@ -138,7 +139,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // FILM LOOK: ACES filmic tone mapping (the Unreal Engine curve) — bright fire
   // rolls off into soft highlights instead of clipping to flat white
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 1.3;   // 1.15 -> 1.3 with the brighter fill (owner 2026-10-06)
   renderer.xr.setReferenceSpaceType("local-floor");   // y = 0 is the real floor
 
   const scene = new THREE.Scene();
@@ -242,8 +243,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
 
   // light: cool sky from above, warm bounce below, a low warm AFTERGLOW from the
   // horizon behind the archers that rims the drums, and the warm lantern close in
-  scene.add(new THREE.HemisphereLight(0x6a78b8, 0x3a2a24, 0.45));   // the sky map does most of the fill now
-  scene.add(new THREE.AmbientLight(0x2a2440, 0.15));
+  scene.add(new THREE.HemisphereLight(0x6a78b8, 0x4a3426, 0.72));   // lifted 0.45 -> 0.72 (owner 2026-10-06: "it's dark"); warmer ground bounce
+  scene.add(new THREE.AmbientLight(0x2a2440, 0.3));                   // 0.15 -> 0.3
   const afterglow = new THREE.DirectionalLight(0xff9a6a, 0.9);
   const AFTERGLOW = 0.9;   // full sunlight; clouds over the sun dim it (below)
   // CLOUDS: the owner's cloud map rotates slowly across the sky; the game reads
@@ -596,6 +597,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   })();
   // THE DEFENSE you build by playing: the shield dome and the cannons (defense.js)
   const defense = createDefense(scene, { fireTexture, layer: FX_LAYER, glowLayer: SHIELD_LAYER, cheap: POTATO });
+  // the FIRE BASINS that light the town (braziers.js): real lights only on the nearest few
+  const braziers = createBraziers(scene, { fireSim, fireTexture, flameTexture, layer: FX_LAYER,
+    lights: LOW ? 0 : MOBILE ? 2 : 4, particles: !LOW, rate: MOBILE ? 0.5 : 1 });
   // THE ARMY down the courts (troops.js): fwd = down the court a station faces, right = across it
   const courtOf = (side) => { const yaw = STATIONS[side].yaw, fx = -Math.sin(yaw), fz = -Math.cos(yaw);
     return { fwd: new THREE.Vector3(fx, 0, fz), right: new THREE.Vector3(-fz, 0, fx) }; };
@@ -2437,6 +2441,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       }
     }
 
+    braziers.update(fireDt, camera, performance.now());
     fireSim.update(fireDt);
     waterPool.update(performance.now() / 1000);
     fxCamera.position.copy(camera.position);
