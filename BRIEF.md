@@ -1,4 +1,4 @@
-# Garden Rhythm — project brief (working title)
+# Fortissimo (folder GardenRhythm) — project brief
 
 A rhythm game where **you are the instrument**. Your key press makes the
 sound, at the moment you press it. On time = the note lands where it belongs,

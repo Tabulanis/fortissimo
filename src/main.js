@@ -1,4 +1,4 @@
-/* main.js — Garden Rhythm beat core.
+/* main.js — Fortissimo (folder GardenRhythm) beat core.
    Start button -> AudioContext (created inside the click), drums rendered,
    metronome click scheduled ahead of the audio clock, instant kicks on lane
    keys with timing judged against the chart (known in advance), mapped to

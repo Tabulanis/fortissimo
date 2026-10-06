@@ -53,7 +53,7 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
   let lvl = Math.min(level, unlocked);
 
   function title() {
-    card.innerHTML = `<h1>Garden Rhythm</h1><div class="sub">play the song, one piece at a time</div>
+    card.innerHTML = `<h1>Fortissimo</h1><div class="sub">play the song, one piece at a time</div>
       <button class="big" data-a="play">Play</button>`;
     card.querySelector("[data-a=play]").onclick = levelsScreen;
   }
