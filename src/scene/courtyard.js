@@ -13,6 +13,7 @@
      far building     wall at z = -46, 5.6 m tall, open arch in the middle */
 import * as THREE from "three";
 import { bootlog } from "../bootlog.js";
+import { POOL } from "./pool.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export const ARCHER_ROOF_Y = 7.6;      // top of the colonnade roofs
@@ -252,6 +253,35 @@ export function createCourtyard(scene) {
       g.add(col);
     }
   }, undefined, (err) => console.warn("Pillar.glb failed to load", err));
+
+  // --- the owner's Meshy pieces (2026-10-06), lean copies made by tools/slim-glb.py.
+  // placeGlb: load once, drop a clone at each spot — fit = { width | height } in metres,
+  // bottom on the floor at y, centred on x/z, turned by yaw (glTF front = +z).
+  const placeGlb = (url, spots, fit) => new GLTFLoader().load(url, (gltf) => {
+    const src = gltf.scene;
+    src.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(src), size = bb.getSize(new THREE.Vector3());
+    const k = fit.width ? fit.width / size.x : fit.height / size.y;
+    for (const { parent = root, x, y = 0, z, yaw = 0 } of spots) {
+      const m = src.clone(true);
+      m.scale.multiplyScalar(k);
+      m.rotation.y = yaw;
+      const cx = (bb.min.x + bb.max.x) / 2 * k, cz = (bb.min.z + bb.max.z) / 2 * k;   // centre offset, turned with the model
+      m.position.set(x - (cx * Math.cos(yaw) + cz * Math.sin(yaw)), y - bb.min.y * k, z - (-cx * Math.sin(yaw) + cz * Math.cos(yaw)));
+      m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      parent.add(m);
+    }
+    bootlog("placed " + url.split("/").pop(), { n: spots.length, scale: +k.toFixed(2) });
+  }, undefined, (err) => console.warn(url + " failed to load", err));
+  const arms = Object.fromEntries([...root.children].filter((c) => c.name.startsWith("arm-")).map((c) => [c.name.slice(4), c]));
+  // GATES at all three courts (owner): the broken portcullis stands in each far archway,
+  // its pillars just outside the 4 m opening, its back against the wall face
+  placeGlb("/models/Gate.glb", Object.entries(ARMS).map(([name, A]) => ({ parent: arms[name], x: 0, z: -A.length + 2.3 })), { width: 5.2 });
+  // MINOTAURS at the guns, not the boss or the drums (owner): a statue each side of the
+  // mouth of the bass and treble courts, by the colonnades, facing the plaza
+  placeGlb("/models/Minotaur.glb", ["bass", "treble"].flatMap((name) => [-1, 1].map((side) => ({ parent: arms[name], x: side * 5.4, z: -2.5 }))), { height: 2.6 });
+  // the FOUNTAIN basin stands in the pool (the water, its mirror and the ripples stay around it)
+  placeGlb("/models/Fountain.glb", [{ x: 0, y: 0.02, z: (POOL.z0 + POOL.z1) / 2 }], { width: 4.6 });
 
   return root;
 }

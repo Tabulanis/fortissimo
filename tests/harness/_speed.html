@@ -13,5 +13,5 @@ f.onload = async () => {
   await wait(3500);
   [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
 };
-f.src = "/?autobegin=1";
+f.src = "/?autobegin=1" + (location.hash ? "&" + location.hash.slice(1) : "");   // #shot=14 etc. pass through to the game
 </script></body>

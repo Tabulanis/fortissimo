@@ -84,6 +84,17 @@ const TIER = urlQ === "mobile" ? "medium" : TIERS.includes(urlQ) ? urlQ
   : TIERS.includes(savedTier) ? savedTier : IS_TOUCH ? "medium" : "high";
 let stage3d = null;   // built for the round once the songs are known (buildStage): its kit depends on the song
 stage.addEventListener("webglcontextlost", () => bootlog("WEBGL CONTEXT LOST"));
+// DEV PHOTO: ?shot=<seconds> posts the rendered canvas as a PNG to the dev sink on :8899
+// (scratchpad/sink.py) that many seconds after load — headless --screenshot fires before
+// the models arrive, this fires when I say. Harmless without the sink.
+// &face=bass|treble turns to that station first (1.5 s for the turn), so the gun courts can be photographed too.
+{ const sec = +new URLSearchParams(location.search).get("shot"), face = new URLSearchParams(location.search).get("face");
+  const snap = () => { const c = stage.tagName === "CANVAS" ? stage : stage.querySelector("canvas");   // #stage is the canvas itself
+    if (!c) { bootlog("shot", { error: "no canvas" }); return; }
+    let png = ""; try { png = c.toDataURL("image/png"); } catch (e) { bootlog("shot", { error: String(e) }); return; }
+    fetch(`http://127.0.0.1:8899/png/game-${face || "drums"}`, { method: "POST", body: png })
+      .then((r) => bootlog("shot", { face, bytes: png.length, sink: r.status }), (e) => bootlog("shot", { face, bytes: png.length, error: String(e) })); };
+  if (sec > 0) setTimeout(() => { if (face && stage3d) { stage3d.setStation(face); setTimeout(snap, 1500); } else snap(); }, sec * 1000); }
 // once running: a heartbeat with the frame rate, so a later crash shows when
 { let frames = 0; const tick = () => { frames++; requestAnimationFrame(tick); }; requestAnimationFrame(tick);
   setInterval(() => {

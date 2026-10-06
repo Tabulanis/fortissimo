@@ -105,7 +105,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   let skyMatRef = null;   // the sky dome's material (clouds animate on it)
   const TIER = ["high", "medium", "low", "lowest", "potato"].includes(opts.tier) ? opts.tier : "high";
   // no multisampling below medium: it multiplies every pixel's cost on a weak GPU
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: TIER === "high" || TIER === "medium" });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: TIER === "high" || TIER === "medium",
+    preserveDrawingBuffer: new URLSearchParams(location.search).has("shot") });   // ?shot: the dev photo hook in main.js reads the canvas
   renderer.shadowMap.enabled = true;                 // the foreground lantern casts shadows
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   // GRAPHICS LEVEL — the game chooses it (auto-measured per device, or Settings):
