@@ -20,7 +20,7 @@ export function createCove(scene) {
   const sand = new THREE.MeshStandardMaterial({ color: 0xc9b48a, roughness: 1 });
   const rock = new THREE.MeshStandardMaterial({ color: 0x6e635a, roughness: 0.95 });
   const wood = new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 0.85 });
-  const hull = new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.8 });
+  const hull = new THREE.MeshStandardMaterial({ color: 0x6a4630, roughness: 0.8 });   // near-black went invisible at night
   const water = new THREE.MeshStandardMaterial({ color: 0x2a5e74, roughness: 0.3, metalness: 0.25 });   // placeholder: the pool's reflector later (metal with no env map went black)
   const box = (name, w, h, d, mat, x, y, z, ry = 0, parent = root) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.name = name;
@@ -37,7 +37,7 @@ export function createCove(scene) {
   spit.name = "spit"; spit.position.set(17, -0.3, 36); spit.rotation.y = 0.12; spit.receiveShadow = true; root.add(spit);
   // LIGHT for this side: every light in the game faces the sunset behind us, so the cove
   // gets a cool MOON over the sea (no shadows: cost) and a warm lantern over the booth
-  const moon = new THREE.DirectionalLight(0x9fb4e0, 0.9); moon.position.set(-20, 30, 80); moon.target.position.set(0, 0, 20); root.add(moon, moon.target);
+  const moon = new THREE.DirectionalLight(0x9fb4e0, 1.6); moon.position.set(-20, 30, 80); moon.target.position.set(0, 0, 20); root.add(moon, moon.target);
   const lantern = new THREE.SpotLight(0xffb36a, 30, 9, Math.PI / 3.5, 0.6, 1.4); lantern.position.set(0.4, 3.6, BOOTH_POS.z - 0.6); lantern.target.position.set(0, 1, BOOTH_POS.z + 0.6); root.add(lantern, lantern.target);
   // CLIFFS: stacked rough blocks either side, climbing as they go out, closing in a little
   for (const side of [-1, 1]) {

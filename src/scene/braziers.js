@@ -10,7 +10,7 @@
    update(dt, camera, now) every frame. */
 import * as THREE from "three";
 import { ARMS, armToWorld } from "./courtyard.js";
-import { DOCK } from "./cove.js";
+import { DOCK, SHIP_POS } from "./cove.js";
 
 /** every basin's world spot: both colonnades of each court, a pair flanking each gate, the plaza corners */
 export function brazierSpots() {
@@ -23,6 +23,7 @@ export function brazierSpots() {
   for (const x of [-6.2, 6.2]) for (const z of [-6.2, 6.2]) spots.push(new THREE.Vector3(x, 0, z));   // the plaza
   for (const x of [-3.2, 3.2]) spots.push(new THREE.Vector3(x, 0, DOCK.z0 - 1));                        // round 4: the dock's landward end, on the sand
   for (const x of [-1.25, 1.25]) spots.push(new THREE.Vector3(x, DOCK.y, DOCK.z1 - 3.2));              // and beside the booth, on the planks
+  for (const dz of [-3, 3]) spots.push(new THREE.Vector3(SHIP_POS.x - 7, 0, SHIP_POS.z + dz));        // the landing: fires on the sand at the ship's gangplank
   return spots;
 }
 
