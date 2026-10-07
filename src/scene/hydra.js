@@ -21,7 +21,7 @@ export const RIG = {
   // measured from the mesh (2026-10-06): neck y -1.69..-0.25 (narrow, leans back to -z), skull
   // above, snout +z out to 0.93, lower jaw tip at y -0.15 z 0.78, horns -z. Tune by eye.
   neckTop: -0.25,      // y where the neck ends and the skull begins
-  neckBones: 5,
+  neckBones: 8,        // the long-necked export (2026-10-06 22:43): 3.6 m of neck, eight bones to curl it
   mouthY: 0.35,        // (fallback only, when the file has no _JAW flag)
   hingeZ: 0.22,        // the jaw hinge: measured from a side density map — the head is tilted, the hinge is high
   hingeY: 0.33,
