@@ -27,13 +27,22 @@ f.onload = async () => {
     let nextLog = 0;
     while (performance.now() - t0 < 560000) {
       const now = G.ctx.getOutputTimestamp().contextTime;
+      // the gun keys follow the KIT PLAN: "the k-th letter of a row is the k-th gun this round built"
+      // (main.js slotForKey) — a sparse bass line packs its guns onto the first letters (2026-10-07)
+      const kit = w.__gr.stage3d && w.__gr.stage3d.kit;
+      const keyFor = (lane) => {
+        const m = /^(bass|treble) (\d+)$/.exec(lane); if (!m || !kit) return KEY[lane];
+        const bar = +m[2], top = bar > 8, built = kit[m[1]][top ? "top" : "bottom"] || [], k = built.indexOf((bar - 1) % 8);
+        return k < 0 ? KEY[lane] : (top ? "qwertyui" : "asdfghjk")[k];
+      };
       for (const a of G.upcoming()) {
         const key = a.laneIdx + "@" + a.time.toFixed(3);
-        if (!planned.has(key) && a.time - now < 0.6) { planned.add(key); at(a.time + (Math.random() * 2 - 1) * JITTER, KEY[G.laneOf(a.laneIdx)]); }
+        if (!planned.has(key) && a.time - now < 0.6) { planned.add(key); at(a.time + (Math.random() * 2 - 1) * JITTER, keyFor(G.laneOf(a.laneIdx))); }
       }
       if (performance.now() - t0 > nextLog) {
         const D = G.defend, S = G.siege;
         log.push(`${Math.round((performance.now() - t0) / 1000)}s ${D.section || "done"} ${Math.round(100 * D.locked.size / D.notes.length)}% locked | life ${G.life.you.toFixed(0)}/${G.life.town.toFixed(0)} | shield ${S.full ? (S.broken ? "BROKEN" : S.hp.toFixed(0)) : "rise " + S.rise.toFixed(2)} | army ${S.enemies.filter((e) => e.alive).length}${S.boss ? " boss " + S.boss.hp + "/" + S.boss.of : ""}`);
+        if (D.section && D.section !== "drums") log.push("   still open: " + D.unlocked().map((n) => `${n.lane}@${n.beat}`).join(" ") + " | robot presses " + D.unlocked().map((n) => keyFor(n.lane) || "?").join(""));
         nextLog += 20000;
         say("prog_full", log.join("\n"));
       }
