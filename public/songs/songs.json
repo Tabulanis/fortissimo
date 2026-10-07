@@ -1,0 +1,17 @@
+[
+ {
+  "name": "Round 1",
+  "title": "Dope",
+  "file": "song1.json"
+ },
+ {
+  "name": "Round 2",
+  "title": "Fortuna (demo)",
+  "file": "song2.json"
+ },
+ {
+  "name": "Round 3",
+  "title": "The Forge (demo)",
+  "file": "song3.json"
+ }
+]
