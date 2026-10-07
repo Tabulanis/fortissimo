@@ -1,0 +1,25 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" style="width:1100px;height:760px;border:0"></iframe>
+<script type="module">
+// The level list shows "Round 4 — The Hydra" per level (open once its round 3 is) and clicking it lands in round 4.
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body: JSON.stringify(body) });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+localStorage.clear(); sessionStorage.clear();
+localStorage.setItem("gr.unlocked", "3");   // as if rounds 1-3 were done
+const f = document.getElementById("f"); let stage = 0;
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document; if (w.location.href === "about:blank") return; stage++;
+  try {
+    await wait(3500);
+    if (stage === 1) {
+      [...d.querySelectorAll("#gr-menu button")].find((b) => b.textContent.trim() === "Play").click(); await wait(300);
+      const rows = [...d.querySelectorAll("#gr-menu .level")].map((b) => b.innerText.replace(/\s+/g, " ") + (b.disabled ? " [locked]" : ""));
+      say("hm-list", rows);
+      d.querySelector("#gr-menu .level.hydra").click();
+    } else {
+      say("hm-landed", { part: d.querySelector(".part") && d.querySelector(".part").textContent, url: w.location.search, menu: !!d.querySelector("#gr-menu") && getComputedStyle(d.getElementById("gr-menu")).display });
+    }
+  } catch (e) { say("hm-fail", String(e.stack || e)); }
+};
+f.src = "/";
+</script>

@@ -48,7 +48,7 @@ const CSS = `
 const ms = (s) => `±${Math.round(s * 1000)} ms`;
 const hitboxWord = (s) => (s <= 0.05 ? "tight" : s <= 0.09 ? "fair" : s <= 0.15 ? "generous" : "huge");
 
-export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "title", onStart, onCreate }) {
+export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "title", onStart, onCreate, hydras = [], onHydra }) {
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -73,8 +73,11 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
     card.innerHTML = `<h2>Choose a level</h2>` + levels.map((l, i) => `
       <button class="level" data-i="${i}" ${i > unlocked && !l.made ? "disabled" : ""}>
         <span>${i > unlocked && !l.made ? "🔒 " : l.made ? "✎ " : ""}${l.name}</span><span class="t">${l.title || ""}</span></button>`).join("") +
+      hydras.map((h, k) => `<button class="level hydra" data-h="${k}" ${h.open ? "" : "disabled"}>
+        <span>${h.open ? "🐉 " : "🔒 "}Round 4 — The Hydra</span><span class="t">${h.title}</span></button>`).join("") +
       `<button class="back" data-a="back">◀ Back</button>`;
-    card.querySelectorAll(".level").forEach((b) => (b.onclick = () => { lvl = +b.dataset.i; setup(); }));
+    card.querySelectorAll(".level:not(.hydra)").forEach((b) => (b.onclick = () => { lvl = +b.dataset.i; setup(); }));
+    card.querySelectorAll(".level.hydra").forEach((b) => (b.onclick = () => onHydra && onHydra(hydras[+b.dataset.h])));   // round 4: conduct the level's three rounds
     card.querySelector("[data-a=back]").onclick = title;
   }
 

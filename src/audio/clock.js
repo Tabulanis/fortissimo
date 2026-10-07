@@ -3,12 +3,13 @@
 
 /**
  * @param {AudioContext} ctx
- * @param {{bpm: number, onBeat: (time: number, n: number) => void}} opts
+ * @param {{bpm: number, onBeat: (time: number, n: number) => void, at?: number}} opts  at: the first beat's time (default: 0.5 s from now) —
+ *   round 4 starts the next movement's clock exactly on the old one's bar line
  * @returns {{stop: () => void, beatTimes: number[]}}
  */
-export function startClock(ctx, { bpm, onBeat }) {
+export function startClock(ctx, { bpm, onBeat, at }) {
   const beatDur = 60 / bpm;
-  const first = ctx.currentTime + 0.5;
+  const first = at ?? ctx.currentTime + 0.5;
   const beatTimes = [];
   let next = first;
   let n = 0;

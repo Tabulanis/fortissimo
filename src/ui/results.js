@@ -27,7 +27,7 @@ export function createResults() {
 
   return {
     get open() { return root.style.display !== "none"; },
-    show({ round, title, stats, last, run, failed = false, onNext: next, onMenu }) {
+    show({ round, title, stats, last, run, failed = false, onNext: next, onMenu, nextLabel }) {
       onNext = next;
       const tend = Math.abs(stats.biasMs) < 8 ? "right on the beat"
         : stats.biasMs < 0 ? "a hair early, on average" : "a hair late, on average";
@@ -44,7 +44,7 @@ export function createResults() {
           <span style="font-size:14px; opacity:0.75">on ${run.name}</span></div>` : ""}
         <button id="gr-results-next" style="margin-top:20px; padding:10px 22px; font-size:16px; border-radius:8px;
           border:1px solid rgba(255,190,120,0.6); background:rgba(255,160,80,0.18); color:#fff; cursor:pointer">
-          ${failed ? "Try again ▶" : last ? "All rounds done — free play ▶" : "Next round ▶"}</button>
+          ${nextLabel || (failed ? "Try again ▶" : last ? "All rounds done — free play ▶" : "Next round ▶")}</button>
         ${onMenu ? `<button id="gr-results-menu" style="margin-top:20px; margin-left:8px; padding:10px 22px; font-size:16px; border-radius:8px;
           border:1px solid rgba(255,190,120,0.35); background:none; color:#fff; cursor:pointer">Menu</button>` : ""}
         <div style="margin-top:8px; font-size:12px; opacity:0.55">or press Enter</div>`;

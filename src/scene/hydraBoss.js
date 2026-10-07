@@ -9,7 +9,10 @@
    pitches the neck forward and down at the podium and the jaw snaps.
 
    createHydra(scene, { origin, target, heads, scale, stretch }) -> {
-     rise(), submerge(), bite(i, now), holdLunge(i), update(dt, now, beatPhase), heads, group, ready }
+     rise(), submerge(), bite(i, now), holdLunge(i), update(dt, now, beatPhase), heads, group, ready,
+     rear(i, on), hit(i, now), down(i), up(i) }   ← round 4's fight (hydrafight.js) drives these:
+     rear = the head pulls back, jaws open (it strikes next bar); hit = a recoil; down / up = that head
+     sinks / comes back (regrowth)
    Pure placement/animation — the rules (hit points, which section kills which head) are
    round 4's logic, elsewhere. */
 import * as THREE from "three";
@@ -34,7 +37,7 @@ export function createHydra(scene, { origin = new THREE.Vector3(0, -1.4, 37), ta
       for (let b = 1; b < N; b++) head.bones[b].scale.y = stretch;
       head.skull.scale.y = 1 / Math.pow(stretch, N - 1);
       // the outer two lean less: their necks are long and their bases sit nearer the sides
-      H.push({ head, pivot, base: pivot.position, seed: i * 2.1 + 0.7, lean: i === 1 ? 0.62 : 0.4, lunge: 0, lungeAt: -1e9, hold: false, rippleAt: 0, wasUp: false, lastPitch: 0 });
+      H.push({ head, pivot, base: pivot.position, seed: i * 2.1 + 0.7, lean: i === 1 ? 0.62 : 0.4, lunge: 0, lungeAt: -1e9, hold: false, alv: 1, aliveTo: 1, rear: 0, rearTo: 0, hitAt: -1e9, rippleAt: 0, wasUp: false, lastPitch: 0 });
     }
     if (api._hold !== undefined) H[api._hold % H.length].hold = true;
     api.ready = true;
@@ -49,18 +52,25 @@ export function createHydra(scene, { origin = new THREE.Vector3(0, -1.4, 37), ta
     return _sx.set(h.base.x + Math.sin(yaw) * Math.sin(pitch) * d, seaY, h.base.z + Math.cos(yaw) * Math.sin(pitch) * d);
   };
   api.bite = (i, now) => { const h = H[i % H.length]; if (h) { h.lungeAt = now; h.head.bite(now + 0.3); if (sea) { const p = surfaceOf(h, h.lastPitch, h.lastYaw || 0); sea.addRipple(p.x, p.z, 2.4); } } };
+  api.rear = (i, on = true) => { const h = H[i % H.length]; if (h) h.rearTo = on ? 1 : 0; };
+  api.hit = (i, now) => { const h = H[i % H.length]; if (h) { h.hitAt = now; h.rearTo = 0; if (sea) sea.addRipple(h.base.x, h.base.z - 2, 2.0); } };
+  api.down = (i) => { const h = H[i % H.length]; if (h) { h.aliveTo = 0; h.rearTo = 0; } };
+  api.up = (i) => { const h = H[i % H.length]; if (h) h.aliveTo = 1; };
   api.holdLunge = (i) => { api._hold = i; if (H.length) H[i % H.length].hold = true; };   // dev: freeze a head at full strike for a photo
   api.update = (dt, now, beatPhase = now) => {
     if (!api.ready) return;
     api.level += (api._levelTo - api.level) * Math.min(1, dt * 0.9);   // rises over ~3 s
     for (const h of H) {
-      const t = now, s = h.seed, lv = api.level;
+      h.alv += (h.aliveTo - h.alv) * Math.min(1, dt * 1.2);   // one head sinking / regrowing
+      h.rear += (h.rearTo - h.rear) * Math.min(1, dt * 6);
+      const t = now, s = h.seed, lv = api.level * h.alv;
+      const dh = now - h.hitAt, recoil = dh >= 0 && dh < 1.2 ? Math.exp(-dh * 3.5) * Math.sin(Math.min(1, dh / 0.12) * Math.PI / 2) : 0;
       const dl = now - h.lungeAt; h.lunge = h.hold ? 1 : dl < 0 ? 0 : dl < 0.35 ? Math.sin(dl / 0.35 * Math.PI / 2) : dl < 1.25 ? 1 - (dl - 0.35) / 0.9 : 0;
-      if (h.hold) h.head.jaw(1);
+      if (h.hold) h.head.jaw(1); else if (h.rear > 0.02 || h.rearTo) h.head.jaw(Math.max(0.15, 0.85 * h.rear));   // rearing: jaws open (back to the idle 0.15 after)
       // the base stays under the water: rising = the neck pitching up from flat-on-the-water to its lean
       _to.subVectors(target, h.base); const yaw = Math.atan2(_to.x, _to.z);   // the snout (+z) toward the podium
       const sway = Math.sin(beatPhase * Math.PI * 0.5 + s) * 0.12 + Math.sin(t * 0.37 + s * 1.3) * 0.05;
-      const pitch = (1 - lv) * 1.35 + h.lean * lv + h.lunge * 0.24 + Math.sin(t * 0.8 + s) * 0.04 * lv;   // forward lean about the base (local x); the strike is mostly the neck CURLING (below)
+      const pitch = (1 - lv) * 1.35 + h.lean * lv + h.lunge * 0.24 + Math.sin(t * 0.8 + s) * 0.04 * lv - 0.32 * h.rear * lv + 0.4 * recoil * lv;   // rearing pulls back, a hit throws it back the other way   // forward lean about the base (local x); the strike is mostly the neck CURLING (below)
       _e.set(pitch, yaw, sway * lv, "YXZ"); h.pivot.quaternion.setFromEuler(_e);
       h.head.setSway(t, s, 0.5 + 0.5 * lv);
       // the strike: the upper neck curls forward toward the podium (setSway reset the bones this frame)
