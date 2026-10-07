@@ -1,7 +1,7 @@
 <!doctype html><body style="margin:0">
 <!-- EDITOR end-to-end (2026-10-07): fly camera looking at the fountain; CLICK the middle of the screen
 (should select "fountain"), type pos x = 3 into the panel, press Save, read the saved file, RELOAD, read the
-fountain's position (should be x = 3), then put the layout back to {}. Reports to the :8899 sink.
+fountain's position (should be x = 3), then put HIS saved layout back exactly as it was. Reports to the :8899 sink.
 Copy to public/_edit.html. -->
 <iframe id="f" style="width:1280px;height:800px;border:0"></iframe>
 <script type="module">
@@ -10,6 +10,9 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const URL0 = "/?fly=1&cam=0,3.2,-1.5,0,-0.32";
 const f = document.getElementById("f");
 let pass = 0;
+// HIS LAYOUT IS REAL NOW (2026-10-07): keep a copy before the test touches it, and put it back after
+const saved = sessionStorage.getItem("editTestBackup") || await (await fetch("/levels/edits.json", { cache: "no-store" })).text();
+sessionStorage.setItem("editTestBackup", saved);
 f.onload = async () => {
   const w = f.contentWindow, d = w.document;
   if (w.location.href === "about:blank") return;
@@ -36,8 +39,9 @@ f.onload = async () => {
     } else {
       const fo = w.__grEdit.allEditables().find((o) => o.userData.editId === "fountain");
       say("edit_reloaded", { fountain: fo ? fo.position.toArray().map((v) => +v.toFixed(2)) : null });
-      await fetch("/__level", { method: "POST", body: "{}" });
-      say("edit_done", "restored {}");
+      await fetch("/__level", { method: "POST", body: saved });
+      sessionStorage.removeItem("editTestBackup");
+      say("edit_done", "restored his layout");
     }
   } catch (e) { say("edit_err", e.message + " " + e.stack); }
 };
