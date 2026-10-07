@@ -1,0 +1,45 @@
+<!doctype html><body style="margin:0">
+<!-- EDITOR end-to-end (2026-10-07): fly camera looking at the fountain; CLICK the middle of the screen
+(should select "fountain"), type pos x = 3 into the panel, press Save, read the saved file, RELOAD, read the
+fountain's position (should be x = 3), then put the layout back to {}. Reports to the :8899 sink.
+Copy to public/_edit.html. -->
+<iframe id="f" style="width:1280px;height:800px;border:0"></iframe>
+<script type="module">
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body: typeof body === "string" ? body : JSON.stringify(body) });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const URL0 = "/?fly=1&cam=0,3.2,-1.5,0,-0.32";
+const f = document.getElementById("f");
+let pass = 0;
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  if (w.location.href === "about:blank") return;
+  pass++;
+  try {
+    await wait(7000);
+    const canvas = d.querySelector("#stage");
+    if (pass === 1) {
+      const r = canvas.getBoundingClientRect(), ed = w.__gr.stage3d.editor;
+      let id = null;
+      for (const fy of [0.5, 0.55, 0.6, 0.65, 0.7, 0.45]) {   // down the middle of the screen until something is picked
+        const x = r.left + r.width / 2, y = r.top + r.height * fy;
+        for (const t of ["pointerdown", "pointerup"]) canvas.dispatchEvent(new w.PointerEvent(t, { clientX: x, clientY: y, button: 0, bubbles: true, pointerId: 1 }));
+        await wait(200);
+        id = ed && ed.selected ? ed.selected.userData.editId : null;
+        if (id) break;
+      }
+      say("edit_select", { id, editorOn: !!(ed && ed.on) });
+      const px = d.querySelector('input[data-n="px"]'); px.value = "3"; px.dispatchEvent(new w.Event("change"));
+      [...d.querySelectorAll("button")].find((b) => b.dataset.a === "save").click();
+      await wait(800);
+      say("edit_saved", await (await fetch("/levels/edits.json", { cache: "no-store" })).text());
+      f.src = URL0 + "&r=2";
+    } else {
+      const fo = w.__grEdit.allEditables().find((o) => o.userData.editId === "fountain");
+      say("edit_reloaded", { fountain: fo ? fo.position.toArray().map((v) => +v.toFixed(2)) : null });
+      await fetch("/__level", { method: "POST", body: "{}" });
+      say("edit_done", "restored {}");
+    }
+  } catch (e) { say("edit_err", e.message + " " + e.stack); }
+};
+f.src = URL0;
+</script></body>

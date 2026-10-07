@@ -10,6 +10,7 @@
    "booth". BOOTH_POS is where the player stands for round 4. */
 import * as THREE from "three";
 import { createSea } from "./sea.js";
+import { register } from "./editables.js";
 
 export const COVE = { wallZ: 8.6, beachZ0: 9.6, beachZ1: 17, seaZ1: 90, halfWidth: 30 };
 export const DOCK = { z0: 13, z1: 31, width: 2.6, y: 0.55 };
@@ -82,5 +83,10 @@ export function createCove(scene) {
   box("yard", 7, 0.18, 0.18, wood, 0, 11.5, -1, 0, ship);
   box("sail", 6.6, 5.5, 0.06, new THREE.MeshStandardMaterial({ color: 0xd8cbb0, roughness: 1, side: THREE.DoubleSide }), 0, 8.4, -0.8, 0, ship);
   box("gangplank", 0.9, 0.08, 5.5, wood, -3.9, 2.3, 3, Math.PI / 2, ship).rotation.z = 0.5;   // across to the pier
+  // the dev editor may move / size / hide these (pieces whose parts sit at world coords — wharf, dock,
+  // pier, cliffs — turn about the cove's origin, so for those MOVE is the useful tool)
+  for (const [name, label] of [["ship", "ship"], ["booth", "podium"], ["dock", "dock"], ["wharf", "wharf"], ["pier-right", "pier"], ["cliff-left", "cliffs left"], ["cliff-right", "cliffs right"]]) {
+    const o = root.getObjectByName(name); if (o) register(o, `cove-${name}`, label);
+  }
   return root;
 }

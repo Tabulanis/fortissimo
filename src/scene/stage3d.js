@@ -11,6 +11,7 @@ import { createCourtyard, ARCHER_ROOF_Y, ARCHER_ROOF_X, ARCHER_ROOF_Z, FAR_WALL 
 import { createBraziers } from "./braziers.js";
 import { createCove, BOOTH_POS, DOCK } from "./cove.js";
 import { createHydra } from "./hydraBoss.js";
+import { loadEdits } from "./editables.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
@@ -441,6 +442,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // the environment mock-up (owner's reference: sandstone colonnade courtyard)
   bootlog("courtyard: start");
   const courtyard = createCourtyard(scene);
+  loadEdits().then((e) => bootlog("level edits", { n: Object.keys(e).length }));   // the saved layout, applied as each piece registers
   const cove = createCove(scene), sea = cove.userData.sea;   // round 4's cove behind the sea gate (blockout); the sea rolls and ripples (sea.js)
   // THE HYDRA (hydraBoss.js): three necks out of the sea in front of the dock, the rigged heads
   // on top; rises on hydra.rise() — round 4 / the conduct feel-test; ?hydra=1 raises it at load (dev)
@@ -2065,9 +2067,17 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // where the seat's camera is. WASD move, Q/E down/up, Shift fast; drag the mouse (or the
   // arrows / a pad's right stick through the look input) to turn. Nothing else changes.
   const fly = { on: false, pos: new THREE.Vector3(), yaw: 0, pitch: 0, keys: new Set() };
+  // the EDITOR rides along with the fly camera (owner, 2026-10-07: "alter dev mode to be able to move stuff");
+  // loaded on first use, so a normal game never pays for it
+  let editor = null;
   function setFly(on) {
     fly.on = !!on; fly.keys.clear();
     if (fly.on) { fly.pos.copy(camera.position); _eul.setFromQuaternion(camera.quaternion, "YXZ"); fly.yaw = _eul.y; fly.pitch = _eul.x; }
+    if (fly.on && !editor) import("../dev/editor.js").then(({ createEditor }) => {
+      editor = createEditor({ scene, camera, dom: renderer.domElement, log: (step, data) => bootlog("editor " + step, data) });
+      editor.setOn(fly.on);
+    });
+    else if (editor) editor.setOn(fly.on);
   }
   const _fwd = new THREE.Vector3(), _side = new THREE.Vector3();
   function updateFly(dt) {
@@ -2621,7 +2631,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   return { resize, update, hit, press, strike, setDrumVisible, debugDrums,
     setLoop, addVrButton, hydra,
     /** DEV free camera: setFly(on), flyKey(key, down), flyLook(dx, dy) in pixels dragged; `fly` reads the state */
-    setFly, get fly() { return fly.on; },
+    setFly, get fly() { return fly.on; }, get editor() { return editor; },
     flyKey: (key, down) => { const kk = key.toLowerCase(); if (down) fly.keys.add(kk); else fly.keys.delete(kk); },
     flyLook: (dx, dy) => { fly.yaw -= dx * 0.004; fly.pitch = Math.max(-1.5, Math.min(1.5, fly.pitch - dy * 0.004)); },
     flyPose: (x, y, z, yaw, pitch) => { fly.pos.set(x, y, z); fly.yaw = yaw; fly.pitch = pitch; },   // dev: put the free camera somewhere exact (photos)

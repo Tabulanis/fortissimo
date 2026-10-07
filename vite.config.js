@@ -56,8 +56,30 @@ const deviceLog = {
   },
 };
 
+// DEV ONLY: the dev-mode editor saves the level layout here (src/scene/editables.js):
+// POST /__level with the edits JSON -> public/levels/edits.json (in git, applied on every load)
+const levelSave = {
+  name: "level-save",
+  configureServer(server) {
+    server.middlewares.use("/__level", (req, res) => {
+      if (req.method !== "POST") { res.statusCode = 405; return res.end(); }
+      let body = "";
+      req.on("data", (c) => { if (body.length < 2_000_000) body += c; });
+      req.on("end", () => {
+        try {
+          const j = JSON.parse(body);
+          fs.mkdirSync("public/levels", { recursive: true });
+          fs.writeFileSync("public/levels/edits.json", JSON.stringify(j, null, 1) + "\n");
+          fs.appendFileSync("device.log", `${new Date().toISOString()} editor {"step":"level saved","objects":${Object.keys(j).length}}\n`);
+          res.statusCode = 204; res.end();
+        } catch (e) { res.statusCode = 400; res.end(String(e)); }
+      });
+    });
+  },
+};
+
 export default {
-  plugins: [deviceLog, hackbeatRounds],
+  plugins: [deviceLog, hackbeatRounds, levelSave],
   server: { port: 5180, strictPort: true, host: true },
   preview: { port: 5181 },
 };

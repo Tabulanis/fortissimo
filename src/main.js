@@ -766,13 +766,15 @@ const AUTO_BEGIN = new URLSearchParams(location.search).has("autobegin");
 const CONDUCT = new URLSearchParams(location.search).has("conduct");
 function toggleFly() {
   const on = !stage3d.fly; stage3d.setFly(on);
-  hudUI.say(on ? "DEV FLY — W A S D move · Q/E down/up · Shift fast · drag the mouse or arrows to look · tilde (~) back to the seat" : "back to the seat", on ? "good" : "", on ? 6000 : 1500);
+  hudUI.say(on ? "DEV MODE — click a thing to move it · right-drag to look · W A S D fly · Q/E down/up · Shift fast · tilde (~) back to the seat" : "back to the seat", on ? "good" : "", on ? 6000 : 1500);
   bootlog("fly", { on });
 }
 window.addEventListener("keyup", (e) => { if (stage3d && stage3d.fly) stage3d.flyKey(e.key, false); });
 // mouse drag turns the free camera
 { let drag = null;
-  window.addEventListener("mousedown", (e) => { if (stage3d && stage3d.fly && e.button === 0) drag = { x: e.clientX, y: e.clientY }; });
+  // RIGHT-drag turns the free camera (left-click belongs to the editor: select, drag handles)
+  window.addEventListener("mousedown", (e) => { if (stage3d && stage3d.fly && e.button === 2) drag = { x: e.clientX, y: e.clientY }; });
+  window.addEventListener("contextmenu", (e) => { if (stage3d && stage3d.fly) e.preventDefault(); });
   window.addEventListener("mousemove", (e) => { if (drag && stage3d && stage3d.fly) { stage3d.flyLook(e.clientX - drag.x, e.clientY - drag.y); drag = { x: e.clientX, y: e.clientY }; } });
   window.addEventListener("mouseup", () => { drag = null; }); }
 let conductor = null, conductSection = "drums";
@@ -997,7 +999,11 @@ function onKey(e) {
   // DEV FLY: the tilde key toggles a free camera (owner, 2026-10-07: "a dev mode so I can look around");
   // while flying, W A S D Q E Shift move it and the game sees none of those keys
   if ((e.key === "`" || e.key === "~") && !e.repeat && stage3d) { e.preventDefault(); toggleFly(); return; }   // the TILDE key (his name for it), shifted or not
-  if (stage3d && stage3d.fly) { if (["w", "a", "s", "d", "q", "e", "shift"].includes(e.key.toLowerCase())) { e.preventDefault(); stage3d.flyKey(e.key, true); } return; }
+  if (stage3d && stage3d.fly) {
+    if (stage3d.editor && stage3d.editor.key(e)) return;   // the editor's keys: 1 2 3, Delete, Esc, Ctrl+Z, Ctrl+S
+    if (["w", "a", "s", "d", "q", "e", "shift"].includes(e.key.toLowerCase())) { e.preventDefault(); stage3d.flyKey(e.key, true); }
+    return;
+  }
   if (conductor && !e.repeat) {   // conducting: sections and gestures take the keys
     const k = e.key.toLowerCase();
     if (k === "1" || k === "2" || k === "3") { conductSection = ["drums", "bass", "treble"][+k - 1]; hudUI.say(`section: ${conductSection}`, "", 700); return; }

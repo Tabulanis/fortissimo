@@ -14,6 +14,7 @@
 import * as THREE from "three";
 import { bootlog } from "../bootlog.js";
 import { POOL } from "./pool.js";
+import { register } from "./editables.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export const ARCHER_ROOF_Y = 7.6;      // top of the colonnade roofs
@@ -260,26 +261,28 @@ export function createCourtyard(scene) {
     src.updateMatrixWorld(true);
     const bb = new THREE.Box3().setFromObject(src), size = bb.getSize(new THREE.Vector3());
     const k = fit.width ? fit.width / size.x : fit.height / size.y;
-    for (const { parent = root, x, y = 0, z, yaw = 0 } of spots) {
+    const base = url.split("/").pop().replace(".glb", "");
+    spots.forEach(({ parent = root, x, y = 0, z, yaw = 0, id }, i) => {
+      // a PIVOT at the model's base centre (so the dev editor turns and sizes it in place), the model inside it
+      const pivot = new THREE.Group(); pivot.name = base; pivot.position.set(x, y, z); pivot.rotation.y = yaw;
       const m = src.clone(true);
       m.scale.multiplyScalar(k);
-      m.rotation.y = yaw;
-      const cx = (bb.min.x + bb.max.x) / 2 * k, cz = (bb.min.z + bb.max.z) / 2 * k;   // centre offset, turned with the model
-      m.position.set(x - (cx * Math.cos(yaw) + cz * Math.sin(yaw)), y - bb.min.y * k, z - (-cx * Math.sin(yaw) + cz * Math.cos(yaw)));
+      m.position.set(-(bb.min.x + bb.max.x) / 2 * k, -bb.min.y * k, -(bb.min.z + bb.max.z) / 2 * k);
       m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      parent.add(m);
-    }
+      pivot.add(m); parent.add(pivot);
+      register(pivot, id || `${base}#${i}`, id || `${base} ${i + 1}`);
+    });
     bootlog("placed " + url.split("/").pop(), { n: spots.length, scale: +k.toFixed(2) });
   }, undefined, (err) => console.warn(url + " failed to load", err));
   const arms = Object.fromEntries([...root.children].filter((c) => c.name.startsWith("arm-")).map((c) => [c.name.slice(4), c]));
   // GATES at all three courts (owner): the broken portcullis stands in each far archway,
   // its pillars just outside the 4 m opening, its back against the wall face
-  placeGlb("/models/Gate.glb", [...Object.entries(ARMS).map(([name, A]) => ({ parent: arms[name], x: 0, z: -A.length + 2.3 })),
-    { x: 0, z: 8.6 - 2.3, yaw: Math.PI }], { width: 5.2 });   // + the sea gate behind the player, facing the cove
+  placeGlb("/models/Gate.glb", [...Object.entries(ARMS).map(([name, A]) => ({ parent: arms[name], x: 0, z: -A.length + 2.3, id: `gate-${name}` })),
+    { x: 0, z: 8.6 - 2.3, yaw: Math.PI, id: "gate-sea" }], { width: 5.2 });   // + the sea gate behind the player, facing the cove
   // (the T-pose minotaur STATUES that stood at the bass/treble court mouths were removed 2026-10-07,
   //  his call: living axe minotaurs charge the bass court now — troops.js / MinotaurRig.glb)
   // the FOUNTAIN basin stands in the pool (the water, its mirror and the ripples stay around it)
-  placeGlb("/models/Fountain.glb", [{ x: 0, y: 0.02, z: (POOL.z0 + POOL.z1) / 2 }], { width: 4.6 });
+  placeGlb("/models/Fountain.glb", [{ x: 0, y: 0.02, z: (POOL.z0 + POOL.z1) / 2, id: "fountain" }], { width: 4.6 });
 
   return root;
 }

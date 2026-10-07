@@ -11,6 +11,7 @@
 import * as THREE from "three";
 import { ARMS, armToWorld } from "./courtyard.js";
 import { DOCK, SHIP_POS } from "./cove.js";
+import { register } from "./editables.js";
 
 /** every basin's world spot: both colonnades of each court, a pair flanking each gate, the plaza corners */
 export function brazierSpots() {
@@ -38,7 +39,7 @@ export function createBraziers(scene, { fireSim, fireTexture, flameTexture, laye
   const rimGeo = new THREE.TorusGeometry(0.92, 0.07, 8, 24);
   const glowGeo = new THREE.PlaneGeometry(1, 1);
   const group = new THREE.Group(); group.name = "braziers"; scene.add(group);
-  const basins = spots.map((p) => {
+  const basins = spots.map((p, bi) => {
     const g = new THREE.Group(); g.position.copy(p);
     const ped = new THREE.Mesh(pedestalGeo, stone); ped.position.y = 0.5; ped.castShadow = ped.receiveShadow = true;
     const bowl = new THREE.Mesh(bowlGeo, stone); bowl.position.y = 1.25; bowl.material.side = THREE.DoubleSide; bowl.castShadow = true;
@@ -53,7 +54,8 @@ export function createBraziers(scene, { fireSim, fireTexture, flameTexture, laye
     const glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ map: flameTexture, color: 0xff7a2a, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.55, fog: false }));
     glow.rotation.x = -Math.PI / 2; glow.position.y = 0.03; glow.scale.set(6.5, 6.5, 1); glow.layers.set(layer); g.add(glow);
     group.add(g);
-    return { pos: p, fire: new THREE.Vector3(p.x, p.y + 1.42, p.z), flame, glow, seed: Math.random() * 100 };
+    register(g, `brazier#${bi}`, `fire basin ${bi + 1}`);   // the dev editor can move / size / hide it
+    return { g, pos: p, fire: new THREE.Vector3(p.x, p.y + 1.42, p.z), flame, glow, seed: Math.random() * 100 };
   });
   const pool = [];
   for (let i = 0; i < lights; i++) { const l = new THREE.PointLight(0xff9a4a, 0, 13, 2); scene.add(l); pool.push(l); }
@@ -64,6 +66,8 @@ export function createBraziers(scene, { fireSim, fireTexture, flameTexture, laye
       const t = now / 1000;
       // flicker + the fire itself, nearest first so the particle budget goes where it shows
       for (const b of basins) {
+        if (!b.g.visible) { b.dist = Infinity; continue; }        // hidden in the editor: no fire, no light
+        b.g.localToWorld(b.fire.set(0, 1.42, 0));                  // follows the basin if the editor moved it
         const f = 0.82 + 0.18 * Math.sin(t * 9.1 + b.seed) * Math.sin(t * 5.3 + b.seed * 1.7);
         b.flame.material.opacity = 0.75 * f; b.flame.scale.set(1.4 + 0.2 * f, 2.3 + 0.5 * f, 1);
         b.glow.material.opacity = 0.42 + 0.14 * f;

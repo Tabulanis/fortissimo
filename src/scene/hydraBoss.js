@@ -14,6 +14,7 @@
    round 4's logic, elsewhere. */
 import * as THREE from "three";
 import { loadHydraHead, createHydraHead, RIG } from "./hydra.js";
+import { register } from "./editables.js";
 
 export function createHydra(scene, { origin = new THREE.Vector3(0, -1.4, 37), target = new THREE.Vector3(0, 2.2, 29), heads = 3, scale = 2.4, stretch = 1.0, spread = 6.2, sea = null } = {}) {   // the long-necked export needs no stretch; sea: ripples where the necks break it
   const group = new THREE.Group(); group.name = "hydra"; scene.add(group);
@@ -26,13 +27,14 @@ export function createHydra(scene, { origin = new THREE.Vector3(0, -1.4, 37), ta
       const head = createHydraHead(L);
       // a PIVOT at the neck's base (the file's origin is mid-skull): the neck turns about this point under the water
       const pivot = new THREE.Group(); pivot.position.copy(base); group.add(pivot);
+      register(pivot, `hydra-head-${i}`, `hydra head ${i + 1}`);   // the editor MOVES / SIZES it; its turn is animated
       head.group.scale.setScalar(scale); head.group.position.set(0, -L.bounds.min.y * scale, 0); pivot.add(head.group);
       // stretch the neck: every neck bone's y, the skull counter-scaled so the head keeps its shape
       const N = RIG.neckBones;
       for (let b = 1; b < N; b++) head.bones[b].scale.y = stretch;
       head.skull.scale.y = 1 / Math.pow(stretch, N - 1);
       // the outer two lean less: their necks are long and their bases sit nearer the sides
-      H.push({ head, pivot, base, seed: i * 2.1 + 0.7, lean: i === 1 ? 0.62 : 0.4, lunge: 0, lungeAt: -1e9, hold: false, rippleAt: 0, wasUp: false, lastPitch: 0 });
+      H.push({ head, pivot, base: pivot.position, seed: i * 2.1 + 0.7, lean: i === 1 ? 0.62 : 0.4, lunge: 0, lungeAt: -1e9, hold: false, rippleAt: 0, wasUp: false, lastPitch: 0 });
     }
     if (api._hold !== undefined) H[api._hold % H.length].hold = true;
     api.ready = true;
