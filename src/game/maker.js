@@ -71,8 +71,8 @@ export class Draft {
   setHelp(help) { if (HELP[help]) this.help = help; }
 
   /** every note of a part, tidied with the CURRENT help; two hits on the same lane and step merge (the louder wins) */
-  notes(part) {
-    const all = [...this.takes[part].flat(), ...(this.open && this.open.part === part ? this.open.notes : [])];
+  notes(part, { closedOnly = false } = {}) {   // closedOnly: what the loop plays back (the pass being played is heard live)
+    const all = [...this.takes[part].flat(), ...(!closedOnly && this.open && this.open.part === part ? this.open.notes : [])];
     const out = new Map();
     for (const n of all) {
       const beat = tidyBeat(n.played, this.help, this.loopBeats), key = `${n.lane}@${beat.toFixed(3)}`;
@@ -99,15 +99,34 @@ export function starterBeat(bars = 4) {
   return notes;
 }
 
+/** a STARTER for any part (the any-idiot button: "Give me a starter"), as notes to add as one take.
+ *  drums: starterBeat · bass: one note a beat walking 1-1-5-5-6-6-4-4 · treble: a 1-3-5-8 arpeggio on the eighths (bars 1-8 only) */
+export function starterPart(part, bars = 4) {
+  if (part === "drums") return starterBeat(bars);
+  const notes = [];
+  if (part === "bass") {
+    const walk = [1, 1, 5, 5, 6, 6, 4, 4];
+    for (let b = 0; b < bars * 4; b++) notes.push({ lane: `bass ${walk[Math.floor(b / 2) % 8]}`, played: b, vel: 0.85 });
+  } else {
+    const arp = [1, 3, 5, 8];
+    for (let e = 0; e < bars * 8; e++) notes.push({ lane: `treble ${arp[e % 4]}`, played: e / 2, vel: e % 2 ? 0.55 : 0.75 });
+  }
+  return notes;
+}
+/** the lanes the RECORD screen offers: treble's top row (bars 9-16) is the boss's crystals in play, so a made song writes bars 1-8 */
+export const recordLanes = (part) => (part === "treble" ? lanesOf("treble").slice(0, 8) : lanesOf(part));
+
 /** the finished draft as a Fortissimo song file (the same shape the game loads: roundfiles.js) */
 export function draftToSong(draft, { name, title, banks }) {
   const kit = banks.drums.find((k) => k.id === draft.kit) || banks.drums[0];
   const setOf = (part) => banks[part].find((b) => b.id === draft[part]) || banks[part][0];
   const sounds = {};
-  for (const d of DRUMS) sounds[d] = { path: kit.sounds[d], note: 60 };
+  // every lane its OWN track: the game plays samples mono per track, so a shared one would cut each note off with the next
+  let track = 0;
+  for (const d of DRUMS) sounds[d] = { path: kit.sounds[d], note: 60, track: track++ };
   for (const part of ["bass", "treble"]) {
     const set = setOf(part), base = part === "bass" ? draft.rootMidi : draft.rootMidi + 24;
-    for (let bar = 1; bar <= 16; bar++) sounds[`${part} ${bar}`] = { path: set.sample, note: 60 + barMidi(bar, draft.mood, base) - set.root };
+    for (let bar = 1; bar <= 16; bar++) sounds[`${part} ${bar}`] = { path: set.sample, note: 60 + barMidi(bar, draft.mood, base) - set.root, track: track++ };
   }
   const notes = PARTS.flatMap((p) => draft.notes(p).map((n) => ({ lane: n.lane, beat: n.beat, vel: +n.vel.toFixed(3), midi: sounds[n.lane].note })));
   return {
@@ -117,3 +136,17 @@ export function draftToSong(draft, { name, title, banks }) {
     made: { kit: kit.id, bass: setOf("bass").id, treble: setOf("treble").id, mood: draft.mood, tempo: draft.tempo, help: draft.help },
   };
 }
+
+/** A LEVEL (owner, 2026-10-07): rounds 1-3 (each drums -> guns -> boss), then round 4, the HYDRA, conducted
+ *  over all the music of rounds 1-3. The level file names its three round songs; round 4 is derived from them
+ *  (each section of the hydra round = that part of every round, in order).
+ *  -> { format: "fortissimo-level", version: 1, name, title, world, rounds: [file, file, file], hydra: { from: [1, 2, 3] } } */
+export function makeLevel(songs, { name, title, files }) {
+  if (songs.length !== 3 || files.length !== 3) throw new Error("a level is three rounds, then the hydra");
+  return { format: "fortissimo-level", version: 1, name, title, world: songs[0].world, rounds: files,
+    hydra: { from: [1, 2, 3], bpm: songs[0].bpm, bars: songs[0].bars } };
+}
+/** what's still missing before a round can be saved (empty = ready): every part needs at least one note */
+export function missingParts(draft) { return PARTS.filter((p) => draft.notes(p).length === 0); }
+/** a file-safe name from the title the player typed */
+export const slugOf = (t) => (String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "my-level").slice(0, 40);

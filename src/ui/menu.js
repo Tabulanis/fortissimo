@@ -4,7 +4,8 @@
  * modifiers — hitbox, tempo, patterns, groups, keep, damage — and the score
  * multiplier they're worth, live. The last run is remembered.
  *
- * createMenu({ levels: [{name, title, bpm}], unlocked, level, run, startAt, onStart(level, run) })
+ * createMenu({ levels: [{name, title, bpm}], unlocked, level, run, startAt, onStart(level, run), onCreate(card, back) })
+ * CREATE (2026-10-07): the song-maker — maker-ui.js pickSounds() draws its screen in the menu's card.
  * onStart is called inside the Start click (a user gesture: the audio may start there). */
 import { LEVELS, LEVEL_NAMES, LIMITS, levelOf, normalize, scoreMultiplier } from "../game/run.js";
 
@@ -33,13 +34,21 @@ const CSS = `
 #gr-menu .mult { text-align:center; margin:16px 0 4px; font-size:30px; font-weight:700; color:#ffd27a; }
 #gr-menu .multparts { text-align:center; font-size:12px; opacity:0.6; min-height:16px; }
 #gr-menu .back { background:none; border:none; opacity:0.6; font-size:14px; padding:6px; margin-top:10px; }
+#gr-menu .mk-row { display:grid; grid-template-columns:70px 1fr auto; align-items:center; gap:10px; margin:9px 0; }
+#gr-menu .mk-row .t { opacity:0.5; font-size:12px; }
+#gr-menu .mk-row input { font:inherit; padding:7px; border-radius:8px; background:#2a1c24; color:#fff; border:1px solid rgba(255,190,120,0.4); }
+#gr-menu .chips { display:flex; flex-wrap:wrap; gap:6px; }
+#gr-menu .chip { padding:6px 11px; font-size:14px; }
+#gr-menu .chip.on { background:rgba(255,160,80,0.45); border-color:#ffd27a; }
+#gr-menu .play { padding:6px 12px; }
+#gr-menu .lucky { font-size:17px; padding:12px; background:rgba(120,160,255,0.16); }
 #gr-menu .custom { text-align:center; font-size:13px; opacity:0.7; margin:-8px 0 8px; min-height:16px; }
 `;
 
 const ms = (s) => `±${Math.round(s * 1000)} ms`;
 const hitboxWord = (s) => (s <= 0.05 ? "tight" : s <= 0.09 ? "fair" : s <= 0.15 ? "generous" : "huge");
 
-export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "title", onStart }) {
+export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "title", onStart, onCreate }) {
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -54,14 +63,16 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
 
   function title() {
     card.innerHTML = `<h1>Fortissimo</h1><div class="sub">play the song, one piece at a time</div>
-      <button class="big" data-a="play">Play</button>`;
+      <button class="big" data-a="play">Play</button>
+      ${onCreate ? `<button class="big" data-a="create">Create ✎</button>` : ""}`;
     card.querySelector("[data-a=play]").onclick = levelsScreen;
+    if (onCreate) card.querySelector("[data-a=create]").onclick = () => onCreate(card, title);   // the song-maker (maker-ui.js) draws in this card
   }
 
   function levelsScreen() {
     card.innerHTML = `<h2>Choose a level</h2>` + levels.map((l, i) => `
-      <button class="level" data-i="${i}" ${i > unlocked ? "disabled" : ""}>
-        <span>${i > unlocked ? "🔒 " : ""}${l.name}</span><span class="t">${l.title || ""}</span></button>`).join("") +
+      <button class="level" data-i="${i}" ${i > unlocked && !l.made ? "disabled" : ""}>
+        <span>${i > unlocked && !l.made ? "🔒 " : l.made ? "✎ " : ""}${l.name}</span><span class="t">${l.title || ""}</span></button>`).join("") +
       `<button class="back" data-a="back">◀ Back</button>`;
     card.querySelectorAll(".level").forEach((b) => (b.onclick = () => { lvl = +b.dataset.i; setup(); }));
     card.querySelector("[data-a=back]").onclick = title;

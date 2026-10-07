@@ -1,0 +1,89 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" style="width:1100px;height:760px;border:0"></iframe>
+<script type="module">
+// THE SONG-MAKER, through its real screens (2026-10-07): menu -> Create -> pick sounds -> the arena ->
+// Record + play keys a little loose (round 1: all three parts by hand), round 2 + 3 from the starters
+// (one Undo checked on the way), Save -> the level list. Then "Play it" and see the round come up.
+// Reports to the sink (127.0.0.1:8899): create-step / create-result / create-fail.
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body: typeof body === "string" ? body : JSON.stringify(body) });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const SLOP = 0.12;   // beats a played note may be off (Tidy pulls it in)
+const f = document.getElementById("f");
+let stage = 0;
+localStorage.removeItem("gr.level"); sessionStorage.clear();
+const btn = (d, text) => [...d.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith(text));
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  if (w.location.href === "about:blank") return;
+  stage++;
+  try {
+    if (stage === 1) {   // the menu
+      await wait(3000);
+      btn(d, "Create").click(); await wait(800);
+      const name = d.querySelector("#gr-menu input[data-k=title]"); name.value = "Robot level"; name.dispatchEvent(new w.Event("input"));
+      d.querySelector("#gr-menu [data-chip=mood][data-v=heroic]").click(); await wait(200);
+      say("create-step", { menu: "picked", screen: d.querySelector("#gr-menu h2").textContent });
+      btn(d, "Start writing").click();
+      return;
+    }
+    if (stage === 2) {   // the arena
+      await wait(3500);
+      const R = w.__gr.recorder;
+      if (!R) throw new Error("no recorder in the arena");
+      say("create-step", { arena: true, kit: w.__gr.stage3d.kit, panel: !!d.getElementById("mk-panel") });
+      btn(d, "Start").click();
+      let G; for (let i = 0; i < 40 && !((G = w.__gr.game) && G.clock); i++) await wait(250);
+      if (!G.clock) throw new Error("the loop never started");
+      const P = d.getElementById("mk-panel"), pb = (sel) => P.querySelector(sel);
+      const press = (k) => { w.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true })); w.dispatchEvent(new w.KeyboardEvent("keyup", { key: k, bubbles: true })); };
+      const L = 16, bd = G.clock.beatDur;
+      // one pass of the loop, played: [[beat, key]] — recording starts a beat before the pass, stops just after it
+      async function playPass(hits) {
+        const nowB = (G.ctx.currentTime - G.clock.first) / bd, start = Math.ceil(nowB / L + 0.15) * L;
+        await wait(((start - 1 - nowB) * bd) * 1000);
+        pb("[data-a=rec]").click();
+        for (const [b, k] of hits) {
+          const T = G.clock.first + (start + b + (Math.random() * 2 - 1) * SLOP) * bd, o = G.ctx.getOutputTimestamp();
+          setTimeout(() => press(k), Math.max(0, o.performanceTime + (T + G.calibration - o.contextTime) * 1000 - w.performance.now()));
+        }
+        await wait((L + 0.6) * bd * 1000);
+        pb("[data-a=rec]").click();
+      }
+      const drums = [], bass = [], treble = [];
+      for (let b = 0; b < 16; b++) { drums.push([b, b % 2 ? "w" : "a"], [b + 0.5, "q"]); }
+      [[0, "a"], [2, "a"], [4, "g"], [6, "g"], [8, "h"], [10, "h"], [12, "f"], [14, "f"]].forEach(([b, k]) => bass.push([b, k]));
+      [[0, "a"], [1, "d"], [2, "g"], [3, "k"], [8, "s"], [9, "f"], [10, "h"], [11, "k"]].forEach(([b, k]) => treble.push([b, k]));
+      await playPass(drums);
+      pb("[data-part=bass]").click(); await wait(300);
+      await playPass(bass);
+      pb("[data-part=treble]").click(); await wait(300);
+      await playPass(treble);
+      const r1 = { drums: R.rounds[0].notes("drums").length, bass: R.rounds[0].notes("bass").length, treble: R.rounds[0].notes("treble").length };
+      say("create-step", { round1: r1, wantAtLeast: { drums: 32, bass: 8, treble: 8 }, offGrid: R.rounds[0].notes("drums").filter((n) => Math.abs(n.beat * 4 - Math.round(n.beat * 4)) > 1e-6).length });
+      // rounds 2 and 3: the starters; on round 3 a double starter then Undo
+      for (const ri of [1, 2]) {
+        btn(P, `Round ${ri + 1}`).click(); await wait(200);
+        for (const part of ["drums", "bass", "treble"]) { pb(`[data-part=${part}]`).click(); await wait(100); pb("[data-a=starter]").click(); await wait(100); }
+      }
+      pb("[data-part=bass]").click(); pb("[data-a=starter]").click(); const twice = R.rounds[2].takes.bass.length;
+      pb("[data-a=undo]").click(); const afterUndo = R.rounds[2].takes.bass.length;
+      say("create-step", { undo: { twice, afterUndo }, rounds: R.rounds.map((x) => x.noteCount()) });
+      btn(P, "💾 Save level").click();
+      for (let i = 0; i < 20 && !/Saved/.test(P.querySelector(".say").textContent); i++) await wait(250);
+      const list = await (await fetch("/songs/songs.json", { cache: "no-store" })).json();
+      const lvl = await fetch("/levels/robot-level.json", { cache: "no-store" }).then((r) => r.json()).catch(() => null);
+      say("create-result", { saidOnPanel: P.querySelector(".say").textContent.slice(0, 120), list: list.map((m) => m.file), level: lvl });
+      await wait(500);
+      P.querySelector("[data-a=play]").click();
+      return;
+    }
+    if (stage === 3) {   // "Play it": the page comes back straight into round 1 of the new level
+      await wait(4000);
+      const G = w.__gr.game;
+      say("create-step", { playIt: { roundIdx: G.roundIdx, song: w.__gr.game.song().name, notes: w.__gr.game.song().notes.length, menuShown: getComputedStyle(d.getElementById("gr-menu") || d.body).display } });
+      say("create-done", "ok");
+    }
+  } catch (e) { say("create-fail", String(e && e.stack || e)); }
+};
+f.src = "/";
+</script>

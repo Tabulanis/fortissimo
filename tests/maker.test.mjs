@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { HELP, tidyBeat, Draft, barMidi, starterBeat, draftToSong, MOODS } from "../src/game/maker.js";
+import { HELP, tidyBeat, Draft, barMidi, starterBeat, draftToSong, MOODS, PARTS, starterPart, recordLanes, missingParts, makeLevel, slugOf } from "../src/game/maker.js";
 
 test("timing help: off keeps the feel, little pulls halfway to the eighth, tidy snaps to sixteenths, robot to eighths", () => {
   assert.equal(tidyBeat(1.07, "off"), 1.07);
@@ -59,4 +59,28 @@ test("the draft becomes a Fortissimo song with the chosen kit and sets, pitched 
   assert.equal(s.sounds["bass 3"].note, 60 + (48 + 3) - cello.root);   // dark: bar 3 = a minor third up
   assert.equal(s.notes.filter((n) => n.lane.startsWith("bass")).length, 2);
   for (const n of s.notes) assert.ok(s.sounds[n.lane], `sound for ${n.lane}`);
+});
+test("starters exist for every part; treble's stays on bars 1-8 (the top row is the crystals)", () => {
+  for (const p of PARTS) assert.ok(starterPart(p).length > 0, p);
+  assert.ok(starterPart("treble").every((n) => +n.lane.split(" ")[1] <= 8));
+  assert.ok(starterPart("bass").every((n) => recordLanes("bass").includes(n.lane)));
+});
+test("every lane has its own track, so no note cuts another off", () => {
+  const banks = JSON.parse(fs.readFileSync("public/banks/rome.json", "utf8"));
+  const s = draftToSong(new Draft(), { name: "x", title: "x", banks });
+  const tracks = Object.values(s.sounds).map((x) => x.track);
+  assert.equal(new Set(tracks).size, tracks.length);
+});
+test("playback leaves out the pass being played; a round needs all three parts; a level is 3 rounds", () => {
+  const d = new Draft();
+  d.beginTake("drums"); d.play("kick", 0);
+  assert.equal(d.notes("drums", { closedOnly: true }).length, 0);
+  assert.equal(d.notes("drums").length, 1);
+  d.closeTake();
+  assert.deepEqual(missingParts(d), ["bass", "treble"]);
+  const songs = [1, 2, 3].map(() => ({ world: "rome", bpm: 92, bars: 4 }));
+  const L = makeLevel(songs, { name: "Mine", title: "Mine", files: ["a", "b", "c"] });
+  assert.equal(L.format, "fortissimo-level"); assert.deepEqual(L.hydra.from, [1, 2, 3]);
+  assert.throws(() => makeLevel(songs.slice(0, 2), { name: "x", title: "x", files: ["a", "b"] }));
+  assert.equal(slugOf("My Big Song!"), "my-big-song");
 });

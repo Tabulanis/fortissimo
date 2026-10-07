@@ -27,6 +27,8 @@ import { normalize, judgeFor, simplifyNotes, scoreMultiplier, levelOf } from "./
 import { fillKit, kitPlan } from "./game/kit.js";
 const runName = (r) => { const lv = levelOf(r); return lv ? `Level ${lv}` : "Custom"; };
 import { createMenu } from "./ui/menu.js";
+import { pickSounds, createRecorder } from "./ui/maker-ui.js";
+import { Draft, draftToSong } from "./game/maker.js";
 import { Defend, LIFE } from "./game/defend.js";
 import { Siege, ARMY } from "./game/siege.js";
 import { gradeRound } from "./game/grade.js";
@@ -121,6 +123,12 @@ let roundIdx = 0;
 // developing); the built-in ROUNDS only if those can't be read. The run's
 // pattern difficulty picks the notes you play; the rest goes to the backing (it still sounds)
 let SONGS = ROUNDS.map(songOf), songsFromFiles = false;
+// CREATE (the song-maker, owner 2026-10-07): the menu's Create screen picks the sounds and reloads into
+// the arena with those picks (sessionStorage gr.create); ?create=1 = the default picks (harnesses).
+// The arena then plays ONE blank song carrying every lane's sound, all guns built, no army, no chart.
+let CREATE = (() => { try { const c = JSON.parse(sessionStorage.getItem("gr.create") || "null"); sessionStorage.removeItem("gr.create"); return c; } catch { return null; } })()
+  || (new URLSearchParams(location.search).has("create") ? { world: "rome", title: "My level" } : null);
+let BANKS = null, recorder = null;
 let LESSONS = null;
 const judgeDiff = () => judgeFor(RUN);   // what a hit is judged by
 const song = () => LESSONS[roundIdx];
@@ -146,13 +154,19 @@ function buildLessons() {
   });
 }
 buildLessons();
-const roundsReady = loadRoundFiles().then((songs) => {
+const roundsReady = (CREATE ? fetch(`/banks/${CREATE.world || "rome"}.json`).then((r) => r.json()).then((banks) => {
+  BANKS = banks;
+  for (const k of ["kit", "bass", "treble"]) CREATE[k] ||= (k === "kit" ? banks.drums : banks[k])[0].id;
+  SONGS = [{ ...draftToSong(new Draft(CREATE), { name: "Create", title: CREATE.title || "My level", banks }), warnings: [] }];
+  roundIdx = 0; buildLessons(); songsFromFiles = true;
+  bootlog("create", { kit: CREATE.kit, bass: CREATE.bass, treble: CREATE.treble, mood: CREATE.mood, tempo: CREATE.tempo });
+}) : loadRoundFiles().then((songs) => {
   if (!songs.length) return;
   SONGS = songs; songsFromFiles = true;
   buildLessons();
   if (typeof applyStage === "function") applyStage();
   bootlog("rounds from files", { n: songs.length, warnings: songs.flatMap((r) => r.warnings) });
-}).catch((e) => { console.warn("round files unavailable — playing the built-in songs", e); bootlog("rounds: built-in", { why: String(e) }); });
+})).catch((e) => { console.warn("round files unavailable — playing the built-in songs", e); bootlog("rounds: built-in", { why: String(e) }); });
 // THE CORE LOOP (defend.js, owner 2026-10-04): the song's notes STREAM at you in song
 // order, a few always in flight; a correct hit locks (by the run's keep rule). Before Start: nothing.
 let defend = null;
@@ -163,7 +177,7 @@ const songDone = () => !!defend && defend.done;
 const currentPart = () => (defend ? defend.offered() : []);
 const partObj = () => (defend && !defend.done ? { mode: defend.section, bars: song().bars, part: defend.offered() } : null);
 const partBars = () => song().bars;   // the whole song is the loop
-const partMode = () => (partObj() && partObj().mode) || "drums";       // "drums" | "bass" | "treble"
+const partMode = () => (recorder ? recorder.part : (partObj() && partObj().mode) || "drums");       // "drums" | "bass" | "treble"
 const isMelody = () => partMode() !== "drums";
 let padConnected = false;   // a game controller is plugged in (the bars then show its buttons)
 // the notes this run's pattern difficulty leaves out. NOTHING plays that you
@@ -240,7 +254,7 @@ hudUI.setShield(0);
 function applyStage() {
   if (!stage3d) return;
   const used = new Set(song().notes.map((n) => LANE_INDEX[n.lane]));   // every drum stands (owner); the guns the song never plays are dimmed
-  for (let i = 0; i < 6 + 2 * BARS; i++) stage3d.setDrumVisible(i, i < 6 || used.has(i));
+  for (let i = 0; i < 6 + 2 * BARS; i++) stage3d.setDrumVisible(i, i < 6 || used.has(i) || (CREATE && i < 6 + BARS + 8));   // creating: every gun you can write for
   stage3d.setStation(CONDUCT ? "sea" : isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left; conducting: the podium
   if (audioStarted) updateBackLevels();                      // the sections' background music follows progress
   stageMessage();
@@ -862,15 +876,16 @@ function makeStartButton() {
     loops = new Loops(4 * clock.beatDur);
     ghosts = loops;   // the scheduler below replays loop layers
     addBacking();
-    defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, keep: RUN.keep, beatDur: clock.beatDur });
-    { const sec = new URLSearchParams(location.search).get("section");   // dev: ?section=bass|treble starts the round there (photos of the armies)
+    if (CREATE) startCreating();
+    else defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, keep: RUN.keep, beatDur: clock.beatDur });
+    if (defend) { const sec = new URLSearchParams(location.search).get("section");   // dev: ?section=bass|treble starts the round there (photos of the armies)
       const k = ["drums", "bass", "treble"].indexOf(sec); if (k > 0) defend.sectionIdx = k; }
     stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat
     if (CONDUCT) { conductor = new Conductor({ beatsPerBar: 4 }); hudUI.say("CONDUCT — 1/2/3 pick a section · U cue · I cut · O accent · hold P to swell", "good", 7000); if (stage3d.hydra) stage3d.hydra.rise(); }
     if (AUTO_GFX) measureFps(8000, (fps) => judgeGraphics(fps, "in play"));   // the real test: with the battle on
-    siege = new Siege({ miss: (LIFE[RUN.damage] || LIFE.normal).miss, beatDur: clock.beatDur });
+    if (!CREATE) siege = new Siege({ miss: (LIFE[RUN.damage] || LIFE.normal).miss, beatDur: clock.beatDur });
     defendFrom = clock.first + Math.ceil((ctx.currentTime + 1.5 - clock.first) / (4 * clock.beatDur)) * 4 * clock.beatDur;   // misses count from the next bar after a breath
-    defend.drain();
+    if (defend) defend.drain();
     session = new SessionLog({
       bpm: BPM,
       loopBeats: CHART.loopBeats,
@@ -886,7 +901,7 @@ function makeStartButton() {
     };
     armed = true;
     if (AUTO_BEGIN) beginSong();
-    else if (autoFromMenu) beginCount();
+    else if (autoFromMenu || CREATE) beginCount();
     else hudUI.say(IS_TOUCH ? "Tap to begin" : padConnected ? "Press a button to begin" : "Press any key to begin", "good");
   });
   document.body.appendChild(btn);
@@ -1019,6 +1034,7 @@ function onKey(e) {
     if (["w", "a", "s", "d", "q", "e", "shift"].includes(e.key.toLowerCase())) { e.preventDefault(); stage3d.flyKey(e.key, true); }
     return;
   }
+  if (recorder && recorder.key(e)) return;   // creating: Enter = record on / off
   if (conductor && !e.repeat) {   // conducting: sections and gestures take the keys
     const k = e.key.toLowerCase();
     if (k === "1" || k === "2" || k === "3") { conductSection = ["drums", "bass", "treble"][+k - 1]; hudUI.say(`section: ${conductSection}`, "", 700); return; }
@@ -1042,7 +1058,7 @@ function onKey(e) {
     let slot = MELODY_KEYS[e.key.toLowerCase()];
     if (slot != null) {
       e.preventDefault();
-      if (partMode() === "treble" && slot >= 8) { hitCrystal(slot < 12 ? 0 : 1, press); return; }   // the boss's two crystals: Q W E R left, T Y U I right
+      if (partMode() === "treble" && slot >= 8) { if (recorder) return; hitCrystal(slot < 12 ? 0 : 1, press); return; }   // the boss's two crystals: Q W E R left, T Y U I right
       slot = slotForKey(partMode(), slot);   // the k-th letter of a row is the k-th gun this round built
       if (slot == null) return;
       const entry = MELODY_ENTRY[partMode()][slot];
@@ -1249,6 +1265,50 @@ function hitLane(idx, lane, press, padVel = 1) {
   }
 
   recordPress(idx, free ? null : (off ? null : j.offset), vel, lane.name, lab);
+  if (recorder) recorder.hit(lane.name, (((press - clock.first) / clock.beatDur) % (4 * song().bars) + 4 * song().bars) % (4 * song().bars));
+}
+
+// --- CREATE: the song-maker's arena (maker-ui.js draws the panel) -------------------------------
+// The loop runs; what you've recorded plays back each pass (the pass you're playing is heard live);
+// each pass while recording is a take. No army, no chart: mode "free".
+function makeRecorder() {
+  recorder = createRecorder({ picks: CREATE, banks: BANKS, hooks: {
+    setPart: () => { applyStage(); relabel(); },
+    leave: () => { location.href = location.pathname; },
+    save: async (slug, level, songs) => {
+      try { localStorage.setItem(`gr.made.${slug}`, JSON.stringify({ level, songs })); } catch { /* the server copy is the real one */ }
+      const r = await fetch("/__song", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug, level, songs }) }).catch(() => null);
+      bootlog("create saved", { slug, server: !!(r && r.ok), notes: songs.map((x) => x.notes.length) });
+      return r && r.ok ? "server" : "device";
+    },
+    play: async (slug) => {   // straight into round 1 of the new level
+      const list = await (await fetch("/songs/songs.json", { cache: "no-store" })).json();
+      const i = list.findIndex((m) => m.file === `${slug}-1.json`);
+      try { localStorage.setItem("gr.level", Math.max(0, i)); sessionStorage.setItem("gr.autostart", JSON.stringify({ ...RUN, lock: RUN.lock === Infinity ? "all" : RUN.lock })); } catch { /* the menu, then */ }
+      location.href = location.pathname;
+    },
+  } });
+  if (window.__gr) window.__gr.recorder = recorder;   // harness handle
+}
+function startCreating() {
+  mode = "free";
+  const L = 4 * song().bars;
+  let until = ctx.currentTime;
+  setInterval(() => {
+    if (!clock) return;
+    const to = ctx.currentTime + 0.12, beatAt = (t) => (t - clock.first) / clock.beatDur, now = beatAt(ctx.currentTime);
+    recorder.lapTo(Math.floor(now / L), ((now % L) + L) % L);
+    const notes = recorder.playback(), b0 = beatAt(until), b1 = beatAt(to);
+    for (let lap = Math.floor(b0 / L); lap <= Math.floor(b1 / L); lap++) for (const n of notes) {
+      const b = lap * L + n.beat, entry = KEYMAP_BY_LANE[n.lane];
+      if (b < b0 || b >= b1 || b < 0 || !entry) continue;
+      const when = clock.first + b * clock.beatDur;
+      pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...laneSound(entry.ln), velocity: n.vel * 0.85, when });
+      setTimeout(() => stage3d.press(entry.idx, "FREE"), Math.max(0, (when - ctx.currentTime) * 1000));   // the drum / gun it's on lights up
+    }
+    until = to;
+  }, 25);
+  hudUI.say("The loop is running — press Record (or Enter) and play", "good", 4000);
 }
 
 // --- freestyle + save -------------------------------------------------------
@@ -1503,7 +1563,7 @@ const startBtn = makeStartButton();
 // THE START MENU: level (unlocked ones) -> the run's settings -> Start
 function buildStage() {
   const s = SONGS[roundIdx] || SONGS[0];
-  const plan = kitPlan(kitFor(s).present);
+  const plan = CREATE ? kitPlan(KIT_GROUPS) : kitPlan(kitFor(s).present);   // creating: every slot built (the song is empty)
   stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR, { tier: TIER, kit: plan, touch: IS_TOUCH });
   bootlog("stage3d built", { round: roundIdx + 1, kit: plan });
   if (new URLSearchParams(location.search).has("fly")) setTimeout(() => {   // dev: start in the free camera; &cam=x,y,z,yaw,pitch puts it somewhere exact
@@ -1517,6 +1577,7 @@ let autoFromMenu = false;   // the menu picked another round: the page reloaded 
 roundsReady.then(() => {
   try { roundIdx = Math.max(0, Math.min(SONGS.length - 1, +(localStorage.getItem("gr.level") || 0))); } catch { roundIdx = 0; }
   buildStage();
+  if (CREATE) { makeRecorder(); applyStage(); relabel(); return; }   // the song-maker: its panel, then Start
   let auto = null;
   try { auto = JSON.parse(sessionStorage.getItem("gr.autostart") || "null"); sessionStorage.removeItem("gr.autostart"); } catch { auto = null; }
   if (auto) {   // straight into the round the menu picked: no menu, "press any key" (the key is the audio's gesture)
@@ -1529,7 +1590,14 @@ roundsReady.then(() => {
   let at = "title";
   try { at = sessionStorage.getItem("gr.menuAt") || "title"; sessionStorage.removeItem("gr.menuAt"); } catch { /* storage blocked: title */ }
   createMenu({
-    levels: list.map((r) => ({ name: r.name, title: r.title, bpm: r.bpm })),
+    levels: list.map((r) => ({ name: r.name, title: r.title, bpm: r.bpm, made: !!r.made })),
+    onCreate: async (card, back) => {   // the song-maker's first screen draws in the menu card; Start writing reloads into the arena
+      const worlds = await (await fetch("/banks/worlds.json")).json(), banks = await (await fetch(`/banks/${worlds[0].id}.json`)).json();
+      pickSounds(card, { worlds, banks, onBack: back, onDone: (picks) => {
+        try { sessionStorage.setItem("gr.create", JSON.stringify(picks)); } catch { /* storage blocked: the defaults */ }
+        location.href = location.pathname + (sessionStorage.getItem("gr.create") ? "" : "?create=1");
+      } });
+    },
     unlocked: Math.min(unlockedLevel(), list.length - 1),
     level: +(localStorage.getItem("gr.level") || 0),
     run: RUN, startAt: at,
