@@ -834,7 +834,7 @@ function makeStartButton() {
     addBacking();
     defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, keep: RUN.keep, beatDur: clock.beatDur });
     stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat
-    if (CONDUCT) { conductor = new Conductor({ beatsPerBar: 4 }); hudUI.say("CONDUCT — 1/2/3 pick a section · U cue · I cut · O accent · hold P to swell", "good", 7000); }
+    if (CONDUCT) { conductor = new Conductor({ beatsPerBar: 4 }); hudUI.say("CONDUCT — 1/2/3 pick a section · U cue · I cut · O accent · hold P to swell", "good", 7000); if (stage3d.hydra) stage3d.hydra.rise(); }
     if (AUTO_GFX) measureFps(8000, (fps) => judgeGraphics(fps, "in play"));   // the real test: with the battle on
     siege = new Siege({ miss: (LIFE[RUN.damage] || LIFE.normal).miss, beatDur: clock.beatDur });
     defendFrom = clock.first + Math.ceil((ctx.currentTime + 1.5 - clock.first) / (4 * clock.beatDur)) * 4 * clock.beatDur;   // misses count from the next bar after a breath

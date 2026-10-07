@@ -9,7 +9,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { createCourtyard, ARCHER_ROOF_Y, ARCHER_ROOF_X, ARCHER_ROOF_Z, FAR_WALL } from "./courtyard.js";
 import { createBraziers } from "./braziers.js";
-import { createCove, BOOTH_POS } from "./cove.js";
+import { createCove, BOOTH_POS, DOCK } from "./cove.js";
+import { createHydra } from "./hydraBoss.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
@@ -320,7 +321,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     drums:  { yaw: 0,            pos: new THREE.Vector3(0, 2.1, TOUCH ? 1.05 : 0.75) },
     bass:   { yaw: -Math.PI / 2, pos: new THREE.Vector3(TOUCH ? -0.05 : -0.35, TOUCH ? 1.8 : 2.1, 0.6) },   // phones: right up at the rack, a little lower — the guns fill the screen
     treble: { yaw: Math.PI / 2,  pos: new THREE.Vector3(TOUCH ? 0.05 : 0.35, TOUCH ? 1.8 : 2.1, 0.6) },
-    sea:    { yaw: Math.PI,      pos: new THREE.Vector3(0, 2.1, BOOTH_POS.z - 0.75) },   // round 4: at the booth on the dock, facing the sea (cove.js)
+    sea:    { yaw: Math.PI,      pos: new THREE.Vector3(0, 2.1, BOOTH_POS.z - 0.75), pitch: -0.06 },   // round 4: at the podium on the dock, facing the sea, gaze level (the hydra is tall)
   };
   let station = "drums";
   const st = { yaw: 0, pos: STATIONS.drums.pos.clone() };
@@ -436,6 +437,11 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   bootlog("courtyard: start");
   const courtyard = createCourtyard(scene);
   createCove(scene);   // round 4's cove behind the sea gate (blockout)
+  // THE HYDRA (hydraBoss.js): three necks out of the sea in front of the dock, the rigged heads
+  // on top; rises on hydra.rise() — round 4 / the conduct feel-test; ?hydra=1 raises it at load (dev)
+  const hydra = createHydra(scene, { origin: new THREE.Vector3(0, -0.15, DOCK.z1 + 16), target: BOOTH_POS.clone().setY(2.2), height: 8 });
+  if (new URLSearchParams(location.search).has("hydra")) hydra.rise();
+  if (new URLSearchParams(location.search).has("bite")) { let k = 0; setInterval(() => hydra.bite(k++ % 3, performance.now() / 1000), 3000); }   // dev: a bite every 3 s, heads in turn
   const melodyStations = { bass: createStation(scene, "bass", { lamp: !MOBILE, slots: KIT.bass }), treble: createStation(scene, "treble", { lamp: !MOBILE, slots: KIT.treble }) };
   bootlog("courtyard: done");
   // the reflecting pool (drawn with the fx layer: after the scene, so the
@@ -2069,9 +2075,10 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       // swing toward the current station (~0.7 s), then look-around on top
       const S = STATIONS[station], ks = 1 - Math.exp(-fireDt * 4.5);
       st.yaw += (S.yaw - st.yaw) * ks;
+      { const pitchTo = S.pitch ?? PITCH0; st.pitch = st.pitch === undefined ? pitchTo : st.pitch + (pitchTo - st.pitch) * ks; }   // a station may set its own gaze
       st.pos.lerp(S.pos, ks);
       camera.position.copy(st.pos);
-      camera.quaternion.setFromEuler(_eul.set(PITCH0 + look.y * LOOK_PITCH, st.yaw - look.x * LOOK_YAW, 0, "YXZ"));
+      camera.quaternion.setFromEuler(_eul.set((st.pitch ?? PITCH0) + look.y * LOOK_PITCH, st.yaw - look.x * LOOK_YAW, 0, "YXZ"));
     }
     updateGhostHands(heardNow, ghosts);
     if (!POTATO) updateDecoys(heardNow);   // potato: no decoy volleys
@@ -2446,6 +2453,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     }
 
     braziers.update(fireDt, camera, performance.now());
+    hydra.update(fireDt, performance.now() / 1000, beatDur > 0 ? (heardNow - beatFirst) / beatDur : performance.now() / 1000);
     fireSim.update(fireDt);
     waterPool.update(performance.now() / 1000);
     fxCamera.position.copy(camera.position);
@@ -2580,7 +2588,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
 
   bootlog("stage3d: end of build");
   return { resize, update, hit, press, strike, setDrumVisible, debugDrums,
-    setLoop, addVrButton,
+    setLoop, addVrButton, hydra,
     /** turn to a station: "drums" | "bass" | "treble" */
     setStation(name) {
       if (!STATIONS[name]) return;
