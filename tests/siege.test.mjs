@@ -110,7 +110,12 @@ console.log("army ok");
   // soldiers come in loose clumps at their own speeds
   const sp = ev.filter((e) => e.type === "spawn" && e.enemy.kind === "soldier").map((e) => e.enemy);
   assert.ok(new Set(sp.map((e) => +e.speed.toFixed(3))).size > 1 || sp.length < 2, "soldiers walk at their own pace");
-  assert.ok(sp.every((e) => Math.abs(e.lat) >= ARMY.sides - 1e-9), "soldiers keep out of the middle (the cues' lanes)");
+  assert.ok(sp.length > 0 && sp.every((e) => Math.abs(e.lat) <= ARMY.centre + 1e-9), "bass: the minotaurs come up the middle (owner, 2026-10-07)");
+  // treble: the soldiers still keep out of the middle (the cues' lanes)
+  const s3 = new Siege({ beatDur: 0.5, rng: seq([0.5, 0.1, 0.9, 0.3, 0.7]) });
+  s3.full = true; s3.startWave("treble");
+  const sp3 = run(s3, 0, 20).filter((e) => e.type === "spawn" && e.enemy.kind === "soldier").map((e) => e.enemy);
+  assert.ok(sp3.length > 0 && sp3.every((e) => Math.abs(e.lat) >= ARMY.sides - 1e-9), "treble: soldiers keep out of the middle");
   assert.ok(s2.enemies.filter((e) => e.alive && e.attacking && e.kind === "soldier").length <= ARMY.wallSlots, "no more than wallSlots at the wall");
   console.log("balloons ok");
 }

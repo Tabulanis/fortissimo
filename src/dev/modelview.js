@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { bootlog } from "../bootlog.js";
 import { loadHydraHead, createHydraHead } from "../scene/hydra.js";
-import { attachAxe, AXE_GRIP } from "../scene/axe.js";
+import { attachAxe, AXE_GRIP, setAxeGrip } from "../scene/axe.js";
 const q = new URLSearchParams(location.search), name = q.get("m") || "Fountain", small = q.has("small");
 const url = `${small ? "/small" : ""}/models/${name}.glb`;
 const out = document.getElementById("out");
@@ -41,7 +41,8 @@ else new GLTFLoader().load(url, (g) => {
   // &axe=1: the minotaurs' axe in the right hand; &grip=px,py,pz,rx,ry,rz tries another grip
   if (q.has("axe")) { const v = (q.get("grip") || "").split(",").map(Number);
     const grip = v.length === 6 && v.every(Number.isFinite) ? { pos: new THREE.Vector3(v[0], v[1], v[2]), rot: new THREE.Euler(v[3], v[4], v[5]) } : AXE_GRIP;
-    bootlog("modelview axe", { attached: !!attachAxe(model, grip) }); }
+    const axe = attachAxe(model, grip); bootlog("modelview axe", { attached: !!axe });
+    if (axe && !q.get("grip")) setAxeGrip(axe, /Slash|Parry/.test(q.get("clip") || "") ? 1 : 0); }   // the game's grip for that clip
   // &clip=Name[&at=sec]: play one of the file's animation clips (rigged models); &at freezes it at that time
   if (q.get("clip") && g.animations.length) {
     const clip = g.animations.find((a) => a.name === q.get("clip")) || g.animations[0];

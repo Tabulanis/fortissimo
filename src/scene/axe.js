@@ -5,7 +5,21 @@ import * as THREE from "three";
 
 // how the haft sits in the fist, in the hand bone's own space — tuned by eye in the viewer
 // (/dev/models.html?m=MinotaurRig&clip=Right_Hand_Sword_Slash&axe=1)
-export const AXE_GRIP = { pos: new THREE.Vector3(-0.03, 0.08, 0), rot: new THREE.Euler(Math.PI / 2, 0, 0) };   // haft on the hand bone's Z (forward through the fist), into the palm (-X)
+export const AXE_GRIP = { pos: new THREE.Vector3(-0.03, 0.08, 0), rot: new THREE.Euler(Math.PI / 2, 0, 0) };
+// WALKING / RUNNING (owner, 2026-10-07: "held so it points up, not through the minotaur"): the arm hangs,
+// the fingers (+Y) point down — so the haft goes up the opposite way, tipped forward past the forearm
+// Solved, not guessed: the Walking clip was evaluated on the skeleton (mid-stride the hand's local axes
+// are X fwd-up, Y down-fwd, Z across the body) and the haft aimed at world up + a little forward + a
+// little outward, expressed in hand space = (0.71, -0.65, -0.26); the same grip reads upright in Running.
+// (A first guess, Euler(PI - 0.45, 0, 0), sent the haft up into his back — only the pommel showed.)
+export const AXE_GRIP_CARRY = { pos: new THREE.Vector3(-0.03, 0.08, 0.02),
+  quat: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0.71, -0.65, -0.26).normalize()) };
+const _qb = new THREE.Quaternion();
+/** blend an attached axe between the carry grip (t = 0) and the chop grip (t = 1) */
+export function setAxeGrip(axe, t) {
+  const _qa = AXE_GRIP_CARRY.quat; _qb.setFromEuler(AXE_GRIP.rot);
+  axe.quaternion.slerpQuaternions(_qa, _qb, t); axe.position.lerpVectors(AXE_GRIP_CARRY.pos, AXE_GRIP.pos, t);
+}   // haft on the hand bone's Z (forward through the fist), into the palm (-X)
 
 const wood = new THREE.MeshStandardMaterial({ color: 0x4a2e1a, roughness: 0.85 });
 const iron = new THREE.MeshStandardMaterial({ color: 0x8a8f96, metalness: 0.85, roughness: 0.35 });

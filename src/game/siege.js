@@ -40,7 +40,8 @@ export const ARMY = {
   bossHpPerNote: 2,     // the boss's life: 2 hits per treble note you'll play
   blast: 2.6,           // m: a shell kills soldiers this close
   lanes: 5.2,           // m: how far out to the sides they come
-  sides: 2.6,           // m: they keep OUT of the middle (owner, 2026-10-04: the cues come down the middle)
+  sides: 2.6,           // m: soldiers keep OUT of the middle (owner, 2026-10-04: the cues come down the middle)
+  centre: 1.8,          // m: the MINOTAURS (bass) come straight up the middle, within ±this (owner, 2026-10-07: "they look like they're sneaking round the side")
   wallSlots: 6,         // at most this many hack at the wall; the rest hang back behind them
   bossStandoff: 3.5,    // the boss stops this far behind the wall and swings from there
   // BALLOON GUYS (owner, 2026-10-04): float in high over the bass court, hover, and fire rockets
@@ -176,8 +177,13 @@ export class Siege {
       if (w.nextAt == null) w.nextAt = now + 0.5;
       if (now >= w.nextAt) {
         const n = 1 + Math.floor(this.rng() * 3), side = this.rng() < 0.5 ? -1 : 1;   // a clump of 1-3, loosely together, down one SIDE
-        const lat = side * (ARMY.sides + this.rng() * (ARMY.lanes - ARMY.sides));
-        for (let i = 0; i < n; i++) { const s = this._spawn(w.side, "soldier", side * Math.max(ARMY.sides, Math.min(ARMY.lanes, Math.abs(lat + (this.rng() - 0.5) * 2)))); s.dist += this.rng() * 2; }
+        if (w.side === "bass") {   // minotaurs: a clump straight up the middle
+          const lat = (this.rng() * 2 - 1) * ARMY.centre * 0.6;
+          for (let i = 0; i < n; i++) { const s = this._spawn(w.side, "soldier", Math.max(-ARMY.centre, Math.min(ARMY.centre, lat + (this.rng() - 0.5) * 1.6))); s.dist += this.rng() * 2; }
+        } else {                  // soldiers: down one side, out of the cues' lanes
+          const lat = side * (ARMY.sides + this.rng() * (ARMY.lanes - ARMY.sides));
+          for (let i = 0; i < n; i++) { const s = this._spawn(w.side, "soldier", side * Math.max(ARMY.sides, Math.min(ARMY.lanes, Math.abs(lat + (this.rng() - 0.5) * 2)))); s.dist += this.rng() * 2; }
+        }
         w.nextAt = now + ARMY.soldierEvery * (w.kind === "boss" ? 2 : 1) * (0.7 + 0.6 * this.rng());
       }
       if (w.side === "bass") {   // the balloon guys, over the bass court

@@ -14,7 +14,7 @@
  */
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { attachAxe } from "./axe.js";
+import { attachAxe, setAxeGrip } from "./axe.js";
 import { clone as skelClone } from "three/examples/jsm/utils/SkeletonUtils.js";
 
 // joints: 0 head, 1 lSh, 2 rSh, 3 lHip, 4 rHip, 5 lEl, 6 lHand, 7 rEl, 8 rHand, 9 lKnee, 10 lFoot, 11 rKnee, 12 rFoot
@@ -103,8 +103,8 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
     const root = skelClone(src.template); root.visible = false;
     root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
     scene.add(root);
-    if (src === mino) attachAxe(root);
-    return { root, mixer: new THREE.AnimationMixer(root), action: null, name: null, v: new THREE.Vector3(), spin: new THREE.Vector3(),
+    const axe = src === mino ? attachAxe(root) : null;
+    return { axe, axeT: 0, root, mixer: new THREE.AnimationMixer(root), action: null, name: null, v: new THREE.Vector3(), spin: new THREE.Vector3(),
       walk: src === mino ? "Walking" : Math.random() < 0.5 ? "Walking" : "Spear_Walk", clips: src.clips, kind: src === mino ? "minotaur" : "soldier" };
   };
   const attachModel = (r) => { r.models = r.models || {}; r.models.soldier = makeModel(sent); r.model = r.model || r.models.soldier; };
@@ -138,6 +138,7 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
     else if (e.attacking) modelPlay(m, "Right_Hand_Sword_Slash", 1);
     else if (e.dist > 16) modelPlay(m, "Running", 0.9 * (e.speed || 1.6) / 1.6);
     else modelPlay(m, m.walk, (e.speed || 1.6) / 1.6);
+    if (m.axe) { m.axeT += ((e.attacking ? 1 : 0) - m.axeT) * Math.min(1, dt * 8); setAxeGrip(m.axe, m.axeT); }   // carried upright, gripped to chop
     m.mixer.update(dt);
   };
   /** a dead soldier's model: thrown, tumbling, bouncing once, then lying, then sinking */
