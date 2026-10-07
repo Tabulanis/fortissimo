@@ -9,6 +9,7 @@
    be swapped one at a time: "beach", "sea", "cliff-left", "cliff-right", "dock", "ship",
    "booth". BOOTH_POS is where the player stands for round 4. */
 import * as THREE from "three";
+import { createSea } from "./sea.js";
 
 export const COVE = { wallZ: 8.6, beachZ0: 9.6, beachZ1: 17, seaZ1: 90, halfWidth: 30 };
 export const DOCK = { z0: 13, z1: 31, width: 2.6, y: 0.55 };
@@ -32,9 +33,9 @@ export function createCove(scene) {
   box("deck", 24, 0.18, COVE.beachZ1 - COVE.beachZ0 + 0.6, wood, 0, DOCK.y, (COVE.beachZ0 + COVE.beachZ1) / 2, 0, wharf);
   for (let x = -11; x <= 11; x += 2.75) for (const z of [COVE.beachZ0 + 1, COVE.beachZ1 - 0.6]) box("post", 0.26, DOCK.y + 1.4, 0.26, wood, x, DOCK.y / 2 - 0.4, z, 0, wharf);
   for (const s of [-1, 1]) box("rail", 0.08, 0.9, COVE.beachZ1 - COVE.beachZ0, wood, s * 11.9, DOCK.y + 0.55, (COVE.beachZ0 + COVE.beachZ1) / 2, 0, wharf);
-  // SEA: a wide sheet at the waterline
-  const sea = new THREE.Mesh(new THREE.PlaneGeometry(COVE.halfWidth * 2 + 40, COVE.seaZ1 - COVE.beachZ1 + 20), water);
-  sea.name = "sea"; sea.rotation.x = -Math.PI / 2; sea.position.set(0, -0.15, (COVE.beachZ1 + COVE.seaZ1) / 2 + 10); root.add(sea);
+  // SEA: sea.js — swell, sky-fresnel, moon glint, ripple rings; stage3d ticks it and the hydra ripples it
+  const sea = createSea(scene, { x: 0, z: (COVE.beachZ1 + COVE.seaZ1) / 2 + 10, width: COVE.halfWidth * 2 + 40, depth: COVE.seaZ1 - COVE.beachZ1 + 20, y: -0.15 });
+  root.userData.sea = sea;
   // the PIER the ship ties up to: along the right, out past the dock
   const pier = new THREE.Group(); pier.name = "pier-right"; root.add(pier);
   box("deck", 3.0, 0.16, 30, wood, 9.5, DOCK.y, COVE.beachZ1 + 14, 0, pier);

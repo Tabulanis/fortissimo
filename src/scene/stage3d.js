@@ -436,10 +436,10 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // the environment mock-up (owner's reference: sandstone colonnade courtyard)
   bootlog("courtyard: start");
   const courtyard = createCourtyard(scene);
-  createCove(scene);   // round 4's cove behind the sea gate (blockout)
+  const cove = createCove(scene), sea = cove.userData.sea;   // round 4's cove behind the sea gate (blockout); the sea rolls and ripples (sea.js)
   // THE HYDRA (hydraBoss.js): three necks out of the sea in front of the dock, the rigged heads
   // on top; rises on hydra.rise() — round 4 / the conduct feel-test; ?hydra=1 raises it at load (dev)
-  const hydra = createHydra(scene, { origin: new THREE.Vector3(0, -4.6, DOCK.z1 + 7.5), target: BOOTH_POS.clone().setY(2.2) });   // close (owner): bases under the water, necks stretched, never reaching further
+  const hydra = createHydra(scene, { origin: new THREE.Vector3(0, -4.6, DOCK.z1 + 7.5), target: BOOTH_POS.clone().setY(2.2), sea });   // close (owner): bases under the water, necks stretched, never reaching further
   if (new URLSearchParams(location.search).has("hydra")) hydra.rise();
   { const b = new URLSearchParams(location.search).get("bite");   // dev: &bite=1 bites every 3 s, heads in turn; &bite=hold freezes the middle head at full lunge
     if (b === "hold") hydra.holdLunge(1);
@@ -2455,6 +2455,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     }
 
     braziers.update(fireDt, camera, performance.now());
+    sea.update(performance.now() / 1000);
     hydra.update(fireDt, performance.now() / 1000, beatDur > 0 ? (heardNow - beatFirst) / beatDur : performance.now() / 1000);
     fireSim.update(fireDt);
     waterPool.update(performance.now() / 1000);
