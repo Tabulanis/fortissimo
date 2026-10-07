@@ -14,6 +14,7 @@
  */
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { attachAxe } from "./axe.js";
 import { clone as skelClone } from "three/examples/jsm/utils/SkeletonUtils.js";
 
 // joints: 0 head, 1 lSh, 2 rSh, 3 lHip, 4 rHip, 5 lEl, 6 lHand, 7 rEl, 8 rHand, 9 lKnee, 10 lFoot, 11 rKnee, 12 rFoot
@@ -94,22 +95,35 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
   // wall; dead, it's thrown tumbling like the box ragdoll was, lies there, then sinks. Cheap tiers
   // (models: false) keep the box rigs.
   const sent = { template: null, clips: {} };
-  const attachModel = (r) => {
-    const root = skelClone(sent.template); root.visible = false;
+  // THE MINOTAURS (owner, 2026-10-07): the BASS court's enemies are minotaurs with axes, not
+  // soldiers. His Meshy minotaur had no rig; tools/rig-from-mixamo.py gave it the Sentinel's
+  // skeleton and clips (public/models/MinotaurRig.glb): it walks, runs and slashes by the same names.
+  const mino = { template: null, clips: {} };
+  const makeModel = (src) => {
+    const root = skelClone(src.template); root.visible = false;
     root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
     scene.add(root);
-    r.model = { root, mixer: new THREE.AnimationMixer(root), action: null, name: null, v: new THREE.Vector3(), spin: new THREE.Vector3(), walk: Math.random() < 0.5 ? "Walking" : "Spear_Walk" };
+    if (src === mino) attachAxe(root);
+    return { root, mixer: new THREE.AnimationMixer(root), action: null, name: null, v: new THREE.Vector3(), spin: new THREE.Vector3(),
+      walk: src === mino ? "Walking" : Math.random() < 0.5 ? "Walking" : "Spear_Walk", clips: src.clips, kind: src === mino ? "minotaur" : "soldier" };
   };
+  const attachModel = (r) => { r.models = r.models || {}; r.models.soldier = makeModel(sent); r.model = r.model || r.models.soldier; };
   if (models) new GLTFLoader().load("/models/Sentinel.glb", (gltf) => {
     sent.template = gltf.scene;
     gltf.scene.traverse((o) => { if (o.isMesh && o.material) { o.material.emissive = new THREE.Color(0x3a2418); o.material.emissiveIntensity = 0.55; } });   // a little self-light: they read in the dusk shade
     for (const c of gltf.animations) sent.clips[c.name] = c;
     for (const r of rigs) attachModel(r);
   }, undefined, (err) => console.warn("Sentinel model failed to load — the box soldiers stand in", err));
+  if (models) new GLTFLoader().load("/models/MinotaurRig.glb", (gltf) => {
+    mino.template = gltf.scene;
+    gltf.scene.traverse((o) => { if (o.isMesh && o.material) { o.material.emissive = new THREE.Color(0x3a2418); o.material.emissiveIntensity = 0.45; } });
+    for (const c of gltf.animations) mino.clips[c.name] = c;
+    for (const r of rigs) { r.models = r.models || {}; r.models.minotaur = makeModel(mino); }
+  }, undefined, (err) => console.warn("MinotaurRig model failed to load — soldiers stand in at the bass court", err));
   const modelPlay = (m, name, speed = 1) => {
-    if (!sent.clips[name]) return;
+    if (!m.clips[name]) return;
     if (m.name === name) { if (m.action) m.action.timeScale = speed; return; }
-    const a = m.mixer.clipAction(sent.clips[name]); a.reset(); a.timeScale = speed; a.paused = false; a.setLoop(THREE.LoopRepeat, Infinity);
+    const a = m.mixer.clipAction(m.clips[name]); a.reset(); a.timeScale = speed; a.paused = false; a.setLoop(THREE.LoopRepeat, Infinity);
     if (m.action && m.action !== a) m.action.crossFadeTo(a, 0.2, false);
     a.play(); m.action = a; m.name = name;
   };
@@ -276,7 +290,10 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
       if (!r) return;
       r.live = true; r.dead = false; r.enemy = e; r.t = 0; r.g.visible = true; r.ph0 = Math.random() * 6; r.thrashAt = null; r.thrashing = null;
       r.scale = e.kind === "boss" ? 3.2 : e.kind === "balloon" ? 1.0 : 1.0 + Math.random() * 0.25;   // human-sized (owner: "they are huge"), the boss three men tall
-      if (r.model) { const m = r.model; m.mixer.stopAllAction(); m.action = null; m.name = null; m.root.quaternion.identity(); m.root.visible = false; m.v.set(0, 0, 0); m.spin.set(0, 0, 0); }
+      for (const m of Object.values(r.models || {})) { m.mixer.stopAllAction(); m.action = null; m.name = null; m.root.quaternion.identity(); m.root.visible = false; m.v.set(0, 0, 0); m.spin.set(0, 0, 0); }
+      // which body: minotaurs (with axes) at the bass court, soldiers everywhere else (owner, 2026-10-07)
+      if (r.models) r.model = (e.side === "bass" && e.kind === "soldier" && r.models.minotaur) || r.models.soldier || r.model;
+      if (r.model && r.model.kind === "minotaur") r.scale *= 1.12;   // a head taller than the soldiers
       if (e.kind === "balloon") { const bl = balloons.find((x) => !x.rig); if (bl) { bl.rig = r; bl.pop = -1; bl.env.visible = bl.basket.visible = true; bl.env.scale.setScalar(1); bl.env.material.opacity = 0.95; } }
       posed(r, e, 0);
       for (let i = 0; i < N; i++) r.prev[i].copy(r.pos[i]);

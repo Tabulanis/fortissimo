@@ -846,6 +846,8 @@ function makeStartButton() {
     ghosts = loops;   // the scheduler below replays loop layers
     addBacking();
     defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, keep: RUN.keep, beatDur: clock.beatDur });
+    { const sec = new URLSearchParams(location.search).get("section");   // dev: ?section=bass|treble starts the round there (photos of the armies)
+      const k = ["drums", "bass", "treble"].indexOf(sec); if (k > 0) defend.sectionIdx = k; }
     stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat
     if (CONDUCT) { conductor = new Conductor({ beatsPerBar: 4 }); hudUI.say("CONDUCT — 1/2/3 pick a section · U cue · I cut · O accent · hold P to swell", "good", 7000); if (stage3d.hydra) stage3d.hydra.rise(); }
     if (AUTO_GFX) measureFps(8000, (fps) => judgeGraphics(fps, "in play"));   // the real test: with the battle on

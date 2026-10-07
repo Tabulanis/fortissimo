@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { bootlog } from "../bootlog.js";
 import { loadHydraHead, createHydraHead } from "../scene/hydra.js";
+import { attachAxe, AXE_GRIP } from "../scene/axe.js";
 const q = new URLSearchParams(location.search), name = q.get("m") || "Fountain", small = q.has("small");
 const url = `${small ? "/small" : ""}/models/${name}.glb`;
 const out = document.getElementById("out");
@@ -15,7 +16,8 @@ const cam = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.05, 500)
 scene.add(new THREE.HemisphereLight(0xffffff, 0x404060, 1.2));
 const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(3, 6, 4); scene.add(sun);
 scene.add(new THREE.GridHelper(10, 10, 0x667799, 0x445566));
-let model = null, rigged = null;
+let model = null, rigged = null, mixer = null, spin = !q.has("nospin");
+const clock = new THREE.Clock();
 // &rig=hydra: the one-piece head with the code-built skeleton, swaying, jaw working, a bite every 3 s
 if (q.get("rig") === "hydra") loadHydraHead(url).then((L) => {
   rigged = createHydraHead(L); model = rigged.group; scene.add(model);
@@ -36,6 +38,17 @@ if (q.get("rig") === "hydra") loadHydraHead(url).then((L) => {
 });
 else new GLTFLoader().load(url, (g) => {
   model = g.scene; scene.add(model);
+  // &axe=1: the minotaurs' axe in the right hand; &grip=px,py,pz,rx,ry,rz tries another grip
+  if (q.has("axe")) { const v = (q.get("grip") || "").split(",").map(Number);
+    const grip = v.length === 6 && v.every(Number.isFinite) ? { pos: new THREE.Vector3(v[0], v[1], v[2]), rot: new THREE.Euler(v[3], v[4], v[5]) } : AXE_GRIP;
+    bootlog("modelview axe", { attached: !!attachAxe(model, grip) }); }
+  // &clip=Name[&at=sec]: play one of the file's animation clips (rigged models); &at freezes it at that time
+  if (q.get("clip") && g.animations.length) {
+    const clip = g.animations.find((a) => a.name === q.get("clip")) || g.animations[0];
+    mixer = new THREE.AnimationMixer(model); const act = mixer.clipAction(clip); act.play();
+    if (q.has("at")) { act.paused = true; act.time = +q.get("at"); mixer.update(0); }
+    spin = false; bootlog("modelview clip", { clip: clip.name, clips: g.animations.map((a) => a.name) });
+  }
   let tris = 0; model.traverse((o) => { if (o.isMesh) { const i = o.geometry.index; tris += (i ? i.count : o.geometry.attributes.position.count) / 3; } });
   const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
   model.position.sub(c); model.position.y += size.y / 2;   // on the grid, centred
@@ -44,10 +57,11 @@ else new GLTFLoader().load(url, (g) => {
   const info = { model: name, small, tris: Math.round(tris), size: [size.x, size.y, size.z].map((v) => +v.toFixed(2)) };
   out.textContent = JSON.stringify(info); bootlog("modelview", info);
   // ?shot=1 (headless checks): a second after the model is in, post the rendered frame to the dev sink
-  if (q.has("shot")) setTimeout(() => fetch(`http://127.0.0.1:8899/png/${name}${small ? "-small" : ""}`, { method: "POST", body: renderer.domElement.toDataURL("image/png") }).catch(() => {}), 1200);
+  if (q.has("shot")) setTimeout(() => fetch(`http://127.0.0.1:8899/png/${name}${small ? "-small" : ""}${q.get("clip") ? "-" + q.get("clip") + (q.get("at") || "") : ""}`, { method: "POST", body: renderer.domElement.toDataURL("image/png") }).catch(() => {}), 1200);
 }, undefined, (e) => { out.textContent = "FAILED " + e; bootlog("modelview", { model: name, error: String(e) }); });
 (function tick() {
   if (rigged) { const t = performance.now() / 1000; if (t > 2 && t < 2.05 && !rigged._bit) { rigged._bit = true; rigged.bite(t); } rigged.setSway(t); rigged.jaw(q.has("jaw") ? +q.get("jaw") : 0.5 + 0.5 * Math.sin(t * 1.5)); }   // &jaw=0..1 holds it for a photo
-  else if (model) model.rotation.y += 0.004;
+  else if (model && spin) model.rotation.y += 0.004;
+  if (mixer && !q.has("at")) mixer.update(clock.getDelta());
   renderer.render(scene, cam); requestAnimationFrame(tick);
 })();
