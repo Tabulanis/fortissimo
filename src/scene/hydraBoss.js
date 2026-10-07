@@ -46,7 +46,7 @@ export function createHydra(scene, { origin = new THREE.Vector3(0, -1.4, 37), ta
     const seaY = sea ? sea.level : -0.15, d = (seaY - h.base.y) / Math.max(0.2, Math.cos(pitch));   // along the neck to the surface
     return _sx.set(h.base.x + Math.sin(yaw) * Math.sin(pitch) * d, seaY, h.base.z + Math.cos(yaw) * Math.sin(pitch) * d);
   };
-  api.bite = (i, now) => { const h = H[i % H.length]; if (h) { h.lungeAt = now; h.head.bite(now + 0.3); if (sea) { const p = surfaceOf(h, h.lastPitch, h.lastYaw || 0); sea.addRipple(p.x, p.z, 1.6); } } };
+  api.bite = (i, now) => { const h = H[i % H.length]; if (h) { h.lungeAt = now; h.head.bite(now + 0.3); if (sea) { const p = surfaceOf(h, h.lastPitch, h.lastYaw || 0); sea.addRipple(p.x, p.z, 2.4); } } };
   api.holdLunge = (i) => { api._hold = i; if (H.length) H[i % H.length].hold = true; };   // dev: freeze a head at full strike for a photo
   api.update = (dt, now, beatPhase = now) => {
     if (!api.ready) return;
@@ -71,8 +71,9 @@ export function createHydra(scene, { origin = new THREE.Vector3(0, -1.4, 37), ta
       if (sea && lv > 0.05) {
         const p = surfaceOf(h, pitch, yaw); h.lastYaw = yaw;
         const moving = Math.abs(pitch - h.lastPitch) / Math.max(dt, 1e-3);
-        if (!h.wasUp) { sea.addRipple(p.x, p.z, 2.2); h.wasUp = true; h.rippleAt = t; }
-        else if (t - h.rippleAt > 0.45) { sea.addRipple(p.x, p.z, 0.35 + Math.min(1.2, moving * 1.5)); h.rippleAt = t; }
+        if (!h.wasUp) { sea.addRipple(p.x, p.z, 3.0); h.wasUp = true; h.rippleAt = t; }
+        else if (sea.press) sea.press(p.x, p.z, (0.003 + Math.min(0.06, moving * 0.05)) * dt * 60, 1.1);   // the CLOTH: pressed every frame by the neck's motion
+        else if (t - h.rippleAt > 0.45) { sea.addRipple(p.x, p.z, 0.6 + Math.min(1.8, moving * 2.2)); h.rippleAt = t; }
       } else if (lv <= 0.05) h.wasUp = false;
       h.lastPitch = pitch;
     }

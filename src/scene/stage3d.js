@@ -140,6 +140,11 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   renderer.xr.enabled = true;
   // FILM LOOK: ACES filmic tone mapping (the Unreal Engine curve) — bright fire
   // rolls off into soft highlights instead of clipping to flat white
+  // a shader that fails to compile is SKIPPED silently by three — log it so device.log shows it (2026-10-07: the sea vanished for a pass)
+  renderer.debug.onShaderError = (gl, program, vs, fs) => {
+    const msg = [gl.getProgramInfoLog(program), gl.getShaderInfoLog(vs), gl.getShaderInfoLog(fs)].filter(Boolean).join(" | ").slice(0, 600);
+    bootlog("shader error", { msg }); console.error("shader error", msg);
+  };
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.3;   // 1.15 -> 1.3 with the brighter fill (owner 2026-10-06)
   renderer.xr.setReferenceSpaceType("local-floor");   // y = 0 is the real floor
@@ -439,6 +444,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const cove = createCove(scene), sea = cove.userData.sea;   // round 4's cove behind the sea gate (blockout); the sea rolls and ripples (sea.js)
   // THE HYDRA (hydraBoss.js): three necks out of the sea in front of the dock, the rigged heads
   // on top; rises on hydra.rise() — round 4 / the conduct feel-test; ?hydra=1 raises it at load (dev)
+  const _sprayP = new THREE.Vector3();
+  sea.onSpray = LOW ? null : (x, y, z, power, dir) => fireSim.spray(_sprayP.set(x, y, z), power, dir);   // the sea's spray through the particle sim
   const hydra = createHydra(scene, { origin: new THREE.Vector3(0, -4.6, DOCK.z1 + 7.5), target: BOOTH_POS.clone().setY(2.2), sea });   // close (owner): bases under the water, necks stretched, never reaching further
   if (new URLSearchParams(location.search).has("hydra")) hydra.rise();
   { const b = new URLSearchParams(location.search).get("bite");   // dev: &bite=1 bites every 3 s, heads in turn; &bite=hold freezes the middle head at full lunge
@@ -656,7 +663,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       const dt = st.ready ? st.moment - heardNow : Infinity;
       const pulse = st.ready ? 0.5 + 0.5 * Math.sin(heardNow * 9) : 0;
       b._cueGlow = 0.9 * st.charge + (st.ready ? 0.8 + 0.6 * pulse : 0);
-      const n = st.ready && dt > 0 && dt <= 3 * beatDur + 0.01 ? Math.ceil(dt / beatDur) : 0;
+      const n = 0;   // NO COUNTDOWN (owner, 2026-10-07): a ready crystal just glows; strike it whenever
       if (n !== cn.n) { cn.n = n; cn.at = heardNow; if (n) cn.s.material.map = COUNT_N[Math.min(3, n)]; }
       cn.s.visible = n > 0;
       if (n) { cn.s.material.opacity = Math.min(1, dt / (0.4 * beatDur)); cn.s.scale.setScalar(0.3 * (1 + 0.4 * Math.exp(-9 * (heardNow - cn.at)))); }
@@ -2617,6 +2624,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     setFly, get fly() { return fly.on; },
     flyKey: (key, down) => { const kk = key.toLowerCase(); if (down) fly.keys.add(kk); else fly.keys.delete(kk); },
     flyLook: (dx, dy) => { fly.yaw -= dx * 0.004; fly.pitch = Math.max(-1.5, Math.min(1.5, fly.pitch - dy * 0.004)); },
+    flyPose: (x, y, z, yaw, pitch) => { fly.pos.set(x, y, z); fly.yaw = yaw; fly.pitch = pitch; },   // dev: put the free camera somewhere exact (photos)
     /** turn to a station: "drums" | "bass" | "treble" */
     setStation(name) {
       if (!STATIONS[name]) return;

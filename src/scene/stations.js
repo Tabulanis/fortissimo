@@ -118,7 +118,10 @@ export function createStation(scene, kind, { labels = KEY_LABELS, lamp: withLamp
   }
   // CRYSTALS (owner, 2026-10-04): at the TREBLE station the top row is crystals, not cannons —
   // hitting one charges the LIGHTNING GUN behind the station; charged, it strikes the boss
-  const crystalMat = new THREE.MeshStandardMaterial({ color: 0x9fd4ff, metalness: 0.1, roughness: 0.15, emissive: 0x2a6fd0, emissiveIntensity: 0.25, transparent: true, opacity: 0.92 });
+  // TRANSLUCENT with refraction (owner, 2026-10-07): three's transmission material bends what's behind
+  // the crystal (a screen-space pass; real enough); ior 1.6 like glass, a tint, a little roughness
+  const crystalMat = new THREE.MeshPhysicalMaterial({ color: 0xbfe4ff, metalness: 0.0, roughness: 0.12, transmission: 0.85, thickness: 0.35, ior: 1.6,
+    attenuationColor: new THREE.Color(0x6fb8ff), attenuationDistance: 0.6, emissive: 0x2a6fd0, emissiveIntensity: 0.25, transparent: true, opacity: 1.0 });
   function makeCrystal(rg, i, z, big = 1) {   // big: the BOSS's two crystals are large (owner, 2026-10-04)
     const mat = crystalMat.clone();   // its own: it flares when struck
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.09 * big, 0.1 * big, 0.04, 8), carriageMat);

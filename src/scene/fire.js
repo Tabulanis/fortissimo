@@ -20,7 +20,7 @@
      forget(id)              the arrow is gone: next trail() starts fresh */
 import * as THREE from "three";
 
-const FLAME = 0, EMBER = 1, SMOKE = 2, STEAM = 3;
+const FLAME = 0, EMBER = 1, SMOKE = 2, STEAM = 3, SPRAY = 4;   // SPRAY: pale water droplets with gravity (the sea, 2026-10-07)
 
 const vert = /* glsl */ `
   attribute vec3 iPos;
@@ -211,6 +211,18 @@ export function createFire(scene, { layer = 0, maxFire = 14000, maxSmoke = 3000 
     }
   }
 
+  /** SPRAY (owner, 2026-10-07): droplets thrown off a breaking crest or a neck tearing through the water;
+   *  power 0..1 sets how many and how hard; dir = which way the water is moving (optional) */
+  function spray(p, power = 1, dir = null) {
+    const n = Math.round(2 + 6 * power);
+    for (let k = 0; k < n; k++) {
+      const a = Math.random() * Math.PI * 2, sp = rnd(0.6, 1.8) * (0.5 + power);
+      spawn(smoke, p.x + rnd(-0.15, 0.15), p.y + rnd(0, 0.1), p.z + rnd(-0.15, 0.15),
+        Math.cos(a) * sp + (dir ? dir.x * 1.5 * power : 0), rnd(1.8, 3.6) * (0.5 + power), Math.sin(a) * sp + (dir ? dir.z * 1.5 * power : 0),
+        rnd(0.4, 0.8), rnd(0.05, 0.1), SPRAY);
+    }
+  }
+
   /** impact: a fireball blown out of the drumhead, sparks, smoke; power 0..1 */
   function burst(p, power = 1, toward = null) {
     const P = Math.max(0.25, Math.min(1, power));
@@ -269,8 +281,8 @@ export function createFire(scene, { layer = 0, maxFire = 14000, maxSmoke = 3000 
         const k = B.kind[i], s = B.seed[i] * 40;
         let vx = B.vel[i * 3], vy = B.vel[i * 3 + 1], vz = B.vel[i * 3 + 2];
         const x = B.pos[i * 3], y = B.pos[i * 3 + 1], z = B.pos[i * 3 + 2];
-        if (k === EMBER) {
-          vy -= 4.0 * dt;                                  // sparks arc down
+        if (k === EMBER || k === SPRAY) {
+          vy -= (k === SPRAY ? 9.0 : 4.0) * dt;            // sparks arc down; spray falls like water
           const drag = Math.exp(-0.9 * dt); vx *= drag; vy *= drag; vz *= drag;
         } else {
           // buoyancy + swirling turbulence (cheap curl-like field), then drag
@@ -288,7 +300,7 @@ export function createFire(scene, { layer = 0, maxFire = 14000, maxSmoke = 3000 
         // size over life: flames swell then lick away; smoke keeps spreading
         const g = k === STEAM ? 1 + a * 3.5 : k === SMOKE ? 1 + a * 2.2 : k === EMBER ? 1 - a * 0.5 : (1 + a * 1.4) * (1 - a * a * 0.6);
         ip[live * 3] = nx; ip[live * 3 + 1] = ny; ip[live * 3 + 2] = nz;
-        id[live * 4] = a; id[live * 4 + 1] = B.size0[i] * g; id[live * 4 + 2] = B.seed[i]; id[live * 4 + 3] = k === EMBER ? 1 : k === STEAM ? 2 : 0;
+        id[live * 4] = a; id[live * 4 + 1] = B.size0[i] * g; id[live * 4 + 2] = B.seed[i]; id[live * 4 + 3] = k === EMBER ? 1 : (k === STEAM || k === SPRAY) ? 2 : 0;   // spray draws pale, like steam
         live++;
       }
       B.geo.instanceCount = live;
@@ -297,5 +309,5 @@ export function createFire(scene, { layer = 0, maxFire = 14000, maxSmoke = 3000 
     }
   }
 
-  return { trail, smoulder, blaze, burst, steam, forget, update, get count() { return fire.geo.instanceCount + smoke.geo.instanceCount; } };
+  return { trail, smoulder, blaze, burst, steam, spray, forget, update, get count() { return fire.geo.instanceCount + smoke.geo.instanceCount; } };
 }

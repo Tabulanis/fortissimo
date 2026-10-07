@@ -416,12 +416,11 @@ function hitCrystal(side, press) {
   const p = stage3d.drumScreen(idx);
   stage3d.press(idx, "HIT"); stage3d.strike(idx, "HIT");
   if (!c.ready) { pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...laneSound(entry.ln), velocity: 0.35, when: ctx.currentTime }); if (p) showStamp("not ready", p.x, p.y - 20, { size: 20, color: "#9fd4ff", ms: 600 }); return; }
-  const box = judgeDiff().window, off = press - c.moment, a = Math.abs(off);
-  const acc = a <= 0.02 ? 1.1 : Math.max(0.3, 1 - a / box);
+  // NO COUNTDOWN (owner, 2026-10-07: "once it's built up, you just release it"): a ready crystal always gives the full bolt
+  const acc = 1, a = 0, off = 0;
   c.ready = false; c.charge = 0;
   pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...laneSound(entry.ln), velocity: Math.min(1.1, 0.6 + 0.5 * acc), when: ctx.currentTime });
-  roundOffsets.push(a <= box ? off : null);
-  if (p) showStamp(Math.round(Math.min(1, acc) * 100) + "%", p.x, p.y - 4, { size: 30, ms: 900 });
+  if (p) showStamp("⚡", p.x, p.y - 4, { size: 30, ms: 700 });
   stage3d.crystalHit(idx);
   const b = siege && siege.boss && siege.boss.alive ? siege.boss : null;
   if (b) { const dmg = Math.max(1, Math.round((b.of / 4) * Math.min(1.1, acc))); stage3d.lightningStrike(stage3d.enemyPos("treble", b.dist, b.lat, 3.4)); siege.zapBoss(dmg); hudUI.say(`⚡ LIGHTNING ${Math.round(acc * 100)}%`, "good", 1200); }
@@ -1482,7 +1481,11 @@ function buildStage() {
   const plan = kitPlan(kitFor(s).present);
   stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR, { tier: TIER, kit: plan, touch: IS_TOUCH });
   bootlog("stage3d built", { round: roundIdx + 1, kit: plan });
-  if (new URLSearchParams(location.search).has("fly")) setTimeout(toggleFly, 300);   // dev: start in the free camera
+  if (new URLSearchParams(location.search).has("fly")) setTimeout(() => {   // dev: start in the free camera; &cam=x,y,z,yaw,pitch puts it somewhere exact
+    toggleFly();
+    const cam = new URLSearchParams(location.search).get("cam");
+    if (cam) { const v = cam.split(",").map(Number); if (v.length === 5 && v.every(Number.isFinite)) stage3d.flyPose(...v); }
+  }, 300);
   wireStage();
 }
 let autoFromMenu = false;   // the menu picked another round: the page reloaded into it — the next key starts it
