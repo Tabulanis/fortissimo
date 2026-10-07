@@ -8,6 +8,7 @@
    offset. */
 
 import "./audio/voices.js";
+import { Conductor } from "./game/conductor.js";
 import "./audio/hbchain.js";
 import { stretchBuffer } from "./audio/stretch.js";
 import { bakeThroughTrack, liteTrack, sendsAny } from "./audio/bake.js";   // Hackbeat's own track chain, word for word (tools/sync-hackbeat-audio.mjs)
@@ -240,7 +241,7 @@ function applyStage() {
   if (!stage3d) return;
   const used = new Set(song().notes.map((n) => LANE_INDEX[n.lane]));   // every drum stands (owner); the guns the song never plays are dimmed
   for (let i = 0; i < 6 + 2 * BARS; i++) stage3d.setDrumVisible(i, i < 6 || used.has(i));
-  stage3d.setStation(isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left
+  stage3d.setStation(CONDUCT ? "sea" : isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left; conducting: the podium
   if (audioStarted) updateBackLevels();                      // the sections' background music follows progress
   stageMessage();
   if (audioStarted) joinBacking();   // a finished instrument's left-out notes join in
@@ -757,6 +758,20 @@ function makeCalibrateButton() {
 // the song begins on the first key / tap / pad press after Start: 3, 2, 1, go
 let beginSong = null, armed = false, counting = false;
 const AUTO_BEGIN = new URLSearchParams(location.search).has("autobegin");
+// ROUND 4 feel-test (2026-10-06): ?conduct=1 — the round runs as usual underneath, but you stand at
+// the podium facing the sea and CONDUCT the three section buses: 1/2/3 pick a section, U cue, I cut,
+// O accent, hold P to swell (conductor.js judges on the bar line). Proper round-4 flow comes after.
+const CONDUCT = new URLSearchParams(location.search).has("conduct");
+let conductor = null, conductSection = "drums";
+const beatsNow = () => (clock && ctx ? (ctx.currentTime - clock.first) / clock.beatDur : 0);
+function conductGesture(kind, t = beatsNow()) {
+  if (!conductor) return;
+  const ev = kind === "release" ? conductor.release(conductSection, t) : conductor[kind](conductSection, t);
+  if (!ev) return;
+  bootlog("conduct", ev);
+  hudUI.say(`${ev.kind.toUpperCase()} ${ev.section} — ${ev.clean ? "on the bar" : `late ${ev.error > 0 ? "+" : ""}${ev.error.toFixed(2)}`}`, ev.clean ? "good" : "", 900);
+}
+window.addEventListener("keyup", (e) => { if (conductor && e.key.toLowerCase() === "p") conductGesture("release"); });
 function beginCount() {
   if (!armed || clock || counting) return;
   counting = true;
@@ -819,6 +834,7 @@ function makeStartButton() {
     addBacking();
     defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, keep: RUN.keep, beatDur: clock.beatDur });
     stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat
+    if (CONDUCT) { conductor = new Conductor({ beatsPerBar: 4 }); hudUI.say("CONDUCT — 1/2/3 pick a section · U cue · I cut · O accent · hold P to swell", "good", 7000); }
     if (AUTO_GFX) measureFps(8000, (fps) => judgeGraphics(fps, "in play"));   // the real test: with the battle on
     siege = new Siege({ miss: (LIFE[RUN.damage] || LIFE.normal).miss, beatDur: clock.beatDur });
     defendFrom = clock.first + Math.ceil((ctx.currentTime + 1.5 - clock.first) / (4 * clock.beatDur)) * 4 * clock.beatDur;   // misses count from the next bar after a breath
@@ -883,6 +899,11 @@ function scheduleBack() {
 }
 function updateBackLevels() {
   if (!ctx || !backGain.drums) return;
+  if (conductor && clock) {   // conducting: the band is at full, the gestures shape each section, crisp (0.05 s)
+    const t = beatsNow();
+    for (const m of ["drums", "bass", "treble"]) backGain[m].gain.setTargetAtTime(conductor.level(m, t), ctx.currentTime, 0.05);
+    return;
+  }
   const prog = defend ? { drums: defend.progress("drums"), bass: defend.progress("bass"), treble: defend.progress("treble") } : { drums: 0, bass: 0, treble: 0 };
   for (const m of ["drums", "bass", "treble"]) {
     backGain[m].gain.setTargetAtTime(backLevel(prog[m]), ctx.currentTime, 1.2);
@@ -958,6 +979,12 @@ function scheduleGhosts() {
 // channel; timing only changes loudness (velocityFor) — never delay or snap
 // the sound. Calibration keeps its old F/Space taps against the metronome.
 function onKey(e) {
+  if (conductor && !e.repeat) {   // conducting: sections and gestures take the keys
+    const k = e.key.toLowerCase();
+    if (k === "1" || k === "2" || k === "3") { conductSection = ["drums", "bass", "treble"][+k - 1]; hudUI.say(`section: ${conductSection}`, "", 700); return; }
+    const g = { u: "cue", i: "cut", o: "accent", p: "swell" }[k];
+    if (g) { e.preventDefault(); conductGesture(g); return; }
+  }
   if (autoFromMenu && !ctx && !e.repeat) { e.preventDefault(); startBtn.click(); return; }   // after a round switch: this key is the audio's gesture
   if (armed && !clock && !e.repeat) { e.preventDefault(); beginCount(); return; }   // READY: the first key starts the count
   // start-up guard: drums, pool and clock must all exist before a press

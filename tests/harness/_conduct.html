@@ -1,0 +1,31 @@
+<!doctype html><body style="margin:0">
+<!-- CONDUCTOR feel-test harness (2026-10-06): loads /?autobegin=1&conduct=1 (+ the hash passed
+through, e.g. #shot=20&face=sea), clicks Start, then plays scripted gestures timed to the song's
+bars: a cut of the bass 0.2 beats BEFORE bar 4 (should judge clean), a cue 1.3 beats AFTER bar 6
+(should judge late), an accent on the drums right on bar 8 (clean), a swell on the treble held
+two bars. Proof lands in device.log as "conduct" events. Copy to public/_conduct.html. -->
+<iframe id="f" style="width:1280px;height:800px;border:0"></iframe>
+<script type="module">
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+localStorage.removeItem("gr.autoTier"); localStorage.setItem("gr.level", "0");
+const f = document.getElementById("f");
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  if (w.location.href === "about:blank") return;
+  await wait(3500);
+  [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+  await wait(1500);
+  const G = w.__gr.game;
+  const key = (k, type = "keydown") => w.dispatchEvent(new w.KeyboardEvent(type, { key: k, bubbles: true }));
+  const press = (k) => { key(k); key(k, "keyup"); };
+  const beats = () => (G.ctx.currentTime - G.clock.first) / G.clock.beatDur;
+  const at = (beat, fn) => new Promise((r) => { const tick = () => { if (beats() >= beat) { fn(); r(); } else setTimeout(tick, 5); }; tick(); });
+  while (!G.clock) await wait(50);
+  await at(4 * 4 - 0.2, () => { press("2"); press("i"); });   // cut bass, 0.2 before bar 4: clean
+  await at(6 * 4 + 1.3, () => { press("2"); press("u"); });   // cue bass, 1.3 after bar 6: late
+  await at(8 * 4 - 0.02, () => { press("1"); press("o"); });  // accent drums on bar 8: clean
+  await at(10 * 4 - 0.1, () => { press("3"); key("p"); });    // swell treble from bar 10 ...
+  await at(12 * 4, () => key("p", "keyup"));                  // ... released at bar 12
+};
+f.src = "/?autobegin=1&conduct=1" + (location.hash ? "&" + location.hash.slice(1) : "");
+</script></body>
