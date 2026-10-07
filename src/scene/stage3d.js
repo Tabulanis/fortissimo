@@ -2054,6 +2054,25 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     return b;
   }
 
+  // DEV FLY (owner, 2026-10-07: "a dev mode so I can look around"): a free camera that starts
+  // where the seat's camera is. WASD move, Q/E down/up, Shift fast; drag the mouse (or the
+  // arrows / a pad's right stick through the look input) to turn. Nothing else changes.
+  const fly = { on: false, pos: new THREE.Vector3(), yaw: 0, pitch: 0, keys: new Set() };
+  function setFly(on) {
+    fly.on = !!on; fly.keys.clear();
+    if (fly.on) { fly.pos.copy(camera.position); _eul.setFromQuaternion(camera.quaternion, "YXZ"); fly.yaw = _eul.y; fly.pitch = _eul.x; }
+  }
+  const _fwd = new THREE.Vector3(), _side = new THREE.Vector3();
+  function updateFly(dt) {
+    const k = fly.keys, speed = (k.has("shift") ? 18 : 6) * Math.min(dt, 0.1);
+    fly.yaw -= look.inX * dt * 1.6; fly.pitch = Math.max(-1.5, Math.min(1.5, fly.pitch + look.inY * dt * 1.2));
+    _fwd.set(-Math.sin(fly.yaw), 0, -Math.cos(fly.yaw)); _side.set(Math.cos(fly.yaw), 0, -Math.sin(fly.yaw));
+    if (k.has("w")) fly.pos.addScaledVector(_fwd, speed); if (k.has("s")) fly.pos.addScaledVector(_fwd, -speed);
+    if (k.has("d")) fly.pos.addScaledVector(_side, speed); if (k.has("a")) fly.pos.addScaledVector(_side, -speed);
+    if (k.has("e")) fly.pos.y += speed; if (k.has("q")) fly.pos.y -= speed;
+    camera.position.copy(fly.pos);
+    camera.quaternion.setFromEuler(_eul.set(fly.pitch, fly.yaw, 0, "YXZ"));
+  }
   function update(heardNow, upcoming, ghosts = []) {
     { const t = performance.now(); fireDt = Math.min(0.05, (t - fireT) / 1000); fireT = t; }
     defense.update(heardNow, fireDt);
@@ -2082,6 +2101,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       st.pos.lerp(S.pos, ks);
       camera.position.copy(st.pos);
       camera.quaternion.setFromEuler(_eul.set((st.pitch ?? PITCH0) + look.y * LOOK_PITCH, st.yaw - look.x * LOOK_YAW, 0, "YXZ"));
+      if (fly.on) updateFly(fireDt);   // DEV: the free camera overrides the seat
     }
     updateGhostHands(heardNow, ghosts);
     if (!POTATO) updateDecoys(heardNow);   // potato: no decoy volleys
@@ -2593,6 +2613,10 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   bootlog("stage3d: end of build");
   return { resize, update, hit, press, strike, setDrumVisible, debugDrums,
     setLoop, addVrButton, hydra,
+    /** DEV free camera: setFly(on), flyKey(key, down), flyLook(dx, dy) in pixels dragged; `fly` reads the state */
+    setFly, get fly() { return fly.on; },
+    flyKey: (key, down) => { const kk = key.toLowerCase(); if (down) fly.keys.add(kk); else fly.keys.delete(kk); },
+    flyLook: (dx, dy) => { fly.yaw -= dx * 0.004; fly.pitch = Math.max(-1.5, Math.min(1.5, fly.pitch - dy * 0.004)); },
     /** turn to a station: "drums" | "bass" | "treble" */
     setStation(name) {
       if (!STATIONS[name]) return;

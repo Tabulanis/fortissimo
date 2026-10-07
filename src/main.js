@@ -765,6 +765,17 @@ const AUTO_BEGIN = new URLSearchParams(location.search).has("autobegin");
 // the podium facing the sea and CONDUCT the three section buses: 1/2/3 pick a section, U cue, I cut,
 // O accent, hold P to swell (conductor.js judges on the bar line). Proper round-4 flow comes after.
 const CONDUCT = new URLSearchParams(location.search).has("conduct");
+function toggleFly() {
+  const on = !stage3d.fly; stage3d.setFly(on);
+  hudUI.say(on ? "DEV FLY — W A S D move · Q/E down/up · Shift fast · drag the mouse or arrows to look · ` back to the seat" : "back to the seat", on ? "good" : "", on ? 6000 : 1500);
+  bootlog("fly", { on });
+}
+window.addEventListener("keyup", (e) => { if (stage3d && stage3d.fly) stage3d.flyKey(e.key, false); });
+// mouse drag turns the free camera
+{ let drag = null;
+  window.addEventListener("mousedown", (e) => { if (stage3d && stage3d.fly && e.button === 0) drag = { x: e.clientX, y: e.clientY }; });
+  window.addEventListener("mousemove", (e) => { if (drag && stage3d && stage3d.fly) { stage3d.flyLook(e.clientX - drag.x, e.clientY - drag.y); drag = { x: e.clientX, y: e.clientY }; } });
+  window.addEventListener("mouseup", () => { drag = null; }); }
 let conductor = null, conductSection = "drums";
 const beatsNow = () => (clock && ctx ? (ctx.currentTime - clock.first) / clock.beatDur : 0);
 function conductGesture(kind, t = beatsNow()) {
@@ -982,6 +993,10 @@ function scheduleGhosts() {
 // channel; timing only changes loudness (velocityFor) — never delay or snap
 // the sound. Calibration keeps its old F/Space taps against the metronome.
 function onKey(e) {
+  // DEV FLY: the backtick toggles a free camera (owner, 2026-10-07: "a dev mode so I can look around");
+  // while flying, W A S D Q E Shift move it and the game sees none of those keys
+  if (e.key === "`" && !e.repeat && stage3d) { e.preventDefault(); toggleFly(); return; }
+  if (stage3d && stage3d.fly) { if (["w", "a", "s", "d", "q", "e", "shift"].includes(e.key.toLowerCase())) { e.preventDefault(); stage3d.flyKey(e.key, true); } return; }
   if (conductor && !e.repeat) {   // conducting: sections and gestures take the keys
     const k = e.key.toLowerCase();
     if (k === "1" || k === "2" || k === "3") { conductSection = ["drums", "bass", "treble"][+k - 1]; hudUI.say(`section: ${conductSection}`, "", 700); return; }
@@ -1467,6 +1482,7 @@ function buildStage() {
   const plan = kitPlan(kitFor(s).present);
   stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR, { tier: TIER, kit: plan, touch: IS_TOUCH });
   bootlog("stage3d built", { round: roundIdx + 1, kit: plan });
+  if (new URLSearchParams(location.search).has("fly")) setTimeout(toggleFly, 300);   // dev: start in the free camera
   wireStage();
 }
 let autoFromMenu = false;   // the menu picked another round: the page reloaded into it — the next key starts it
