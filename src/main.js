@@ -9,7 +9,6 @@
 
 import "./audio/voices.js";
 import { Conductor } from "./game/conductor.js";
-import { HydraFight, HEAD_SECTION } from "./game/hydrafight.js";
 import "./audio/hbchain.js";
 import { stretchBuffer } from "./audio/stretch.js";
 import { bakeThroughTrack, liteTrack, sendsAny } from "./audio/bake.js";   // Hackbeat's own track chain, word for word (tools/sync-hackbeat-audio.mjs)
@@ -28,7 +27,9 @@ import { normalize, judgeFor, simplifyNotes, scoreMultiplier, levelOf, LEVELS } 
 import { fillKit, kitPlan } from "./game/kit.js";
 const runName = (r) => { const lv = levelOf(r); return lv ? `Level ${lv}` : "Custom"; };
 import { createMenu } from "./ui/menu.js";
-import { pickSounds, createRecorder } from "./ui/maker-ui.js";
+import { pickSounds } from "./ui/maker-ui.js";
+import { createMode } from "./modes/create.js";
+import { hydraMode } from "./modes/hydra.js";
 import { Draft, draftToSong } from "./game/maker.js";
 import { Defend, LIFE } from "./game/defend.js";
 import { Siege, ARMY } from "./game/siege.js";
@@ -1295,136 +1296,25 @@ function hitLane(idx, lane, press, padVel = 1) {
   if (recorder) recorder.hit(lane.name, (((press - clock.first) / clock.beatDur) % (4 * song().bars) + 4 * song().bars) % (4 * song().bars));
 }
 
-// --- CREATE: the song-maker's arena (maker-ui.js draws the panel) -------------------------------
-// The loop runs; what you've recorded plays back each pass (the pass you're playing is heard live);
-// each pass while recording is a take. No army, no chart: mode "free".
-function makeRecorder() {
-  recorder = createRecorder({ picks: CREATE, banks: BANKS, hooks: {
-    setPart: () => { applyStage(); relabel(); },
-    leave: () => { location.href = location.pathname; },
-    save: async (slug, level, songs) => {
-      try { localStorage.setItem(`gr.made.${slug}`, JSON.stringify({ level, songs })); } catch { /* the server copy is the real one */ }
-      const r = await fetch("/__song", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug, level, songs }) }).catch(() => null);
-      bootlog("create saved", { slug, server: !!(r && r.ok), notes: songs.map((x) => x.notes.length) });
-      return r && r.ok ? "server" : "device";
-    },
-    play: async (slug) => {   // straight into round 1 of the new level
-      const list = await (await fetch("/songs/songs.json", { cache: "no-store" })).json();
-      const i = list.findIndex((m) => m.file === `${slug}-1.json`);
-      try { localStorage.setItem("gr.level", Math.max(0, i)); sessionStorage.setItem("gr.autostart", JSON.stringify({ ...RUN, lock: RUN.lock === Infinity ? "all" : RUN.lock })); } catch { /* the menu, then */ }
-      location.href = location.pathname;
-    },
-  } });
-  if (window.__gr) window.__gr.recorder = recorder;   // harness handle
-}
-function startCreating() {
-  mode = "free";
-  const L = 4 * song().bars;
-  let until = ctx.currentTime;
-  setInterval(() => {
-    if (!clock) return;
-    const to = ctx.currentTime + 0.12, beatAt = (t) => (t - clock.first) / clock.beatDur, now = beatAt(ctx.currentTime);
-    recorder.lapTo(Math.floor(now / L), ((now % L) + L) % L);
-    const notes = recorder.playback(), b0 = beatAt(until), b1 = beatAt(to);
-    for (let lap = Math.floor(b0 / L); lap <= Math.floor(b1 / L); lap++) for (const n of notes) {
-      const b = lap * L + n.beat, entry = KEYMAP_BY_LANE[n.lane];
-      if (b < b0 || b >= b1 || b < 0 || !entry) continue;
-      const when = clock.first + b * clock.beatDur;
-      pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...laneSound(entry.ln), velocity: n.vel * 0.85, when });
-      setTimeout(() => stage3d.press(entry.idx, "FREE"), Math.max(0, (when - ctx.currentTime) * 1000));   // the drum / gun it's on lights up
-    }
-    until = to;
-  }, 25);
-  hudUI.say("The loop is running — press Record (or Enter) and play", "good", 4000);
-}
-
-// --- ROUND 4: THE HYDRA ----------------------------------------------------------------------------
-// The band plays the movement's song (round 1's, then 2's, then 3's) — every note, each section at the
-// conductor's level — and the back recordings follow the same levels. The fight (hydrafight.js) runs on
-// bar lines (judged half a beat after each, so a late-but-clean accent still counts) and the gestures.
-let hydraFight = null, hydraBarBase = 0, hydraLastBar = null, hydraMovement = 0, hydraOffsets = [], hydraFinale = false;
-const metronomeBeat = (time) => pool.noteOn({ channel: 0, midi: 72, baseNote: 60, buffer: drums.click, velocity: 0.35, when: time, destination: mixer.metronome, settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
-const sectionOfLane = (lane) => (lane.startsWith("bass") ? "bass" : lane.startsWith("treble") ? "treble" : "drums");
-const hydraKeys = { drums: "1", bass: "2", treble: "3" };
-function startHydra() {
-  hydraFight = new HydraFight({ life: 100 });
-  hudUI.setLife(100, 100);
-  hudUI.say("THE HYDRA — when a head rears, pick its section (1 drums · 2 bass · 3 treble) and ACCENT (O) on the next bar line", "good", 8000);
-  let until = ctx.currentTime;
-  setInterval(() => {
-    if (!clock || !hydraFight) return;
-    const L = 4 * song().bars, beatAt = (t) => (t - clock.first) / clock.beatDur, to = ctx.currentTime + 0.12;
-    const b0 = beatAt(until), b1 = beatAt(to);
-    for (let lap = Math.floor(b0 / L); lap <= Math.floor(b1 / L); lap++) for (const n of song().notes) {
-      const b = lap * L + n.beat, entry = KEYMAP_BY_LANE[n.lane];
-      if (b < b0 || b >= b1 || b < 0 || !entry) continue;
-      const lv = conductor.level(sectionOfLane(n.lane), b);
-      if (lv < 0.03) continue;
-      pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...laneSound(entry.ln, n.midi), velocity: (n.vel ?? 0.9) * lv, when: clock.first + b * clock.beatDur });
-    }
-    until = to;
-    updateBackLevels();
-    // the bar lines (half a beat late: a clean accent may land just after the one)
-    const local = Math.floor((beatAt(ctx.currentTime) - conductor.window) / 4);
-    if (local >= 0 && local !== hydraLastBar) {
-      hydraLastBar = local;
-      const on = Object.fromEntries(HEAD_SECTION.map((sec) => [sec, conductor.isOn(sec)]));
-      hydraEvents(hydraFight.bar(hydraBarBase + local, on));
-    }
-  }, 25);
-}
-function hydraGesture(ev) {
-  hydraOffsets.push(ev.kind === "release" ? 0 : ev.error * clock.beatDur);
-  hydraEvents(hydraFight.gesture({ ...ev, bar: hydraBarBase + ev.bar }));
-}
-function hydraEvents(evs) {
-  const H = stage3d.hydra, now = performance.now() / 1000;
-  for (const e of evs) {
-    bootlog("hydra", e);
-    const sec = e.head != null ? HEAD_SECTION[e.head] : null;
-    if (e.type === "rear") { H.rear(e.head, true); hudUI.say(`⚠ The ${sec.toUpperCase()} head rears! Press ${hydraKeys[sec]}, then O on the next bar line`, "bad", 2600); }
-    else if (e.type === "hit") { H.hit(e.head, now); hudUI.say(`💥 Struck the ${sec} head!${e.hp > 0 ? ` (${e.hp} more)` : ""}`, "good", 1800); }
-    else if (e.type === "down") { H.down(e.head); hudUI.say(`🐉 The ${sec} head is DOWN — keep ${sec} playing or it grows back`, "good", 3200); if (hydraFight.movement > hydraMovement) nextMovement(hydraFight.movement); }
-    else if (e.type === "strike") { H.rear(e.head, false); H.bite(e.head, now); hurtFlash(); hudUI.setLife(hydraFight.life, hydraFight.life); hudUI.say(e.dome ? `The ${sec} head bit — the full band (the dome) took half` : `The ${sec} head bit! (all three sections playing = the dome halves it)`, "bad", 2200); }
-    else if (e.type === "regrow") { H.up(e.head); hudUI.say(`The ${sec} head GREW BACK — ${sec} was cut too long`, "bad", 3000); }
-    else if (e.type === "won") hydraWon();
-    else if (e.type === "lost") hydraLost();
-  }
-  hudUI.setPart(`Round 4 · The Hydra · heads ${3 - hydraFight.downCount}/3 · movement ${hydraMovement + 1}`);
-}
-/** the band moves on to round m+1's music, starting exactly on the next bar line, at that song's own tempo */
-function nextMovement(m) {
-  hydraMovement = m;
-  const nextBarBeat = (Math.floor((ctx.currentTime - clock.first) / clock.beatDur / 4) + 1) * 4, at = clock.first + nextBarBeat * clock.beatDur;
-  setTimeout(() => {
-    clock.stop();
-    hydraBarBase += nextBarBeat / 4; hydraLastBar = null;
-    roundIdx = HYDRA.rounds[m];
-    BPM = Math.round((song().bpm || 80) * RUN.tempo * 10) / 10;
-    clock = startClock(ctx, { bpm: BPM, onBeat: metronomeBeat, at });
-    conductor = new Conductor({ beatsPerBar: 4 });   // the new movement comes in with the whole band
-    backUntil = at; stage3d.setBeat(clock.first, clock.beatDur);
-    bootlog("hydra movement", { movement: m + 1, song: song().name, bpm: BPM });
-    hudUI.say(`Movement ${m + 1} — ${song().title || song().name}`, "good", 2500);
-  }, Math.max(0, (at - ctx.currentTime - 0.2) * 1000));
-}
-function hydraResults(failed) {
-  const stats = gradeRound(hydraOffsets, conductor.window * clock.beatDur);
-  results.show({
-    round: "Round 4", title: failed ? "The hydra won" : "The hydra falls", stats, last: false, failed,
-    nextLabel: failed ? "Fight it again ▶" : "Back to the levels ▶",
-    run: { name: runName(RUN), mult: scoreMultiplier(RUN).total },
-    onNext: () => { if (failed) { try { sessionStorage.setItem("gr.hydra", JSON.stringify(HYDRA)); } catch { /* menu */ } } else { try { sessionStorage.setItem("gr.menuAt", "levels"); } catch { /* fine */ } } location.reload(); },
-    onMenu: () => { try { sessionStorage.setItem("gr.menuAt", "levels"); } catch { /* fine */ } location.reload(); },
-  });
-}
-function hydraWon() {   // the finale: the whole band at full for two loops, then the results
-  hydraFinale = true; stage3d.hydra.submerge();
-  const t = (ctx.currentTime - clock.first) / clock.beatDur; for (const sec of HEAD_SECTION) conductor.cue(sec, t);
-  hudUI.say("🏆 THE HYDRA FALLS — the finale!", "good", 6000);
-  setTimeout(() => hydraResults(false), 2 * 4 * song().bars * clock.beatDur * 1000);
-}
-function hydraLost() { life.over = true; hudUI.say("The hydra won…", "bad", 4000); setTimeout(() => hydraResults(true), 1400); }
+// --- the MODES (modes/create.js, modes/hydra.js) get the game's state through G ----------------------
+const G = {
+  get CREATE() { return CREATE; }, get BANKS() { return BANKS; }, get RUN() { return RUN; }, get HYDRA() { return HYDRA; },
+  applyStage: () => applyStage(), relabel: () => relabel(), song: () => song(), laneSound: (ln, midi) => laneSound(ln, midi),
+  updateBackLevels: () => updateBackLevels(), hurtFlash: () => hurtFlash(), runName: (r) => runName(r),
+  get ctx() { return ctx; }, get pool() { return pool; }, get KEYMAP_BY_LANE() { return KEYMAP_BY_LANE; }, get stage3d() { return stage3d; },
+  get hudUI() { return hudUI; }, get results() { return results; }, get drums() { return drums; }, get mixer() { return mixer; }, get life() { return life; },
+  get clock() { return clock; }, set clock(v) { clock = v; },
+  get mode() { return mode; }, set mode(v) { mode = v; },
+  get conductor() { return conductor; }, set conductor(v) { conductor = v; },
+  get roundIdx() { return roundIdx; }, set roundIdx(v) { roundIdx = v; },
+  get BPM() { return BPM; }, set BPM(v) { BPM = v; },
+  get backUntil() { return backUntil; }, set backUntil(v) { backUntil = v; },
+  get recorder() { return recorder; }, set recorder(v) { recorder = v; },
+  get hydraFight() { return hydraFight; }, set hydraFight(v) { hydraFight = v; },
+};
+const { makeRecorder, startCreating } = createMode(G);
+const HYDRA_MODE = hydraMode(G), { startHydra, hydraGesture } = HYDRA_MODE;
+let hydraFight = null;
 
 // --- freestyle + save -------------------------------------------------------
 function modeStr() {
@@ -1493,7 +1383,7 @@ const APPROACH_S = 4.0;   // must match stage3d.js
 
 function buildUpcoming(heardNow) {
   // arrows only for the part you're learning; none in free play
-  if (mode === "free" || songDone()) return [];
+  if (mode === "free" || !defend || songDone()) return [];   // no stream (round 4, the song-maker): no arrows
   const part = window.__gr && window.__gr.game && window.__gr.game.testPart;   // testPart: harness only, a fixed part looped
   if (part) return partArrows(part, (n) => LANE_INDEX[n], clock.first, 4 * partBars() * clock.beatDur, clock.beatDur, heardNow - 0.6, heardNow + APPROACH_S);
   // the STREAM's window: every occurrence in flight, at its own time
@@ -1755,7 +1645,7 @@ if (window.__gr) window.__gr.game = {
   // fireGun: harness only
   fireGun: (idx, lane) => fireGun(idx, lane, ctx.getOutputTimestamp().contextTime),
   get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,
-  get hydraFight() { return hydraFight; }, get hydraBarBase() { return hydraBarBase; }, get conductor() { return conductor; },   // harness: round 4
+  get hydraFight() { return hydraFight; }, get hydraBarBase() { return HYDRA_MODE.barBase; }, get conductor() { return conductor; },   // harness: round 4
   get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln, midi) => laneSound(ln, midi),
   backInfo: () => ({ bpm: BPM, songBpm: song().bpm, loopSeconds: +(song().bars * 4 * clock.beatDur).toFixed(3),
     stretched: [...backCache].map(([k, b]) => [k, +b.duration.toFixed(3)]) }),
