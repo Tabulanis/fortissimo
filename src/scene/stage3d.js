@@ -455,7 +455,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const drumMat = [];
   const drumPos = [];
   const drumFace = [];
-  const drumLabels = [];
+  const drumLabels = [], drumKeys = [];
   let labelsOff = false;   // tablets: no letters on the drums (owner, 2026-10-04)
   const drumLabelMats = [];
   // the countdown numbers: fat, a thick dark outline and a ring — 1 red, 2 orange, 3 yellow;
@@ -480,7 +480,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     c.height = 128;
     const g = c.getContext("2d");
     g.clearRect(0, 0, 128, 128);
-    g.font = "bold 88px sans-serif";
+    g.font = `bold ${key.length > 1 ? 62 : 88}px sans-serif`;   // "LB" / "RT" (pad buttons) fit too
     g.textAlign = "center";
     g.textBaseline = "middle";
     g.strokeStyle = "#1a0f08";
@@ -508,6 +508,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     scene.add(label);
     drumLabels.push(label);
     drumLabelMats.push(labelMat);
+    drumKeys.push(lane.key || "?");   // the keyboard letter, to restore after a controller's buttons
     // COUNTDOWN (owner, 2026-10-03: "telling when to hit the drums is really hard"):
     // a big outlined 3, 2, 1 just above the letter, one per beat; the hit is the beat after 1
 
@@ -2645,6 +2646,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       const a = arcs.reduce((best, x) => (x.t0 < best.t0 ? x : best)); a.t0 = lgState.now; a.from.copy(b.muzzle); },
     /** no key letters on the drums (touch screens: there are no keys) */
     hideDrumLabels: () => { labelsOff = true; for (const l of drumLabels) l.visible = false; },
+    /** what the drums say: an array by lane (a controller's buttons), or null for the keyboard letters (owner, 2026-10-06: "the drums need the controls on them like the others") */
+    setDrumLabels: (texts) => { drumLabelMats.forEach((m, i) => { const t = texts ? texts[i] : drumKeys[i]; if (!t || m.userData.text === t) return; m.map.dispose(); m.map = labelTex(t); m.userData.text = t; m.needsUpdate = true; }); },
     showDrumLabels: () => { labelsOff = false; drumLabels.forEach((l, i) => { l.visible = drumVisible[i]; }); },
     setCharge: (f) => { lgState.charge = Math.max(0, Math.min(1, f)); },
     lightningStrike: (target) => { lgState.boltT0 = lgState.now; lgState.from.copy(LG.pos); lgState.to.copy(target); },

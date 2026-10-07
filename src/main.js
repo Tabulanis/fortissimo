@@ -534,9 +534,12 @@ const MELODY_KEYS = Object.fromEntries(MELODY_LETTERS.map((c, i) => [c.toLowerCa
 // the pad: the same 8 buttons for both rows (hold LT = top row); drawn as D-pad arrows / face letters
 // the pad (owner, 2026-10-04): D-pad + X A B Y = the 8 COLUMNS; the game picks the row — one label per column
 const PAD_ROW = ["dL", "dD", "dR", "dU", "X", "A", "B", "Y"];
+const PAD_DRUM_LABELS = ["LB", "Y", "RB", "A", "X", "RT"];   // by drum lane: hat snare crash / kick tom-low tom-high (input/pads.js PAD_BUTTONS)
 function relabel() {   // the letters / pad buttons on the guns and drums, for this round's kit and the controls in hand
   for (const k of ["bass", "treble"]) stage3d.melodyStations[k].setLabels(padConnected ? padLabelsFor(k) : IS_TOUCH ? NO_LABELS : lettersFor(k));
-  if (padConnected || IS_TOUCH) stage3d.hideDrumLabels(); else stage3d.showDrumLabels();   // no letters on the drums with a pad in hand (owner)
+  // the drums show the controller's buttons with a pad in hand (owner, 2026-10-06), the keyboard letters otherwise; tablets: none
+  if (IS_TOUCH) stage3d.hideDrumLabels();
+  else { stage3d.setDrumLabels(padConnected ? PAD_DRUM_LABELS : null); stage3d.showDrumLabels(); }
 }
 const NO_LABELS = Array(16).fill("");   // tablets: no letters anywhere (owner, 2026-10-04) — unless a controller is plugged in
 const MELODY_ENTRY = { bass: [], treble: [] };
