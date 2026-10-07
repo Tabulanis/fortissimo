@@ -17,7 +17,27 @@ const SWELL = [
   { dx: -0.8, dz: -0.6, len: 3.2, amp: 0.05, speed: 1.1 },
 ];
 
-export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = -0.15, segments = 140 } = {}) {
+/** a plane grid in xz whose spacing grows with distance from (fx, fz): spacing = fine * (1 + d / falloff), capped at coarse */
+function gradedGrid({ x0, x1, z0, z1, fx, fz, fine, coarse, falloff }) {
+  const axis = (a0, a1, f) => { const out = [a0]; let a = a0; while (a < a1) { a += Math.min(coarse, fine * (1 + Math.abs(a - f) / falloff)); out.push(Math.min(a, a1)); } return out; };
+  const xs = axis(x0, x1, fx), zs = axis(z0, z1, fz);
+  const nx = xs.length, nz = zs.length, pos = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const k = j * nx + i; pos[k * 3] = xs[i]; pos[k * 3 + 1] = 0; pos[k * 3 + 2] = zs[j];
+    uv[k * 2] = (xs[i] - x0) / (x1 - x0); uv[k * 2 + 1] = (zs[j] - z0) / (z1 - z0);
+  }
+  const idx = new Uint32Array((nx - 1) * (nz - 1) * 6); let n = 0;
+  for (let j = 0; j < nz - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const a = j * nx + i, b = a + nx;
+    idx[n++] = a; idx[n++] = b; idx[n++] = a + 1; idx[n++] = b; idx[n++] = b + 1; idx[n++] = a + 1;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.BufferAttribute(uv, 2)); g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.userData.verts = nx * nz;
+  return g;
+}
+
+export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = -0.15, focus = new THREE.Vector3(0, 0, 32), fine = 0.12, coarse = 3.0, falloff = 9 } = {}) {
   const U = {
     uTime: { value: 0 },
     uRipples: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector4(0, 0, -100, 0)) },
@@ -154,11 +174,15 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }`;
-  const geo = new THREE.PlaneGeometry(width, depth, segments, Math.round(segments * depth / width));
-  geo.rotateX(-Math.PI / 2);
+  // TESSELLATION (owner, 2026-10-07: "the water needs tessellation, otherwise the waves are useless"):
+  // no hardware tessellation in WebGL, so the grid itself is GRADED — a vertex every `fine` metres
+  // around the focus (the podium / the hydra) growing to `coarse` at the far edges. The same vertex
+  // budget as a uniform grid, spent where it is seen; the swell and the chop become real geometry.
+  const geo = gradedGrid({ x0: -width / 2, x1: width / 2, z0: -depth / 2, z1: depth / 2, fx: focus.x - x, fz: focus.z - z, fine, coarse, falloff });
   const mat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: vert, fragmentShader: frag });
   const mesh = new THREE.Mesh(geo, mat); mesh.name = "sea"; mesh.position.set(x, y, z); mesh.frustumCulled = false;
   scene.add(mesh);
+  console.log(`sea: graded grid, ${geo.userData.verts} vertices`);
   let next = 0;
   return {
     mesh, level: y,
