@@ -76,8 +76,20 @@ export function createEditor({ scene, camera, dom, log = () => {} }) {
   el.addEventListener("keydown", (e) => e.stopPropagation());
 
   // ---- the handles
+  // UNIFORM SIZE (owner, 2026-10-07: "scale doesn't work"): three's centre box sizes by the RATIO of the
+  // pointer's distance from the centre now vs. at the grab — grab on the centre (where the box is) and
+  // that ratio explodes (an 80 px drag gave ×37). Our rule instead: drag UP to grow, DOWN to shrink,
+  // ×2 per 140 px, floor 2 %. The per-axis stretch boxes sit out at the arm ends and keep three's rule.
+  let sizeDrag = null;
+  dom.addEventListener("pointerdown", (e) => { if (on && sel && tc.mode === "scale" && tc.axis === "XYZ") sizeDrag = { y0: e.clientY, y: e.clientY, s0: sel.scale.clone() }; });
+  dom.addEventListener("pointermove", (e) => { if (sizeDrag) sizeDrag.y = e.clientY; });
+  dom.addEventListener("pointerup", () => { sizeDrag = null; });
   tc.addEventListener("dragging-changed", (e) => { if (e.value && sel) undo.push(snapshot(sel)); });
-  tc.addEventListener("objectChange", changed);
+  tc.addEventListener("objectChange", () => {
+    if (sizeDrag && sel) sel.scale.copy(sizeDrag.s0).multiplyScalar(Math.max(0.02, Math.pow(2, (sizeDrag.y0 - sizeDrag.y) / 140)));
+    if (sel && tc.mode === "scale") sel.scale.set(Math.max(0.02, sel.scale.x), Math.max(0.02, sel.scale.y), Math.max(0.02, sel.scale.z));
+    changed();
+  });
 
   // ---- picking: a click (not a drag) on the canvas, not on a handle
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -95,7 +107,8 @@ export function createEditor({ scene, camera, dom, log = () => {} }) {
     select(hits.length ? editableOf(hits[0].object) : null);
   });
 
-  window.__grEdit = { allEditables };   // harness handle (dev only)
+  window.__grEdit = { allEditables, tc,   // harness handle (dev only)
+    screenOf: (o) => { const v = o.getWorldPosition(new THREE.Vector3()).project(camera), r = dom.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; } };
   return {
     get on() { return on; }, get selected() { return sel; },
     setOn(v) { on = !!v; el.style.display = on ? "block" : "none"; helper.visible = on; if (!on) select(null); status(); },
