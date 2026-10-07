@@ -15,15 +15,16 @@
    heads move on their own. API per head: setSway(t), bite(now), jaw(open 0..1), group. */
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { bootlog } from "../bootlog.js";
 
 export const RIG = {
   // measured from the mesh (2026-10-06): neck y -1.69..-0.25 (narrow, leans back to -z), skull
   // above, snout +z out to 0.93, lower jaw tip at y -0.15 z 0.78, horns -z. Tune by eye.
   neckTop: -0.25,      // y where the neck ends and the skull begins
   neckBones: 5,
-  mouthY: 0.05,        // the mouth line: jaw vertices sit below this ...
-  hingeZ: 0.05,        // ... and in front of this (the snout is +z)
-  hingeY: 0.05,
+  mouthY: 0.35,        // (fallback only, when the file has no _JAW flag)
+  hingeZ: 0.22,        // the jaw hinge: measured from a side density map — the head is tilted, the hinge is high
+  hingeY: 0.33,
   band: 0.1,           // soft blend width at the jaw's edges
 };
 
@@ -35,7 +36,7 @@ export function loadHydraHead(url = "/models/HydraHead.glb") {
     mesh.updateWorldMatrix(true, false);
     const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);   // bake the file's node transform
     geometry.computeBoundingBox();
-    skinGeometry(geometry);
+    skinGeometry(geometry);   // ownership comes baked in the file (_JAW, tools/hydra-jaw-labels.py)
     loaded = { geometry, material: mesh.material, bounds: geometry.boundingBox };
     resolve(loaded);
   }, undefined, reject));
@@ -43,7 +44,8 @@ export function loadHydraHead(url = "/models/HydraHead.glb") {
 
 /** bone index layout: 0..N-1 neck (bottom up), N skull, N+1 jaw */
 function skinGeometry(geo) {
-  const pos = geo.attributes.position, n = pos.count;
+  const pos = geo.attributes.position, n = pos.count, flag = geo.attributes._jaw || null;
+  bootlog("hydra rig", { jawFlag: !!flag, verts: n });
   const bb = geo.boundingBox, y0 = bb.min.y, yTop = RIG.neckTop, N = RIG.neckBones;
   const idx = new Uint16Array(n * 4), w = new Float32Array(n * 4);
   const smooth = (x) => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
@@ -54,12 +56,17 @@ function skinGeometry(geo) {
       const u = (y - y0) / (yTop - y0) * (N - 1);
       a = Math.floor(u); b = Math.min(N - 1, a + 1); wb = u - a; wa = 1 - wb;
     } else {
-      // the skull, and the jaw where the vertex is below the mouth line AND in front of the hinge
-      const below = smooth((RIG.mouthY - y) / RIG.band + 0.5), front = smooth((z - RIG.hingeZ) / RIG.band + 0.5);
-      const jaw = below * front;
+      // the skull or the jaw: the file says which (_JAW, baked from the mesh's own connectivity by
+      // tools/hydra-jaw-labels.py — teeth ride whatever they are attached to, RIGIDLY); the only
+      // blend is a soft band around the hinge so the corner of the mouth stretches instead of tearing
+      let jaw = flag ? flag.getX(i) : smooth((RIG.mouthY - y) / RIG.band + 0.5) * smooth((z - RIG.hingeZ) / RIG.band + 0.5);
+      if (flag && jaw > 0.5) {
+        const dh = Math.hypot(y - RIG.hingeY, z - RIG.hingeZ);
+        if (dh < RIG.band * 2) jaw = 0.5 + 0.5 * smooth(dh / (RIG.band * 2));
+      }
       a = N; b = N + 1; wa = 1 - jaw; wb = jaw;
       // the first skull vertices also lean on the top neck bone so the join bends, not kinks
-      if (y < yTop + RIG.band) { const k = 1 - (y - yTop) / RIG.band; wa *= 1 - 0.5 * k; idx[i * 4 + 2] = N - 1; w[i * 4 + 2] = 0.5 * k * (1 - jaw); }
+      if (y < yTop + RIG.band && jaw < 0.5) { const k = 1 - (y - yTop) / RIG.band; wa *= 1 - 0.5 * k; idx[i * 4 + 2] = N - 1; w[i * 4 + 2] = 0.5 * k * (1 - jaw); }
     }
     idx[i * 4] = a; idx[i * 4 + 1] = b; w[i * 4] = wa; w[i * 4 + 1] = wb;
   }

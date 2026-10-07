@@ -19,13 +19,20 @@ let model = null, rigged = null;
 // &rig=hydra: the one-piece head with the code-built skeleton, swaying, jaw working, a bite every 3 s
 if (q.get("rig") === "hydra") loadHydraHead(url).then((L) => {
   rigged = createHydraHead(L); model = rigged.group; scene.add(model);
+  if (q.has("labels")) {   // paint the baked _JAW flag: red = jaw bone, grey = skull/neck
+    const f = L.geometry.attributes._jaw, col = new Float32Array(f.count * 3);
+    for (let i = 0; i < f.count; i++) { const j = f.getX(i); col[i * 3] = 0.75; col[i * 3 + 1] = j > 0.5 ? 0.1 : 0.75; col[i * 3 + 2] = j > 0.5 ? 0.1 : 0.75; }
+    L.geometry.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    rigged.mesh.material = new THREE.MeshBasicMaterial({ vertexColors: true });
+  }
   const size = L.bounds.getSize(new THREE.Vector3()), c = L.bounds.getCenter(new THREE.Vector3());
   model.position.set(-c.x, -L.bounds.min.y, -c.z);
   const r = Math.max(size.x, size.y, size.z);
-  cam.position.set(r * 1.3, r * 0.7, r * 1.1); cam.lookAt(0, size.y * 0.75, 0);   // from the snout side, a little above
+  if (q.has("side")) { cam.position.set(r * 1.6, size.y * 0.8, 0); cam.lookAt(0, size.y * 0.8, 0); }   // &side=1: straight from the side, at head height
+  else { cam.position.set(r * 1.3, r * 0.7, r * 1.1); cam.lookAt(0, size.y * 0.75, 0); }   // from the snout side, a little above
   const info = { model: name, rig: "hydra", bones: rigged.bones.map((b) => b.name) };
   out.textContent = JSON.stringify(info); bootlog("modelview", info);
-  if (q.has("shot")) setTimeout(() => fetch(`http://127.0.0.1:8899/png/${name}-rig${q.has("jaw") ? "-jaw" + q.get("jaw") : ""}`, { method: "POST", body: renderer.domElement.toDataURL("image/png") }).catch(() => {}), 2600);
+  if (q.has("shot")) setTimeout(() => fetch(`http://127.0.0.1:8899/png/${name}-rig${q.has("jaw") ? "-jaw" + q.get("jaw") : ""}${q.has("labels") ? "-labels" : ""}`, { method: "POST", body: renderer.domElement.toDataURL("image/png") }).catch(() => {}), 2600);
 });
 else new GLTFLoader().load(url, (g) => {
   model = g.scene; scene.add(model);
