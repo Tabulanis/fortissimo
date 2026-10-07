@@ -80,6 +80,18 @@ literally what you played. The garden shows how the band is doing.
 - Rounds are authored as Hackbeat projects (channels named like the drums,
   plus "bass" / "treble"); see src/game/hackbeat.js.
 
+## WORLDS (decided 2026-10-07)
+- Fortissimo has several WORLDS, each with a few levels. This one is **ROME** (the courtyard,
+  Roman soldiers, minotaurs, the cyclops, the hydra at sea). Planned: a **VIKING** world, a
+  **PIRATE SHIP** world, more later.
+- A world owns: its ARENA (scene + its own editor layout), its ENEMIES and BOSSES, its INSTRUMENTS
+  (sound banks: drum kits, bass sets, treble sets — a Viking kit and horns are not Rome's), and
+  its SONGS (each song file names its world; the level list groups by world).
+- The song-maker starts by picking the world, then offers that world's banks; a song plays in
+  its world's arena with its world's instruments.
+- Build rule: anything world-specific is filed under the world from now on (banks/rome/…,
+  layouts per world, songs tagged with world) so a new world is new pieces, not surgery.
+
 ## Round 4 — CONDUCTOR MODE at the sea gate (decided 2026-10-06; was "DJ set" for an hour)
 - **Rounds 1–3 build the band, round 4 conducts it.** Round 1 = the song's verse, 2 = the
   middle, 3 = the finale; each round locks drums, bass and treble for its movement. Round 4
