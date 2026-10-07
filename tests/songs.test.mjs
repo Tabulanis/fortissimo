@@ -1,23 +1,22 @@
-// The cut from Hackbeat (2026-10-07): the game now loads its own song files. This proves each one is
-// EXACTLY what the old path (the Hackbeat project through roundFromProject) gave the game — same
-// notes, sounds, backing, tracks, effects, tempo, length.
+// The game's own songs (off Hackbeat since 2026-10-07; the one-time import proved each file equal
+// to the old Hackbeat path — that check and the importer are in git history, commit 87b217b).
+// Now: every listed song is a well-formed Fortissimo song whose every note has a sound on disk.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { roundFromProject } from "../src/game/hackbeat.js";
 
-const man = JSON.parse(fs.readFileSync("public/rounds/rounds.json", "utf8"));
 const list = JSON.parse(fs.readFileSync("public/songs/songs.json", "utf8"));
+const exists = (p) => fs.existsSync("public/rounds/samples/" + p) || fs.existsSync("public/rounds/samples/" + p.replace(/\.wav$/i, ".ogg"));
 
-test("one song file per original round, in the same order", () => {
-  assert.deepEqual(list.map((s) => s.title), man.map((m) => m.title));
+test("the three original rounds lead the list, in order", () => {
+  assert.deepEqual(list.slice(0, 3).map((s) => s.file), ["song1.json", "song2.json", "song3.json"]);
 });
-for (const [i, m] of man.entries()) {
-  test(`${m.title}: the song file equals what the Hackbeat path produced`, () => {
-    const old = roundFromProject(JSON.parse(fs.readFileSync("public/rounds/" + m.file, "utf8")), m);
-    const { format, version, swing, world, ...now } = JSON.parse(fs.readFileSync("public/songs/" + list[i].file, "utf8"));
-    assert.equal(format, "fortissimo-song"); assert.equal(world, "rome");
-    const { warnings, ...was } = old;
-    assert.deepEqual(now, was);
+for (const m of list) {
+  test(`${m.file}: a Fortissimo song, every note sounds`, () => {
+    const s = JSON.parse(fs.readFileSync("public/songs/" + m.file, "utf8"));
+    assert.equal(s.format, "fortissimo-song"); assert.ok(s.world); assert.ok(s.bpm > 0 && s.bars > 0);
+    assert.ok(s.notes.length > 0);
+    for (const n of s.notes) assert.ok(s.sounds[n.lane], `${m.file}: no sound for ${n.lane}`);
+    for (const [lane, snd] of Object.entries(s.sounds)) assert.ok(exists(snd.path), `${m.file}: ${lane} -> ${snd.path} missing`);
   });
 }

@@ -1,7 +1,6 @@
 import assert from "node:assert";
 import fs from "node:fs";
 import { PRESETS, presetOf, normalize, scoreMultiplier, judgeFor, simplifyNotes } from "../src/game/run.js";
-import { roundFromProject } from "../src/game/hackbeat.js";
 
 // presets are what they say; touching anything makes it Custom
 for (const k of Object.keys(PRESETS)) assert.strictEqual(presetOf(PRESETS[k]), k);
@@ -31,7 +30,7 @@ const r = simplifyNotes(notes, "easy");
 assert.strictEqual(r.play.length + r.backing.length, notes.length, "nothing lost: the rest goes to the backing");
 
 // on the owner's song: Easy plays fewest, full plays all
-const dope = roundFromProject(JSON.parse(fs.readFileSync("../Hackbeat/projects/Dope.json", "utf8")));
+const dope = JSON.parse(fs.readFileSync("public/songs/song1.json", "utf8"));   // Round 1, "Dope" (the game's own file)
 const counts = ["easy", "medium", "full"].map((l) => simplifyNotes(dope.notes, l).play.length);
 assert.ok(counts[0] < counts[1] && counts[1] <= counts[2] && counts[2] <= dope.notes.length, `Dope notes to play: ${counts}`);
 for (const l of ["easy", "medium", "full"]) { const r = simplifyNotes(dope.notes, l); assert.strictEqual(r.play.length + r.backing.length, dope.notes.length, `${l}: nothing lost`); }

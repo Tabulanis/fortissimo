@@ -3,7 +3,7 @@
  * a Fortissimo song — { format: "fortissimo-song", version: 1, name, title, bpm, bars, notes,
  * sounds, back, tracks, fxBus, masterVol } — exactly the round object the game plays, no
  * translation on load. The three original rounds were converted ONCE from their Hackbeat projects
- * by tools/export-songs.mjs (hackbeat.js survives only as that importer); songs written in the
+ * once (the importer is in git history, before commit "off Hackbeat step 3"); songs written in the
  * game's own song-maker are saved in the same format. */
 export const SONG_FORMAT = "fortissimo-song";
 

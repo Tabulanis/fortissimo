@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { DRUM_LANES } from "../src/game/hackbeat.js";
+import { DRUMS as DRUM_LANES } from "../src/game/maker.js";
 
 const worlds = JSON.parse(fs.readFileSync("public/banks/worlds.json", "utf8"));
 const has = (p) => fs.existsSync("public/rounds/samples/" + p) && fs.existsSync("public/rounds/samples/" + p.replace(/\.wav$/, ".ogg"));
