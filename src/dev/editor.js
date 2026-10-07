@@ -35,9 +35,10 @@ export function createEditor({ scene, camera, dom, log = () => {} }) {
     <label style="display:block;margin-bottom:8px"><input type="checkbox" data-k="snap"> snap (25 cm · 15° · 10%)</label>
     <div style="display:flex;flex-wrap:wrap;gap:4px">
       <button data-a="hide">Hide</button><button data-a="reset">Reset</button><button data-a="undo">Undo</button><button data-a="save" style="font-weight:700">Save</button></div>
-    <div style="margin-top:8px;opacity:.6;font-size:11px;line-height:1.35">right-drag turns the camera · W A S D Q E fly · Shift fast · Esc let go · tilde (~) leaves</div>`;
+    <div style="margin-top:8px;opacity:.6;font-size:11px;line-height:1.35">HOLD right mouse to look · W A S D fly · Q/E down/up · Shift fast · wheel = fly speed · Esc let go · tilde (~) leaves (the game was paused; it resumes)</div>`;
   for (const b of el.querySelectorAll("button")) b.style.cssText = "flex:1;padding:5px 6px;border-radius:6px;border:1px solid #6a4a2a;background:#3a2414;color:#f1e3cc;cursor:pointer;font:12px system-ui";
   for (const i of el.querySelectorAll("input:not([type])")) i.style.cssText = "width:100%;box-sizing:border-box;background:#120c08;color:#f1e3cc;border:1px solid #5a3e24;border-radius:4px;padding:2px 4px;font:12px ui-monospace,monospace";
+  el.dataset.devEditor = "1";   // dev mode hides every other overlay, not this one
   document.body.appendChild(el);
   const $ = (k) => el.querySelector(`[data-k="${k}"]`), N = (n) => el.querySelector(`[data-n="${n}"]`);
   const status = () => { $("status").textContent = dirty ? "unsaved" : `${editCount()} saved`; $("status").style.color = dirty ? "#ffb35a" : ""; };

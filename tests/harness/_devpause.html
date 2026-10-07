@@ -1,0 +1,30 @@
+<!doctype html><body style="margin:0">
+<!-- DEV MODE pause + clear (2026-10-07): a song plays; tilde → the audio clock must STOP and every
+overlay but the canvas + editor panel must be hidden; tilde again → the clock runs on, overlays back.
+Reports to the :8899 sink. Copy to public/_devpause.html. -->
+<iframe id="f" style="width:1280px;height:800px;border:0"></iframe>
+<script type="module">
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body: JSON.stringify(body) });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const f = document.getElementById("f");
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  if (w.location.href === "about:blank") return;
+  try {
+    await wait(3500);
+    [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click();
+    await wait(6000);
+    const G = w.__gr.game, key = (k) => { w.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true })); w.dispatchEvent(new w.KeyboardEvent("keyup", { key: k, bubbles: true })); };
+    const shown = () => [...d.body.children].filter((el) => el.id !== "stage" && el.tagName !== "SCRIPT" && w.getComputedStyle(el).visibility !== "hidden" && el.getBoundingClientRect().width > 0).map((el) => el.id || el.className || el.tagName).slice(0, 8);
+    const before = { t: +G.ctx.currentTime.toFixed(2), state: G.ctx.state, overlays: shown() };
+    key("`"); await wait(2500);
+    const during = { t: +G.ctx.currentTime.toFixed(2), state: G.ctx.state, overlays: shown(), fly: w.__gr.stage3d.fly };
+    await wait(1500);
+    const during2 = { t: +G.ctx.currentTime.toFixed(2) };
+    key("~"); await wait(1500);
+    const after = { t: +G.ctx.currentTime.toFixed(2), state: G.ctx.state, overlays: shown(), fly: w.__gr.stage3d.fly };
+    say("devpause", { before, during, during2, after });
+  } catch (e) { say("devpause_err", { m: e.message, s: e.stack }); }
+};
+f.src = "/?autobegin=1";
+</script></body>

@@ -766,17 +766,32 @@ const AUTO_BEGIN = new URLSearchParams(location.search).has("autobegin");
 const CONDUCT = new URLSearchParams(location.search).has("conduct");
 function toggleFly() {
   const on = !stage3d.fly; stage3d.setFly(on);
-  hudUI.say(on ? "DEV MODE — click a thing to move it · right-drag to look · W A S D fly · Q/E down/up · Shift fast · tilde (~) back to the seat" : "back to the seat", on ? "good" : "", on ? 6000 : 1500);
-  bootlog("fly", { on });
+  // DEV MODE pauses the game and clears the screen (owner, 2026-10-07: "all on-screen stuff vanish,
+  // game pauses if playing"). Suspending the AudioContext freezes the song clock, so every note, cue,
+  // enemy and timer that runs on it stops dead and picks up exactly where it was; the water and the
+  // fire run on wall-clock time and keep moving, so the world doesn't look dead.
+  if (on && ctx && ctx.state === "running") { ctx.suspend(); flyPaused = true; }
+  else if (!on && flyPaused && ctx) { ctx.resume(); flyPaused = false; }
+  for (const el of [...document.body.children]) {
+    if (el === stage || el.dataset.devEditor || el.tagName === "SCRIPT") continue;
+    if (on) { el.dataset.devHid = el.style.visibility || "-"; el.style.visibility = "hidden"; }
+    else if (el.dataset.devHid) { el.style.visibility = el.dataset.devHid === "-" ? "" : el.dataset.devHid; delete el.dataset.devHid; }
+  }
+  document.body.classList.toggle("dev-mode", on);   // anything created while editing (stamps) is hidden by the rule below
+  bootlog("fly", { on, paused: flyPaused });
 }
+let flyPaused = false;
+{ const st = document.createElement("style"); st.textContent = "body.dev-mode > *:not(#stage):not([data-dev-editor]) { visibility: hidden !important; }"; document.head.appendChild(st); }
 window.addEventListener("keyup", (e) => { if (stage3d && stage3d.fly) stage3d.flyKey(e.key, false); });
-// mouse drag turns the free camera
-{ let drag = null;
-  // RIGHT-drag turns the free camera (left-click belongs to the editor: select, drag handles)
-  window.addEventListener("mousedown", (e) => { if (stage3d && stage3d.fly && e.button === 2) drag = { x: e.clientX, y: e.clientY }; });
+// DEV MODE mouse look (owner, 2026-10-07: "mouse look is off, really hard to control"): HOLD the RIGHT
+// button and the cursor locks and the camera turns like a first-person game — stops dead on release.
+// (Before: a plain drag here AND the game's own drag-look both steered, and the game's kept spinning.)
+{ let looking = false;
+  window.addEventListener("mousedown", (e) => { if (stage3d && stage3d.fly && e.button === 2) { looking = true; stage.requestPointerLock?.(); } });
+  window.addEventListener("mouseup", (e) => { if (e.button === 2 && looking) { looking = false; if (document.pointerLockElement) document.exitPointerLock(); } });
+  window.addEventListener("mousemove", (e) => { if (looking && stage3d && stage3d.fly) stage3d.flyLook(e.movementX, e.movementY); });
   window.addEventListener("contextmenu", (e) => { if (stage3d && stage3d.fly) e.preventDefault(); });
-  window.addEventListener("mousemove", (e) => { if (drag && stage3d && stage3d.fly) { stage3d.flyLook(e.clientX - drag.x, e.clientY - drag.y); drag = { x: e.clientX, y: e.clientY }; } });
-  window.addEventListener("mouseup", () => { drag = null; }); }
+  window.addEventListener("wheel", (e) => { if (stage3d && stage3d.fly) { e.preventDefault(); stage3d.flySpeed(e.deltaY < 0 ? 1.25 : 0.8); } }, { passive: false }); }
 let conductor = null, conductSection = "drums";
 const beatsNow = () => (clock && ctx ? (ctx.currentTime - clock.first) / clock.beatDur : 0);
 function conductGesture(kind, t = beatsNow()) {
@@ -1408,8 +1423,9 @@ function frame() {
   }
   // look around: arrow keys + thumbsticks + mouse (VR ignores it: the head looks)
   const k = (key) => (lookKeys.has(key) ? 1 : 0);
-  stage3d.setLookInput(k("ArrowRight") - k("ArrowLeft") + pads.look.x + mouseLook.x,
-    k("ArrowUp") - k("ArrowDown") + pads.look.y + mouseLook.y);
+  const ml = stage3d.fly ? 0 : 1;   // dev mode: only the arrows and a pad's stick turn by rate; the mouse turns directly
+  stage3d.setLookInput(k("ArrowRight") - k("ArrowLeft") + pads.look.x + ml * mouseLook.x,
+    k("ArrowUp") - k("ArrowDown") + pads.look.y + ml * mouseLook.y);
   drawChart();
 }
 
@@ -1432,6 +1448,7 @@ const drags = new Map();   // pointerId -> last x, y (look-around drags)
 const recentTaps = [];     // dev log: where taps landed and which drum they picked
 stage.style.touchAction = "none";
 stage.addEventListener("pointerdown", (e) => {
+  if (stage3d && stage3d.fly) return;   // dev mode: clicks belong to the editor, not the drums, and no drag-look
   if (e.pointerType === "touch") lastTouch = performance.now();
   if (autoFromMenu && !ctx) { startBtn.click(); return; }
   if (armed && !clock) { beginCount(); return; }   // READY: the first tap starts the count

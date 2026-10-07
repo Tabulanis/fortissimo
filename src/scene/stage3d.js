@@ -2066,7 +2066,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // DEV FLY (owner, 2026-10-07: "a dev mode so I can look around"): a free camera that starts
   // where the seat's camera is. WASD move, Q/E down/up, Shift fast; drag the mouse (or the
   // arrows / a pad's right stick through the look input) to turn. Nothing else changes.
-  const fly = { on: false, pos: new THREE.Vector3(), yaw: 0, pitch: 0, keys: new Set() };
+  const fly = { on: false, pos: new THREE.Vector3(), yaw: 0, pitch: 0, keys: new Set(), speed: 5 };   // speed m/s (the mouse wheel sets it)
   // the EDITOR rides along with the fly camera (owner, 2026-10-07: "alter dev mode to be able to move stuff");
   // loaded on first use, so a normal game never pays for it
   let editor = null;
@@ -2081,7 +2081,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   }
   const _fwd = new THREE.Vector3(), _side = new THREE.Vector3();
   function updateFly(dt) {
-    const k = fly.keys, speed = (k.has("shift") ? 18 : 6) * Math.min(dt, 0.1);
+    const k = fly.keys, speed = (k.has("shift") ? 3 : 1) * fly.speed * Math.min(dt, 0.1);
     fly.yaw -= look.inX * dt * 1.6; fly.pitch = Math.max(-1.5, Math.min(1.5, fly.pitch + look.inY * dt * 1.2));
     _fwd.set(-Math.sin(fly.yaw), 0, -Math.cos(fly.yaw)); _side.set(Math.cos(fly.yaw), 0, -Math.sin(fly.yaw));
     if (k.has("w")) fly.pos.addScaledVector(_fwd, speed); if (k.has("s")) fly.pos.addScaledVector(_fwd, -speed);
@@ -2633,7 +2633,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     /** DEV free camera: setFly(on), flyKey(key, down), flyLook(dx, dy) in pixels dragged; `fly` reads the state */
     setFly, get fly() { return fly.on; }, get editor() { return editor; },
     flyKey: (key, down) => { const kk = key.toLowerCase(); if (down) fly.keys.add(kk); else fly.keys.delete(kk); },
-    flyLook: (dx, dy) => { fly.yaw -= dx * 0.004; fly.pitch = Math.max(-1.5, Math.min(1.5, fly.pitch - dy * 0.004)); },
+    flyLook: (dx, dy) => { fly.yaw -= dx * 0.0024; fly.pitch = Math.max(-1.5, Math.min(1.5, fly.pitch - dy * 0.0024)); },   // pixels moved (pointer-locked)
+    flySpeed: (k) => { fly.speed = Math.max(0.5, Math.min(40, fly.speed * k)); return fly.speed; },
     flyPose: (x, y, z, yaw, pitch) => { fly.pos.set(x, y, z); fly.yaw = yaw; fly.pitch = pitch; },   // dev: put the free camera somewhere exact (photos)
     /** turn to a station: "drums" | "bass" | "treble" */
     setStation(name) {
