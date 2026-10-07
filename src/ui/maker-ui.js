@@ -8,7 +8,7 @@
       Record and play — every pass of the loop is kept as a take; Undo takes the last pass back off.
       Rounds 1-3, each drums / bass / treble; then Save writes the whole level (round 4, the Hydra, is
       made from rounds 1-3). The game wires the sound and the clock in through the callbacks. */
-import { Draft, HELP, MOODS, TEMPOS, PARTS, barMidi, starterPart, recordLanes, draftToSong, missingParts, makeLevel, slugOf } from "../game/maker.js";
+import { Draft, HELP, thinParts, THIN, MOODS, TEMPOS, PARTS, barMidi, starterPart, recordLanes, draftToSong, missingParts, makeLevel, slugOf } from "../game/maker.js";
 
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 
@@ -128,7 +128,7 @@ export function createRecorder({ picks, banks, hooks }) {
         <span class="grow"></span>
         ${r < 2 ? `<button data-a="next">Round ${r + 2} ▶</button>` : ""}
         <button data-a="save" class="${rounds.every((x, i) => done[i]) ? "on" : ""}">💾 Save level</button></div>
-      <div class="r say">${msg || (missing.length ? `${KEYS_HELP[part]}. Press Record (or Enter) and play along. Still empty here: ${missing.join(", ")}.` : `${KEYS_HELP[part]}. Round ${r + 1} has all three parts.`)}</div>`;
+      <div class="r say">${msg || (missing.length ? `${KEYS_HELP[part]}. Press Record (or Enter) and play along. Still empty here: ${missing.join(", ")}.` : `${KEYS_HELP[part]}. Round ${r + 1} has all three parts.${thinParts(d()).length ? ` Thin: ${thinParts(d()).join(", ")} — under ${THIN} notes, that fight will be over fast. Play another pass or add a 🎁 starter.` : ""}`)}</div>`;
     el.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => b.blur()));   // the keys are the instrument: never "press" a button by accident
     el.querySelectorAll("[data-round]").forEach((b) => (b.onclick = () => goRound(+b.dataset.round)));
     el.querySelectorAll("[data-part]").forEach((b) => (b.onclick = () => goPart(b.dataset.part)));

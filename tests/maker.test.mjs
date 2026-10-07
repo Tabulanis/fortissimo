@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { HELP, tidyBeat, Draft, barMidi, starterBeat, draftToSong, MOODS, PARTS, starterPart, recordLanes, missingParts, makeLevel, slugOf } from "../src/game/maker.js";
+import { HELP, tidyBeat, Draft, barMidi, starterBeat, draftToSong, MOODS, PARTS, starterPart, recordLanes, missingParts, makeLevel, slugOf, thinParts } from "../src/game/maker.js";
 
 test("timing help: off keeps the feel, little pulls halfway to the eighth, tidy snaps to sixteenths, robot to eighths", () => {
   assert.equal(tidyBeat(1.07, "off"), 1.07);
@@ -83,4 +83,10 @@ test("playback leaves out the pass being played; a round needs all three parts; 
   assert.equal(L.format, "fortissimo-level"); assert.deepEqual(L.hydra.from, [1, 2, 3]);
   assert.throws(() => makeLevel(songs.slice(0, 2), { name: "x", title: "x", files: ["a", "b"] }));
   assert.equal(slugOf("My Big Song!"), "my-big-song");
+});
+test("a part under 16 notes is flagged thin (empty ones are 'missing', not thin)", () => {
+  const d = new Draft();
+  d.beginTake("bass"); for (let b = 0; b < 8; b++) d.play("bass 1", b); d.closeTake();
+  for (const n of starterPart("drums")) { d.beginTake("drums"); d.play(n.lane, n.played, n.vel); d.closeTake(); }
+  assert.deepEqual(thinParts(d), ["bass"]);
 });

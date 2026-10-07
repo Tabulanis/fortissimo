@@ -148,5 +148,8 @@ export function makeLevel(songs, { name, title, files }) {
 }
 /** what's still missing before a round can be saved (empty = ready): every part needs at least one note */
 export function missingParts(draft) { return PARTS.filter((p) => draft.notes(p).length === 0); }
+/** parts that will make a THIN fight (a section lasts as long as its notes do — his design): fewer than `min` notes */
+export const THIN = 16;
+export function thinParts(draft, min = THIN) { return PARTS.filter((p) => { const n = draft.notes(p).length; return n > 0 && n < min; }); }
 /** a file-safe name from the title the player typed */
 export const slugOf = (t) => (String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "my-level").slice(0, 40);

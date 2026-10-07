@@ -23,7 +23,7 @@ import { Loops } from "./game/loops.js";
 import { ROUNDS, partArrows, songOf } from "./game/stages.js";
 import { loadRoundFiles } from "./game/roundfiles.js";
 import { backLevel } from "./game/backing.js";
-import { normalize, judgeFor, simplifyNotes, scoreMultiplier, levelOf } from "./game/run.js";
+import { normalize, judgeFor, simplifyNotes, scoreMultiplier, levelOf, LEVELS } from "./game/run.js";
 import { fillKit, kitPlan } from "./game/kit.js";
 const runName = (r) => { const lv = levelOf(r); return lv ? `Level ${lv}` : "Custom"; };
 import { createMenu } from "./ui/menu.js";
@@ -56,7 +56,8 @@ const SET = loadSettings();         // saved settings (Esc / gear)
 // THE RUN (run.js, owner 2026-10-03, Beat Saber style): chosen in the start menu —
 // hitbox, tempo, pattern difficulty, notes per step, keep. Saved between visits.
 // gr.run2: the run settings since the ±250 ms hitbox (2026-10-03) — the old ones (gr.run) are left behind
-const RUN = (() => { try { return normalize(JSON.parse(localStorage.getItem("gr.run2") || "null") || {}); } catch { return normalize({}); } })();
+// a NEW player (nothing saved) starts on Level 1 — single notes, slower (2026-10-07: "a gentler start")
+const RUN = (() => { try { return normalize(JSON.parse(localStorage.getItem("gr.run2") || "null") || { ...LEVELS[0] }); } catch { return normalize({ ...LEVELS[0] }); } })();
 let BPM = 80;   // set at Start: the song's own tempo x the run's tempo
 // levels unlock one by one: finishing level N opens N + 1
 const UNLOCKED_KEY = "gr.unlocked";
