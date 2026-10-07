@@ -53,8 +53,27 @@ def label(p):
             top = max(P[v][1] for v in comp); root_is_up = top > HINGE_Y
             for v in comp: lab[v] = 0 if root_is_up else 1
     jaw = sum(lab); print(f"{p.name}: {n} vertices, {seeds} seeds, jaw {jaw}, skull/neck {n - jaw}")
-    # write the flag as a new float attribute _JAW: append a bufferView + accessor
-    data = struct.pack("<" + "f" * n, *[float(v) for v in lab])
+    # SOFT TISSUE (owner: "smooth the weights on the red parts of the jaw, they should stretch"):
+    # the mouth lining and tongue are painted red — a big, unmistakable area in the colour map —
+    # so those vertices get a weight DIFFUSED across the mesh from the hard labels around them,
+    # anchored by bone and teeth, which stay rigid at exactly 0 or 1.
+    # The lower jaw is mostly a separate shell (only ~13 vertices stitch it to the skull), so a
+    # blend along the mesh's edges can't reach across the mouth: the blend is by DISTANCE instead —
+    # a red vertex's weight is set by how far it sits from the nearest hard jaw vertex vs the
+    # nearest hard skull vertex (head only, not the neck), eased so the extremes stay rigid.
+    w = [float(v) for v in lab]
+    red = {i for i in red_vertices(j, bin, prim) if P[i][1] > HINGE_Y - 0.45 and P[i][2] > HINGE_Z - 0.1}   # the mouth only: red texels on the neck scales are not soft tissue
+    anchors_j = [P[i] for i in range(n) if lab[i] == 1 and i not in red]
+    anchors_s = [P[i] for i in range(n) if lab[i] == 0 and i not in red and P[i][1] > NECK_TOP + 0.1]
+    def dmin(p, A): return min((p[0] - a[0]) ** 2 + (p[1] - a[1]) ** 2 + (p[2] - a[2]) ** 2 for a in A) ** 0.5
+    smooth = lambda x: 0.0 if x <= 0 else 1.0 if x >= 1 else x * x * (3 - 2 * x)
+    for i in red:
+        dj, ds = dmin(P[i], anchors_j), dmin(P[i], anchors_s)
+        w[i] = smooth((ds / (dj + ds + 1e-9) - 0.15) / 0.7)
+    soft = sum(1 for i in red if 0.05 < w[i] < 0.95)
+    print(f"  red soft tissue: {len(red)} vertices, {soft} of them now blended between the bones")
+    # write the weight as a new float attribute _JAW: append a bufferView + accessor
+    data = struct.pack("<" + "f" * n, *w)
     while len(bin) % 4: bin.append(0)
     j["bufferViews"].append({"buffer": 0, "byteOffset": len(bin), "byteLength": len(data)}); bin += data
     j["accessors"].append({"bufferView": len(j["bufferViews"]) - 1, "componentType": 5126, "count": n, "type": "SCALAR", "min": [0.0], "max": [1.0]})
@@ -62,6 +81,20 @@ def label(p):
     j["buffers"][0]["byteLength"] = len(bin)
     jb = json.dumps(j, separators=(",", ":")).encode(); jb += b" " * (-len(jb) % 4)
     p.write_bytes(b"glTF" + struct.pack("<II", 2, 12 + 8 + len(jb) + 8 + len(bin)) + struct.pack("<I", len(jb)) + b"JSON" + jb + struct.pack("<I", len(bin)) + b"BIN\0" + bytes(bin))
+
+def red_vertices(j, bin, prim):
+    """indices of vertices whose colour-map texel is red (mouth lining, tongue)"""
+    import io
+    from PIL import Image
+    UV = acc(j, bin, prim["attributes"]["TEXCOORD_0"])
+    mat = j["materials"][prim["material"]]; ti = mat["pbrMetallicRoughness"]["baseColorTexture"]["index"]
+    bv = j["bufferViews"][j["images"][j["textures"][ti]["source"]]["bufferView"]]
+    img = Image.open(io.BytesIO(bytes(bin[bv.get("byteOffset", 0):bv.get("byteOffset", 0) + bv["byteLength"]]))).convert("RGB")
+    W, H = img.size; px = img.load(); out = []
+    for i, (u, v) in enumerate(UV):
+        r, g, b = px[min(W - 1, int((u % 1) * W)), min(H - 1, int((v % 1) * H))]
+        if r > 100 and r > 1.6 * g and r > 1.6 * b: out.append(i)   # red hue, not tan/green scales, not pale teeth
+    return out
 
 root = Path(__file__).resolve().parent.parent / "public"
 for p in [root / "models" / "HydraHead.glb", root / "small" / "models" / "HydraHead.glb"]: label(p)

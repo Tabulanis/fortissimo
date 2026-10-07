@@ -21,7 +21,7 @@ if (q.get("rig") === "hydra") loadHydraHead(url).then((L) => {
   rigged = createHydraHead(L); model = rigged.group; scene.add(model);
   if (q.has("labels")) {   // paint the baked _JAW flag: red = jaw bone, grey = skull/neck
     const f = L.geometry.attributes._jaw, col = new Float32Array(f.count * 3);
-    for (let i = 0; i < f.count; i++) { const j = f.getX(i); col[i * 3] = 0.75; col[i * 3 + 1] = j > 0.5 ? 0.1 : 0.75; col[i * 3 + 2] = j > 0.5 ? 0.1 : 0.75; }
+    for (let i = 0; i < f.count; i++) { const j = f.getX(i); col[i * 3] = 0.75; col[i * 3 + 1] = 0.75 - 0.65 * j; col[i * 3 + 2] = 0.75 - 0.65 * j; }   // grey -> red by weight
     L.geometry.setAttribute("color", new THREE.BufferAttribute(col, 3));
     rigged.mesh.material = new THREE.MeshBasicMaterial({ vertexColors: true });
   }
