@@ -15,8 +15,8 @@ test("one song file per original round, in the same order", () => {
 for (const [i, m] of man.entries()) {
   test(`${m.title}: the song file equals what the Hackbeat path produced`, () => {
     const old = roundFromProject(JSON.parse(fs.readFileSync("public/rounds/" + m.file, "utf8")), m);
-    const { format, version, swing, ...now } = JSON.parse(fs.readFileSync("public/songs/" + list[i].file, "utf8"));
-    assert.equal(format, "fortissimo-song");
+    const { format, version, swing, world, ...now } = JSON.parse(fs.readFileSync("public/songs/" + list[i].file, "utf8"));
+    assert.equal(format, "fortissimo-song"); assert.equal(world, "rome");
     const { warnings, ...was } = old;
     assert.deepEqual(now, was);
   });

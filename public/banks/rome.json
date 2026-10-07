@@ -1,0 +1,82 @@
+{
+ "world": "rome",
+ "name": "Rome",
+ "drums": [
+  {
+   "id": "courtyard",
+   "name": "Courtyard kit",
+   "sounds": {
+    "hat": "banks/rome/hat.wav",
+    "snare": "banks/rome/snare.wav",
+    "crash": "banks/rome/crash.wav",
+    "kick": "banks/rome/kick.wav",
+    "tom low": "banks/rome/tom_low.wav",
+    "tom high": "banks/rome/tom_high.wav"
+   }
+  },
+  {
+   "id": "legion",
+   "name": "Legion kit",
+   "sounds": {
+    "hat": "banks/rome/VCSL-Struck-Idiophones-Tambourine-4---Legacy-tamb2_rr1.wav",
+    "snare": "banks/rome/VSCO-2-CE-snare-drum3_marching-snare3_fff_1.wav",
+    "crash": "banks/rome/VCSL-Struck-Idiophones-Clash-Cymbals-1-cymbal_crash1_ff3.wav",
+    "kick": "banks/rome/VCSL-Struck-Membranophones-Bass-Drum-1-BDrumNew_hit_v7_rr2_Sum.wav",
+    "tom low": "banks/rome/VSCO-2-CE-Percussion-Timpani-Timpani2_Hit_v4_rr2_Sum.wav",
+    "tom high": "banks/rome/VCSL-Struck-Membranophones-Frame-Drum-HDrumL_Hit_v3_rr1_Sum.wav"
+   }
+  }
+ ],
+ "bass": [
+  {
+   "id": "bass-bars",
+   "name": "Bass bars",
+   "sample": "banks/rome/bass_bars.wav",
+   "root": 36
+  },
+  {
+   "id": "cello-pizz",
+   "name": "Cello pizzicato",
+   "sample": "banks/rome/VSCO-2-CE-Cello-Section-pizzT-pizzT_A2_v2_RR2.wav",
+   "root": 45
+  },
+  {
+   "id": "trombone",
+   "name": "Trombone",
+   "sample": "banks/rome/VSCO-2-CE-OldTrombone-Sustain-Trombone_Sustain_D2_v4_1.wav",
+   "root": 38
+  },
+  {
+   "id": "tuba",
+   "name": "Tuba",
+   "sample": "banks/rome/VSCO-2-CE-Tuba-sus-Tuba3_sus_D2_v3_rr1_Mid.wav",
+   "root": 38
+  }
+ ],
+ "treble": [
+  {
+   "id": "treble-bars",
+   "name": "Treble bars",
+   "sample": "banks/rome/treble_bars.wav",
+   "root": 72
+  },
+  {
+   "id": "folk-harp",
+   "name": "Folk harp",
+   "sample": "banks/rome/VCSL-Composite-Chordophones-Folk-Harp-EWHarp_Normal_D3_v3_RR1.wav",
+   "root": 62
+  },
+  {
+   "id": "violin-spic",
+   "name": "Violin spiccato",
+   "sample": "banks/rome/VSCO-2-CE-Violin-Section-Spic-VlnEns_Spic_C4_v2_rr2.wav",
+   "root": 60
+  },
+  {
+   "id": "tubular-bells",
+   "name": "Tubular bells",
+   "sample": "banks/rome/VCSL-Struck-Idiophones-Tubular-Bells-2-TB_hit_D5_v4_1.wav",
+   "root": 86
+  }
+ ]
+}

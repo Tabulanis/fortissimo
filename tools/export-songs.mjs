@@ -14,7 +14,7 @@ const list = [];
 for (const m of man) {
   const round = roundFromProject(JSON.parse(fs.readFileSync("public/rounds/" + m.file, "utf8")), m);
   const file = m.file.replace(/^round/, "song");
-  const song = { format: "fortissimo-song", version: 1, name: m.name, title: m.title, swing: m.swing || 0, ...round };
+  const song = { format: "fortissimo-song", version: 1, world: m.world || "rome", name: m.name, title: m.title, swing: m.swing || 0, ...round };   // every song belongs to a WORLD (BRIEF "WORLDS")
   delete song.warnings;
   fs.writeFileSync("public/songs/" + file, JSON.stringify(song));
   list.push({ name: m.name, title: m.title, file });

@@ -18,7 +18,7 @@ export async function loadRoundFiles(base = "/songs/") {
   for (const m of list) {
     const s = await get(m.file);
     if (s.format !== SONG_FORMAT) throw new Error(`${m.file}: not a Fortissimo song (format ${s.format})`);
-    const { format, version, ...song } = s;
+    const { format, version, ...song } = s;   // song.world says which world it belongs to (rome, …)
     songs.push({ ...song, warnings: [] });
   }
   return songs;
