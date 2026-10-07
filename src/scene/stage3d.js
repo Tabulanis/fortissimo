@@ -439,9 +439,11 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   createCove(scene);   // round 4's cove behind the sea gate (blockout)
   // THE HYDRA (hydraBoss.js): three necks out of the sea in front of the dock, the rigged heads
   // on top; rises on hydra.rise() — round 4 / the conduct feel-test; ?hydra=1 raises it at load (dev)
-  const hydra = createHydra(scene, { origin: new THREE.Vector3(0, -0.15, DOCK.z1 + 16), target: BOOTH_POS.clone().setY(2.2), height: 8 });
+  const hydra = createHydra(scene, { origin: new THREE.Vector3(0, -0.15, DOCK.z1 + 7.5), target: BOOTH_POS.clone().setY(2.2), height: 6 });   // close (owner: the necks never reach further, they are just nearer — bigger)
   if (new URLSearchParams(location.search).has("hydra")) hydra.rise();
-  if (new URLSearchParams(location.search).has("bite")) { let k = 0; setInterval(() => hydra.bite(k++ % 3, performance.now() / 1000), 3000); }   // dev: a bite every 3 s, heads in turn
+  { const b = new URLSearchParams(location.search).get("bite");   // dev: &bite=1 bites every 3 s, heads in turn; &bite=hold freezes the middle head at full lunge
+    if (b === "hold") hydra.holdLunge(1);
+    else if (b) { let k = 0; setInterval(() => hydra.bite(k++ % 3, performance.now() / 1000), 3000); } }
   const melodyStations = { bass: createStation(scene, "bass", { lamp: !MOBILE, slots: KIT.bass }), treble: createStation(scene, "treble", { lamp: !MOBILE, slots: KIT.treble }) };
   bootlog("courtyard: done");
   // the reflecting pool (drawn with the fx layer: after the scene, so the

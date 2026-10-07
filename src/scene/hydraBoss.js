@@ -66,23 +66,29 @@ export function createHydra(scene, { origin = new THREE.Vector3(0, -0.15, 43), t
       const curve = new THREE.CatmullRomCurve3([base.clone(), base.clone(), base.clone(), base.clone(), base.clone()], false, "catmullrom", 0.4);
       H.push({ head, neck, curve, base, seed: i * 2.1 + 0.7, lunge: 0, lungeAt: -1e9, tip: new THREE.Vector3(), stubLen, lean: 0.35 + 0.1 * i });
     }
+    if (api._hold !== undefined) H[api._hold % H.length].hold = true;
     api.ready = true;
   });
   const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _fwd = new THREE.Vector3(), _right = new THREE.Vector3(), _up = new THREE.Vector3(), _tan = new THREE.Vector3();
   api.rise = () => { api._levelTo = 1; };
   api.submerge = () => { api._levelTo = 0; };
   api.bite = (i, now) => { const h = H[i % H.length]; if (h) { h.lungeAt = now; h.head.bite(now + 0.3); } };
+  api.holdLunge = (i) => { api._hold = i; if (H.length) H[i % H.length].hold = true; };   // dev: freeze a head at full lunge, jaw wide, for a photo (the heads load async: remembered until they exist)
   api.update = (dt, now, beatPhase = now) => {
     if (!api.ready) return;
     api.level += (api._levelTo - api.level) * Math.min(1, dt * 0.9);   // rises over ~3 s
     for (const h of H) {
       const t = now, s = h.seed, lv = api.level;
       // the lunge: toward the target for 0.35 s, back over 0.9 s
-      const dl = now - h.lungeAt; h.lunge = dl < 0 ? 0 : dl < 0.35 ? Math.sin(dl / 0.35 * Math.PI / 2) : dl < 1.25 ? 1 - (dl - 0.35) / 0.9 : 0;
+      const dl = now - h.lungeAt; h.lunge = h.hold ? 1 : dl < 0 ? 0 : dl < 0.35 ? Math.sin(dl / 0.35 * Math.PI / 2) : dl < 1.25 ? 1 - (dl - 0.35) / 0.9 : 0;
+      if (h.hold) h.head.jaw(1);
       // the curve: base at the water, a belly leaning toward the dock, the tip high and swaying
       const sway = Math.sin(beatPhase * Math.PI * 0.5 + s) * 1.4 + Math.sin(t * 0.37 + s * 1.3) * 0.6;
       const toward = _fwd.subVectors(target, h.base).setY(0).normalize();
-      const top = h.base.clone().addScaledVector(toward, height * h.lean * lv + h.lunge * 6).add(new THREE.Vector3(sway * lv, height * lv - h.lunge * 2.5 + Math.sin(t * 0.8 + s) * 0.5 * lv, 0));
+      const idleTop = h.base.clone().addScaledVector(toward, height * h.lean * lv).add(new THREE.Vector3(sway * lv, height * lv + Math.sin(t * 0.8 + s) * 0.5 * lv, 0));
+      // the strike goes to a point 1.6 m short of the target, a touch above it — whatever the distance
+      const strikeAt = target.clone().addScaledVector(toward, -1.6).add(new THREE.Vector3(0, 1.0, 0));
+      const top = idleTop.lerp(strikeAt, 0.8 * h.lunge);
       const P = h.curve.points;
       P[0].copy(h.base).setY(h.base.y - 3);
       P[1].copy(h.base);

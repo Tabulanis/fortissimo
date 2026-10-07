@@ -1,7 +1,7 @@
 /* cove.js — ROUND 4's place, blocked out (owner, 2026-10-06: "Clash of the Titans").
-   Through the gate behind the player: a beach, the sea, cliffs closing in on both sides,
-   a dock running out over the water with the DJ booth at its end, and a ship run up on
-   the beach that the troops pour from. The hydra rises from the sea (not here yet).
+   Through the gate behind the player: a wharf, the sea, cliffs closing in on both sides,
+   a dock running out over the water with the podium at its end, and a ship moored to a
+   pier on the right that the troops pour from (owner: a dock, not a beach — easier). The hydra rises from the sea (not here yet).
 
    Placeholder geometry only — boxes and planes in the courtyard's colours — so the
    round can be built and played while the owner makes the real pieces. World frame:
@@ -13,7 +13,7 @@ import * as THREE from "three";
 export const COVE = { wallZ: 8.6, beachZ0: 9.6, beachZ1: 17, seaZ1: 90, halfWidth: 30 };
 export const DOCK = { z0: 13, z1: 31, width: 2.6, y: 0.55 };
 export const BOOTH_POS = new THREE.Vector3(0, 0, DOCK.z1 - 1.6);
-export const SHIP_POS = new THREE.Vector3(15, 0, 42);   // run up on the sand spit ahead-right of the booth, in view
+export const SHIP_POS = new THREE.Vector3(14.2, -0.9, 33);   // moored alongside the right pier, afloat
 
 export function createCove(scene) {
   const root = new THREE.Group(); root.name = "cove"; scene.add(root);
@@ -26,15 +26,20 @@ export function createCove(scene) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.name = name;
     m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; parent.add(m); return m;
   };
-  // BEACH: a shelf of sand from the wall to the waterline, sloping down a touch
-  const beach = new THREE.Mesh(new THREE.BoxGeometry(COVE.halfWidth * 2, 0.6, COVE.beachZ1 - COVE.beachZ0 + 1), sand);
-  beach.name = "beach"; beach.position.set(0, -0.32, (COVE.beachZ0 + COVE.beachZ1) / 2); beach.rotation.x = 0.02; beach.receiveShadow = true; root.add(beach);
+  // the WHARF (owner, 2026-10-06: "easier to render a dock than a beach"): a wide deck of planks on
+  // posts from the gate out to the water, the dock running on from its middle
+  const wharf = new THREE.Group(); wharf.name = "wharf"; root.add(wharf);
+  box("deck", 24, 0.18, COVE.beachZ1 - COVE.beachZ0 + 0.6, wood, 0, DOCK.y, (COVE.beachZ0 + COVE.beachZ1) / 2, 0, wharf);
+  for (let x = -11; x <= 11; x += 2.75) for (const z of [COVE.beachZ0 + 1, COVE.beachZ1 - 0.6]) box("post", 0.26, DOCK.y + 1.4, 0.26, wood, x, DOCK.y / 2 - 0.4, z, 0, wharf);
+  for (const s of [-1, 1]) box("rail", 0.08, 0.9, COVE.beachZ1 - COVE.beachZ0, wood, s * 11.9, DOCK.y + 0.55, (COVE.beachZ0 + COVE.beachZ1) / 2, 0, wharf);
   // SEA: a wide sheet at the waterline
   const sea = new THREE.Mesh(new THREE.PlaneGeometry(COVE.halfWidth * 2 + 40, COVE.seaZ1 - COVE.beachZ1 + 20), water);
   sea.name = "sea"; sea.rotation.x = -Math.PI / 2; sea.position.set(0, -0.15, (COVE.beachZ1 + COVE.seaZ1) / 2 + 10); root.add(sea);
-  // the SAND SPIT the ship is run up on: a shelf along the right cliff, out past the dock
-  const spit = new THREE.Mesh(new THREE.BoxGeometry(14, 0.6, 30), sand);
-  spit.name = "spit"; spit.position.set(17, -0.3, 36); spit.rotation.y = 0.12; spit.receiveShadow = true; root.add(spit);
+  // the PIER the ship ties up to: along the right, out past the dock
+  const pier = new THREE.Group(); pier.name = "pier-right"; root.add(pier);
+  box("deck", 3.0, 0.16, 30, wood, 9.5, DOCK.y, COVE.beachZ1 + 14, 0, pier);
+  for (let z = COVE.beachZ1 + 1; z < COVE.beachZ1 + 29; z += 3) for (const s of [-1, 1]) box("post", 0.22, DOCK.y + 1.2, 0.22, wood, 9.5 + s * 1.35, DOCK.y / 2 - 0.3, z, 0, pier);
+  for (const z of [COVE.beachZ1 + 6, COVE.beachZ1 + 16, COVE.beachZ1 + 26]) box("bollard", 0.3, 0.7, 0.3, wood, 9.5 + 1.2, DOCK.y + 0.4, z, 0, pier);
   // LIGHT for this side: every light in the game faces the sunset behind us, so the cove
   // gets a cool MOON over the sea (no shadows: cost) and a warm lantern over the booth
   const moon = new THREE.DirectionalLight(0x9fb4e0, 1.6); moon.position.set(-20, 30, 80); moon.target.position.set(0, 0, 20); root.add(moon, moon.target);
@@ -67,7 +72,7 @@ export function createCove(scene) {
     box("fader-cap", 0.14, 0.06, 0.08, new THREE.MeshStandardMaterial({ color: [0xd9442a, 0x3a7ad9, 0xe8c640][i] }), x, DOCK.y + 1.03, 0.5 + 0.15, 0, booth);
   });
   // the SHIP: run up on the beach to the right, listing a little; a mast and a gangplank down to the sand
-  const ship = new THREE.Group(); ship.name = "ship"; ship.position.copy(SHIP_POS); ship.rotation.set(0, 0.55, 0.12); root.add(ship);   // bow up the sand, stern to the sea
+  const ship = new THREE.Group(); ship.name = "ship"; ship.position.copy(SHIP_POS); ship.rotation.set(0, 0.04, 0.03); root.add(ship);   // alongside the pier, a slight roll
   box("hull", 5.5, 3.2, 16, hull, 0, 1.2, 0, 0, ship);
   box("deck", 5.0, 0.2, 15, wood, 0, 2.9, 0, 0, ship);
   box("prow", 1.6, 2.6, 2.4, hull, 0, 1.6, -8.6, 0, ship).rotation.y = Math.PI / 4;
@@ -75,6 +80,6 @@ export function createCove(scene) {
   box("mast", 0.3, 11, 0.3, wood, 0, 8.4, -1, 0, ship);
   box("yard", 7, 0.18, 0.18, wood, 0, 11.5, -1, 0, ship);
   box("sail", 6.6, 5.5, 0.06, new THREE.MeshStandardMaterial({ color: 0xd8cbb0, roughness: 1, side: THREE.DoubleSide }), 0, 8.4, -0.8, 0, ship);
-  box("gangplank", 0.9, 0.08, 7, wood, -3.6, 1.4, 3, 0, ship).rotation.z = 0.42;
+  box("gangplank", 0.9, 0.08, 5.5, wood, -3.9, 2.3, 3, Math.PI / 2, ship).rotation.z = 0.5;   // across to the pier
   return root;
 }
