@@ -276,9 +276,8 @@ export function createCourtyard(scene) {
   // its pillars just outside the 4 m opening, its back against the wall face
   placeGlb("/models/Gate.glb", [...Object.entries(ARMS).map(([name, A]) => ({ parent: arms[name], x: 0, z: -A.length + 2.3 })),
     { x: 0, z: 8.6 - 2.3, yaw: Math.PI }], { width: 5.2 });   // + the sea gate behind the player, facing the cove
-  // MINOTAURS at the guns, not the boss or the drums (owner): a statue each side of the
-  // mouth of the bass and treble courts, by the colonnades, facing the plaza
-  placeGlb("/models/Minotaur.glb", ["bass", "treble"].flatMap((name) => [-1, 1].map((side) => ({ parent: arms[name], x: side * 5.4, z: -2.5 }))), { height: 2.6 });
+  // (the T-pose minotaur STATUES that stood at the bass/treble court mouths were removed 2026-10-07,
+  //  his call: living axe minotaurs charge the bass court now — troops.js / MinotaurRig.glb)
   // the FOUNTAIN basin stands in the pool (the water, its mirror and the ripples stay around it)
   placeGlb("/models/Fountain.glb", [{ x: 0, y: 0.02, z: (POOL.z0 + POOL.z1) / 2 }], { width: 4.6 });
 
