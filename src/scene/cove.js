@@ -9,6 +9,7 @@
    be swapped one at a time: "beach", "sea", "cliff-left", "cliff-right", "dock", "ship",
    "booth". BOOTH_POS is where the player stands for round 4. */
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { createSea } from "./sea.js";
 import { register } from "./editables.js";
 
@@ -59,7 +60,32 @@ export function createCove(scene) {
     }
   }
   // the beach's own flanks: lower rock so the cove reads closed next to the wall
-  for (const side of [-1, 1]) box("spur", 8, 5, 10, rock, side * 14, 2.0, COVE.beachZ0 + 4);
+  for (const side of [-1, 1]) box("spur", 8, 5, 10, rock, side * 14, 2.0, COVE.beachZ0 + 4).name = "spur";
+  // HIS MESHY CLIFFS + RUINS (2026-10-07) replace the placeholder box cliffs, which stay built but hidden
+  for (const n of ["cliff-left", "cliff-right"]) { const o = root.getObjectByName(n); if (o) o.visible = false; }
+  root.traverse((o) => { if (o.name === "spur") o.visible = false; });
+  const placeModel = (url, spots, height) => new GLTFLoader().load(url, (gltf) => {
+    const src = gltf.scene; src.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(src), size = bb.getSize(new THREE.Vector3()), k = height / size.y;
+    spots.forEach(({ x, y = 0, z, yaw = 0, s = 1, id, label }) => {
+      const pivot = new THREE.Group(); pivot.name = id; pivot.position.set(x, y, z); pivot.rotation.y = yaw; pivot.scale.setScalar(s);
+      const m = src.clone(true); m.scale.setScalar(k);
+      m.position.set(-(bb.min.x + bb.max.x) / 2 * k, -bb.min.y * k, -(bb.min.z + bb.max.z) / 2 * k);   // base centre on the pivot
+      m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      pivot.add(m); root.add(pivot); register(pivot, id, label);
+    });
+  }, undefined, (e) => console.warn(url + " failed to load", e));
+  // the cliffs: five down each side, long axis along the shore, each turned and sized a little differently,
+  // their bases a metre under the water; the cove closes in and rises toward the open sea
+  const cliffSpots = [];
+  for (const side of [-1, 1]) for (let i = 0; i < 5; i++) {
+    const z = COVE.beachZ0 + 6 + i * 16, t = i / 4, jit = Math.sin(i * 7.3 + side * 2.1);
+    cliffSpots.push({ x: side * (COVE.halfWidth - 3 - 5 * t + jit * 1.5), y: -1.0, z, yaw: side * Math.PI / 2 + jit * 0.18, s: 1.0 + 0.35 * t + 0.1 * jit,
+      id: `cliff-${side < 0 ? "R" : "L"}${i}`, label: `cliff ${side < 0 ? "right" : "left"} ${i + 1}` });   // from the podium world -x is on your RIGHT
+  }
+  placeModel("/models/Cliffs.glb", cliffSpots, 9);
+  // the RUINS: a fort on a crag, the headland opposite the ship (your right from the podium), over the hydra
+  placeModel("/models/Ruins.glb", [{ x: -22, y: -1.0, z: 50, yaw: Math.PI / 2, id: "ruins", label: "ruins" }], 16);
   // DOCK: planks on posts, out over the water
   const dock = new THREE.Group(); dock.name = "dock"; root.add(dock);
   box("planks", DOCK.width, 0.16, DOCK.z1 - DOCK.z0, wood, 0, DOCK.y, (DOCK.z0 + DOCK.z1) / 2, 0, dock);
@@ -85,7 +111,7 @@ export function createCove(scene) {
   box("gangplank", 0.9, 0.08, 5.5, wood, -3.9, 2.3, 3, Math.PI / 2, ship).rotation.z = 0.5;   // across to the pier
   // the dev editor may move / size / hide these (pieces whose parts sit at world coords — wharf, dock,
   // pier, cliffs — turn about the cove's origin, so for those MOVE is the useful tool)
-  for (const [name, label] of [["ship", "ship"], ["booth", "podium"], ["dock", "dock"], ["wharf", "wharf"], ["pier-right", "pier"], ["cliff-left", "cliffs left"], ["cliff-right", "cliffs right"]]) {
+  for (const [name, label] of [["ship", "ship"], ["booth", "podium"], ["dock", "dock"], ["wharf", "wharf"], ["pier-right", "pier"]]) {
     const o = root.getObjectByName(name); if (o) register(o, `cove-${name}`, label);
   }
   return root;
