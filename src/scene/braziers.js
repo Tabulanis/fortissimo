@@ -39,7 +39,8 @@ export function createBraziers(scene, { fireSim, fireTexture, flameTexture, laye
   const rimGeo = new THREE.TorusGeometry(0.92, 0.07, 8, 24);
   const glowGeo = new THREE.PlaneGeometry(1, 1);
   const group = new THREE.Group(); group.name = "braziers"; scene.add(group);
-  const basins = spots.map((p, bi) => {
+  // one basin (also used by the dev editor's palette: add() below)
+  const makeBasin = (p, id, label) => {
     const g = new THREE.Group(); g.position.copy(p);
     const ped = new THREE.Mesh(pedestalGeo, stone); ped.position.y = 0.5; ped.castShadow = ped.receiveShadow = true;
     const bowl = new THREE.Mesh(bowlGeo, stone); bowl.position.y = 1.25; bowl.material.side = THREE.DoubleSide; bowl.castShadow = true;
@@ -54,14 +55,20 @@ export function createBraziers(scene, { fireSim, fireTexture, flameTexture, laye
     const glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ map: flameTexture, color: 0xff7a2a, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.55, fog: false }));
     glow.rotation.x = -Math.PI / 2; glow.position.y = 0.03; glow.scale.set(6.5, 6.5, 1); glow.layers.set(layer); g.add(glow);
     group.add(g);
-    register(g, `brazier#${bi}`, `fire basin ${bi + 1}`);   // the dev editor can move / size / hide it
+    g.userData.model = "brazier";   // the editor can Duplicate it
+    register(g, id, label);   // the dev editor can move / size / hide it
     return { g, pos: p, fire: new THREE.Vector3(p.x, p.y + 1.42, p.z), flame, glow, seed: Math.random() * 100 };
-  });
+  };
+  const basins = spots.map((p, bi) => makeBasin(p, `brazier#${bi}`, `fire basin ${bi + 1}`));
   const pool = [];
   for (let i = 0; i < lights; i++) { const l = new THREE.PointLight(0xff9a4a, 0, 13, 2); scene.add(l); pool.push(l); }
   const _d = new THREE.Vector3();
   return {
-    count: basins.length,
+    get count() { return basins.length; },
+    /** a new basin (the editor's palette); returns its group, registered under id */
+    add(p, id, label = "fire basin (added)") { const b = makeBasin(p, id, label); basins.push(b); return b.g; },
+    /** take an added basin out again */
+    remove(g) { const i = basins.findIndex((b) => b.g === g); if (i >= 0) { basins.splice(i, 1); g.removeFromParent(); } },
     update(dt, camera, now) {
       const t = now / 1000;
       // flicker + the fire itself, nearest first so the particle budget goes where it shows

@@ -46,10 +46,15 @@ export function editableOf(o) {
 }
 export const allEditables = () => [...objs.values()];
 
-/** record an object's current transform as an edit (call after every change) */
+/** record an object's current transform as an edit (call after every change); an ADDED prop also
+ *  records what it is ({ add: "Cliffs" }) so the next load can build it again (props.js) */
 export function capture(o) {
-  edits[o.userData.editId] = { p: o.position.toArray(), q: o.quaternion.toArray(), s: o.scale.toArray(), ...(o.visible ? {} : { hidden: true }) };
+  edits[o.userData.editId] = { ...(o.userData.addKind ? { add: o.userData.addKind } : {}),
+    p: o.position.toArray(), q: o.quaternion.toArray(), s: o.scale.toArray(), ...(o.visible ? {} : { hidden: true }) };
 }
+export const isRegistered = (id) => objs.has(id);
+/** forget an object entirely (an added prop being deleted): no edit, no registration */
+export function unregister(id) { objs.delete(id); delete edits[id]; }
 /** put an object back where the code built it, and forget its edit */
 export function reset(o) {
   const h = o.userData.editHome; o.position.fromArray(h.p); o.quaternion.fromArray(h.q); o.scale.fromArray(h.s); o.visible = true;

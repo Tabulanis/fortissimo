@@ -270,6 +270,7 @@ export function createCourtyard(scene) {
       m.position.set(-(bb.min.x + bb.max.x) / 2 * k, -bb.min.y * k, -(bb.min.z + bb.max.z) / 2 * k);
       m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       pivot.add(m); parent.add(pivot);
+      pivot.userData.model = base;   // the editor can Duplicate it (props.js builds the copy)
       register(pivot, id || `${base}#${i}`, id || `${base} ${i + 1}`);
     });
     bootlog("placed " + url.split("/").pop(), { n: spots.length, scale: +k.toFixed(2) });

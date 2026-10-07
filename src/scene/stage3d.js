@@ -12,6 +12,7 @@ import { createBraziers } from "./braziers.js";
 import { createCove, BOOTH_POS, DOCK } from "./cove.js";
 import { createHydra } from "./hydraBoss.js";
 import { loadEdits } from "./editables.js";
+import { createProps } from "./props.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
@@ -442,7 +443,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // the environment mock-up (owner's reference: sandstone colonnade courtyard)
   bootlog("courtyard: start");
   const courtyard = createCourtyard(scene);
-  loadEdits().then((e) => bootlog("level edits", { n: Object.keys(e).length }));   // the saved layout, applied as each piece registers
+  const editsLoaded = loadEdits(); editsLoaded.then((e) => bootlog("level edits", { n: Object.keys(e).length }));   // the saved layout, applied as each piece registers
   const cove = createCove(scene), sea = cove.userData.sea;   // round 4's cove behind the sea gate (blockout); the sea rolls and ripples (sea.js)
   // THE HYDRA (hydraBoss.js): three necks out of the sea in front of the dock, the rigged heads
   // on top; rises on hydra.rise() — round 4 / the conduct feel-test; ?hydra=1 raises it at load (dev)
@@ -621,6 +622,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // the FIRE BASINS that light the town (braziers.js): real lights only on the nearest few
   const braziers = createBraziers(scene, { fireSim, fireTexture, flameTexture, layer: FX_LAYER,
     lights: LOW ? 0 : MOBILE ? 2 : 4, particles: !LOW, rate: MOBILE ? 0.5 : 1 });
+  // scenery ADDED in the dev editor (props.js): rebuilt from the saved layout on every load
+  const props = createProps(scene, { braziers });
+  editsLoaded.then((ed) => props.spawnSaved(ed)).then((list) => list && list.length && bootlog("props", { n: list.length }));
   // THE ARMY down the courts (troops.js): fwd = down the court a station faces, right = across it
   const courtOf = (side) => { const yaw = STATIONS[side].yaw, fx = -Math.sin(yaw), fz = -Math.cos(yaw);
     return { fwd: new THREE.Vector3(fx, 0, fz), right: new THREE.Vector3(-fz, 0, fx) }; };
@@ -2074,7 +2078,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     fly.on = !!on; fly.keys.clear();
     if (fly.on) { fly.pos.copy(camera.position); _eul.setFromQuaternion(camera.quaternion, "YXZ"); fly.yaw = _eul.y; fly.pitch = _eul.x; }
     if (fly.on && !editor) import("../dev/editor.js").then(({ createEditor }) => {
-      editor = createEditor({ scene, camera, dom: renderer.domElement, log: (step, data) => bootlog("editor " + step, data) });
+      editor = createEditor({ scene, camera, dom: renderer.domElement, props, log: (step, data) => bootlog("editor " + step, data) });
       editor.setOn(fly.on);
     });
     else if (editor) editor.setOn(fly.on);

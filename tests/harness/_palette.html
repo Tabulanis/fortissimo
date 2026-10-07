@@ -1,0 +1,45 @@
+<!doctype html><body style="margin:0">
+<!-- EDITOR PALETTE end to end (2026-10-07): backs up HIS layout first. Dev mode, read the palette,
+ADD a Pillar (lands in front, selected), type pos x = 2.5, DUPLICATE it, DELETE the copy, SAVE; reload;
+the pillar must be rebuilt at x = 2.5 and the copy gone; then restore his layout exactly. Copy to public/. -->
+<iframe id="f" style="width:1280px;height:800px;border:0"></iframe>
+<script type="module">
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body: JSON.stringify(body) });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const URL0 = "/?fly=1&cam=0,3.2,-1.5,0,-0.32";
+const backup = sessionStorage.getItem("palBackup") || await (await fetch("/levels/edits.json", { cache: "no-store" })).text();
+sessionStorage.setItem("palBackup", backup);
+const f = document.getElementById("f");
+let pass = 0;
+f.onload = async () => {
+  const w = f.contentWindow, d = w.document;
+  if (w.location.href === "about:blank") return;
+  pass++;
+  try {
+    await wait(7000);
+    const ids = () => w.__grEdit.allEditables().map((o) => o.userData.editId).filter((i) => i.startsWith("add#"));
+    if (pass === 1) {
+      const pal = [...d.querySelectorAll('[data-k="palette"] button')].map((b) => b.textContent);
+      [...d.querySelectorAll('[data-k="palette"] button')].find((b) => b.textContent === "Pillar").click();
+      await wait(1500);
+      const ed = w.__gr.stage3d.editor, added = ed.selected && ed.selected.userData.editId;
+      const px = d.querySelector('input[data-n="px"]'); px.value = "2.5"; px.dispatchEvent(new w.Event("change"));
+      const btn = (a) => [...d.querySelectorAll("button")].find((b) => b.dataset.a === a);
+      btn("dup").click(); await wait(1500);
+      const copy = ed.selected && ed.selected.userData.editId, afterDup = ids();
+      btn("del").click(); await wait(300);
+      const afterDel = ids();
+      btn("save").click(); await wait(800);
+      const file = JSON.parse(await (await fetch("/levels/edits.json", { cache: "no-store" })).text());
+      say("pal_1", { palette: pal, added, copy, afterDup, afterDel, inFile: Object.keys(file).filter((k) => k.startsWith("add#")).map((k) => [k, file[k].add, file[k].p.map((v) => +v.toFixed(2))]) });
+      f.src = URL0 + "&r=2";
+    } else {
+      const o = w.__grEdit.allEditables().filter((x) => x.userData.editId.startsWith("add#")).map((x) => [x.userData.editId, x.userData.addKind, x.position.toArray().map((v) => +v.toFixed(2))]);
+      say("pal_2", { rebuilt: o });
+      await fetch("/__level", { method: "POST", body: backup }); sessionStorage.removeItem("palBackup");
+      say("pal_done", "his layout restored");
+    }
+  } catch (e) { say("pal_err", { m: e.message, s: e.stack }); }
+};
+f.src = URL0;
+</script></body>

@@ -78,8 +78,19 @@ const levelSave = {
   },
 };
 
+// DEV ONLY: the editor's palette asks what models exist (GET /__models -> ["Cliffs", "Gate", ...])
+const modelList = {
+  name: "model-list",
+  configureServer(server) {
+    server.middlewares.use("/__models", (req, res) => {
+      const names = fs.readdirSync("public/models").filter((f) => f.endsWith(".glb")).map((f) => f.slice(0, -4)).sort();
+      res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(names));
+    });
+  },
+};
+
 export default {
-  plugins: [deviceLog, hackbeatRounds, levelSave],
+  plugins: [deviceLog, hackbeatRounds, levelSave, modelList],
   server: { port: 5180, strictPort: true, host: true },
   preview: { port: 5181 },
 };

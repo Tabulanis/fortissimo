@@ -72,7 +72,7 @@ export function createCove(scene) {
       const m = src.clone(true); m.scale.setScalar(k);
       m.position.set(-(bb.min.x + bb.max.x) / 2 * k, -bb.min.y * k, -(bb.min.z + bb.max.z) / 2 * k);   // base centre on the pivot
       m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      pivot.add(m); root.add(pivot); register(pivot, id, label);
+      pivot.add(m); root.add(pivot); pivot.userData.model = url.split("/").pop().replace(".glb", ""); register(pivot, id, label);
     });
   }, undefined, (e) => console.warn(url + " failed to load", e));
   // the cliffs: five down each side, long axis along the shore, each turned and sized a little differently,

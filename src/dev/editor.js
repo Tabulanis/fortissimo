@@ -10,7 +10,7 @@ import * as THREE from "three";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { allEditables, editableOf, capture, reset, saveEdits, editCount } from "../scene/editables.js";
 
-export function createEditor({ scene, camera, dom, log = () => {} }) {
+export function createEditor({ scene, camera, dom, props = null, log = () => {} }) {
   const tc = new TransformControls(camera, dom);
   const helper = tc.getHelper(); scene.add(helper);
   tc.setSize(0.9);
@@ -34,7 +34,10 @@ export function createEditor({ scene, camera, dom, log = () => {} }) {
       <span>size</span><input data-n="s"><span></span><span></span></div>
     <label style="display:block;margin-bottom:8px"><input type="checkbox" data-k="snap"> snap (25 cm · 15° · 10%)</label>
     <div style="display:flex;flex-wrap:wrap;gap:4px">
-      <button data-a="hide">Hide</button><button data-a="reset">Reset</button><button data-a="undo">Undo</button><button data-a="save" style="font-weight:700">Save</button></div>
+      <button data-a="dup">Duplicate</button><button data-a="del">Delete</button><button data-a="hide">Hide</button>
+      <button data-a="reset">Reset</button><button data-a="undo">Undo</button><button data-a="save" style="font-weight:700">Save</button></div>
+    <div style="margin-top:10px;font-weight:700;letter-spacing:.08em">ADD <span style="font-weight:400;opacity:.6;font-size:11px">click one — it lands in front of you</span></div>
+    <div data-k="palette" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;max-height:160px;overflow:auto"></div>
     <div style="margin-top:8px;opacity:.6;font-size:11px;line-height:1.35">HOLD right mouse to look · W A S D fly · Q/E down/up · Shift fast · wheel = fly speed · Esc let go · tilde (~) leaves (the game was paused; it resumes)</div>`;
   for (const b of el.querySelectorAll("button")) b.style.cssText = "flex:1;padding:5px 6px;border-radius:6px;border:1px solid #6a4a2a;background:#3a2414;color:#f1e3cc;cursor:pointer;font:12px system-ui";
   for (const i of el.querySelectorAll("input:not([type])")) i.style.cssText = "width:100%;box-sizing:border-box;background:#120c08;color:#f1e3cc;border:1px solid #5a3e24;border-radius:4px;padding:2px 4px;font:12px ui-monospace,monospace";
@@ -61,6 +64,13 @@ export function createEditor({ scene, camera, dom, log = () => {} }) {
     hide: () => { if (!sel) return; undo.push(snapshot(sel)); sel.visible = !sel.visible; changed(); },
     reset: () => { if (!sel) return; undo.push(snapshot(sel)); reset(sel); dirty = true; status(); showNums(); },
     undo: () => { const st = undo.pop(); if (st) { restore(st); dirty = true; status(); showNums(); } },
+    dup: () => { if (!sel || !props) return; const kind = sel.userData.addKind || sel.userData.model;
+      if (!kind) { $("status").textContent = "can't copy this one"; return; }
+      const at = sel.position.clone().add(new THREE.Vector3(2, 0, 2));
+      addProp(kind, at, (o) => { o.quaternion.copy(sel.quaternion); o.scale.copy(sel.scale); }); },
+    del: () => { if (!sel) return;
+      if (props && props.remove(sel)) { log("delete", { id: sel.userData.editId }); select(null); dirty = true; status(); }
+      else act.hide(); },   // built-in pieces can only be hidden
     save: () => saveEdits().then((ok) => { dirty = !ok; status(); $("status").textContent = ok ? `saved ${editCount()}` : "SAVE FAILED"; log("save", { ok, n: editCount() }); }),
   };
   for (const b of el.querySelectorAll("[data-a]")) b.addEventListener("click", (e) => { e.stopPropagation(); act[b.dataset.a](); });
@@ -74,6 +84,26 @@ export function createEditor({ scene, camera, dom, log = () => {} }) {
   });
   // keep typing in the panel out of the game and the fly keys
   el.addEventListener("keydown", (e) => e.stopPropagation());
+
+  // ---- ADD (owner, 2026-10-07: "an add-object ability and a palette of the level's objects")
+  function inFront() {   // where the camera looks, on the ground (y = 0), 3–25 m away
+    const o = camera.getWorldPosition(new THREE.Vector3()), d = camera.getWorldDirection(new THREE.Vector3());
+    let t = d.y < -0.05 ? -o.y / d.y : 10; t = Math.max(3, Math.min(25, t));
+    const p = o.addScaledVector(d, t); p.y = 0; return p;
+  }
+  function addProp(kind, at = inFront(), tweak = null) {
+    props.spawn(kind, at).then((o) => { if (tweak) tweak(o); capture(o); dirty = true; status(); select(o); setMode("translate"); log("add", { kind, id: o.userData.editId }); })
+      .catch((e) => { $("status").textContent = "add failed"; log("add failed", { kind, e: String(e) }); });
+  }
+  if (props) props.kinds().then((list) => {
+    const box = $("palette");
+    for (const k of list) {
+      const b = document.createElement("button"); b.textContent = k === "brazier" ? "fire basin" : k;
+      b.style.cssText = "padding:4px 7px;border-radius:6px;border:1px solid #4a5a3a;background:#1f2a18;color:#e6f0d6;cursor:pointer;font:12px system-ui";
+      b.addEventListener("click", (e) => { e.stopPropagation(); addProp(k); });
+      box.appendChild(b);
+    }
+  });
 
   // ---- the handles
   // UNIFORM SIZE (owner, 2026-10-07: "scale doesn't work"): three's centre box sizes by the RATIO of the
@@ -121,7 +151,8 @@ export function createEditor({ scene, camera, dom, log = () => {} }) {
       if (k === "1") { setMode("translate"); return true; }
       if (k === "2") { setMode("rotate"); return true; }
       if (k === "3") { setMode("scale"); return true; }
-      if (k === "delete" || k === "backspace") { act.hide(); return true; }
+      if (k === "delete" || k === "backspace") { act.del(); return true; }
+      if ((e.ctrlKey || e.metaKey) && k === "d") { e.preventDefault(); act.dup(); return true; }
       if (k === "escape") { select(null); return true; }
       return false;
     },
