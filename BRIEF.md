@@ -92,6 +92,15 @@ literally what you played. The garden shows how the band is doing.
 - Build rule: anything world-specific is filed under the world from now on (banks/rome/…,
   layouts per world, songs tagged with world) so a new world is new pieces, not surgery.
 
+## A LEVEL = FOUR ROUNDS (decided 2026-10-07)
+- Round 1: drums → guns → boss. Round 2: drums → guns → boss. Round 3: drums → guns → boss.
+  Round 4: THE HYDRA — no new music: the player conducts EVERYTHING the three rounds built (all
+  their drums, bass and treble) as one piece.
+- Rome today (Dope, Fortuna, The Forge, then the hydra) is that shape; every level of every world
+  follows it.
+- The SONG-MAKER makes a whole LEVEL: write round 1, 2 and 3 (each with drums, bass, treble); the
+  hydra round builds itself from them.
+
 ## Round 4 — CONDUCTOR MODE at the sea gate (decided 2026-10-06; was "DJ set" for an hour)
 - **Rounds 1–3 build the band, round 4 conducts it.** Round 1 = the song's verse, 2 = the
   middle, 3 = the finale; each round locks drums, bass and treble for its movement. Round 4
