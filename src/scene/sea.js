@@ -28,9 +28,54 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
     uMoonDir: { value: new THREE.Vector3(-0.3, 0.55, 0.78).normalize() },
     uSwell: { value: SWELL.map((s) => new THREE.Vector4(s.dx, s.dz, s.len, s.amp)) },
     uSwellSpeed: { value: new THREE.Vector3(...SWELL.map((s) => s.speed)) },
+    // the DROPS atlas (tools/make-water-tile.py): rain-ring height frames that loop in x, y and time
+    uDrops: { value: null },
+    uDropsLayout: { value: new THREE.Vector4(8, 4, 32, 0) },   // cols, rows, frames, (unused)
+    uDropsAmp: { value: 0.09 },      // metres of displacement at the map's peak
+    uDropsTile: { value: 9.0 },      // metres per tile
+    uDropsLoop: { value: 7.0 },      // seconds per loop in T
+    uDropsInvert: { value: 1.0 },    // 1 = the rings stand up as peaks (owner: "like choppy waves")
   };
+  new THREE.TextureLoader().load("/textures/water-drops.png", (tex) => {
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;   // the atlas itself must not wrap — frames tile by uv maths
+    tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;
+    U.uDrops.value = tex; mat.defines.HAS_DROPS = 1; mat.needsUpdate = true;
+  }, undefined, (e) => console.warn("water-drops.png failed to load", e));
+  const dropsGlsl = /* glsl */ `
+    uniform sampler2D uDrops;
+    uniform vec4 uDropsLayout;
+    uniform float uDropsAmp, uDropsTile, uDropsLoop, uDropsInvert;
+    // one frame's texel: frame f of the atlas at tile uv (wrapping in x, y by fract)
+    float dropFrame(vec2 uv, float f) {
+      float cols = uDropsLayout.x, rows = uDropsLayout.y;
+      vec2 cell = vec2(mod(f, cols), floor(f / cols));
+      vec2 inner = fract(uv);
+      // keep off the frame's outer half-texel so bilinear filtering never bleeds the neighbour frame
+      inner = (inner * (1.0 - 2.0 / 256.0) + 1.0 / 256.0);
+      vec2 auv = (cell + inner) / vec2(cols, rows);
+      auv.y = 1.0 - auv.y;
+      return texture2D(uDrops, auv).r * 2.0 - 1.0;
+    }
+    // height at tile uv, looping in T: blend the two frames either side of the phase
+    float dropHeight(vec2 uv, float phase) {
+      float frames = uDropsLayout.z;
+      float fp = fract(phase) * frames;
+      float f0 = floor(fp), f1 = mod(f0 + 1.0, frames);
+      float h = mix(dropFrame(uv, f0), dropFrame(uv, f1), fp - f0);
+      // INVERTED (owner): the rings stand up as PEAKS — sharp crests, broad hollows — choppy water
+      return mix(h, abs(h) * 1.5 - 0.35, uDropsInvert);
+    }
+    // two layers drifting across each other: the chop at a world point
+    float chopAt(vec2 xz, float t) {
+      float a = dropHeight(xz / uDropsTile + vec2(t * 0.012, -t * 0.02), t / uDropsLoop);
+      float b = dropHeight(xz / (uDropsTile * 1.7) + vec2(-t * 0.015, t * 0.008), t / (uDropsLoop * 1.3) + 0.37);
+      return (a + 0.6 * b) * uDropsAmp;
+    }`;
   const vert = /* glsl */ `
     uniform float uTime;
+    #ifdef HAS_DROPS
+    ${dropsGlsl}
+    #endif
     uniform vec4 uSwell[3];
     uniform vec3 uSwellSpeed;
     uniform vec4 uRipples[${MAX_RIPPLES}];
@@ -62,6 +107,13 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
         vec2 g = (dd / max(dist, 0.001)) * (-w * 4.0 * sin(ph));
         dhx += g.x; dhz += g.y;
       }
+      #ifdef HAS_DROPS
+      {
+        float e = 0.18;
+        float c0 = chopAt(wp.xz, uTime), cx = chopAt(wp.xz + vec2(e, 0.0), uTime), cz = chopAt(wp.xz + vec2(0.0, e), uTime);
+        h += c0; dhx += (cx - c0) / e; dhz += (cz - c0) / e;
+      }
+      #endif
       wp.y += h;
       vWorld = wp.xyz;
       vNormal = normalize(vec3(-dhx, 1.0, -dhz));
@@ -69,12 +121,23 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       gl_Position = projectionMatrix * viewMatrix * wp;
     }`;
   const frag = /* glsl */ `
+    uniform float uTime;
+    #ifdef HAS_DROPS
+    ${dropsGlsl}
+    #endif
     uniform vec3 uDeep, uShallow, uSky, uHorizon, uMoonDir;
     varying vec3 vWorld;
     varying vec3 vNormal;
     varying float vCrest;
     void main() {
       vec3 n = normalize(vNormal);
+      #ifdef HAS_DROPS
+      {   // per-pixel chop normal (the vertex grid is too coarse for the small rings)
+        float e = 0.06;
+        float c0 = chopAt(vWorld.xz, uTime), cx = chopAt(vWorld.xz + vec2(e, 0.0), uTime), cz = chopAt(vWorld.xz + vec2(0.0, e), uTime);
+        n = normalize(n + vec3(-(cx - c0) / e, 0.0, -(cz - c0) / e) * 1.2);
+      }
+      #endif
       vec3 v = normalize(cameraPosition - vWorld);
       float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
       float far = clamp((vWorld.z - 20.0) / 70.0, 0.0, 1.0);
