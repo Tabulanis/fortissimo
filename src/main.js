@@ -767,7 +767,7 @@ const AUTO_BEGIN = new URLSearchParams(location.search).has("autobegin");
 const CONDUCT = new URLSearchParams(location.search).has("conduct");
 function toggleFly() {
   const on = !stage3d.fly; stage3d.setFly(on);
-  hudUI.say(on ? "DEV FLY — W A S D move · Q/E down/up · Shift fast · drag the mouse or arrows to look · ` back to the seat" : "back to the seat", on ? "good" : "", on ? 6000 : 1500);
+  hudUI.say(on ? "DEV FLY — W A S D move · Q/E down/up · Shift fast · drag the mouse or arrows to look · tilde (~) back to the seat" : "back to the seat", on ? "good" : "", on ? 6000 : 1500);
   bootlog("fly", { on });
 }
 window.addEventListener("keyup", (e) => { if (stage3d && stage3d.fly) stage3d.flyKey(e.key, false); });
@@ -993,9 +993,9 @@ function scheduleGhosts() {
 // channel; timing only changes loudness (velocityFor) — never delay or snap
 // the sound. Calibration keeps its old F/Space taps against the metronome.
 function onKey(e) {
-  // DEV FLY: the backtick toggles a free camera (owner, 2026-10-07: "a dev mode so I can look around");
+  // DEV FLY: the tilde key toggles a free camera (owner, 2026-10-07: "a dev mode so I can look around");
   // while flying, W A S D Q E Shift move it and the game sees none of those keys
-  if (e.key === "`" && !e.repeat && stage3d) { e.preventDefault(); toggleFly(); return; }
+  if ((e.key === "`" || e.key === "~") && !e.repeat && stage3d) { e.preventDefault(); toggleFly(); return; }   // the TILDE key (his name for it), shifted or not
   if (stage3d && stage3d.fly) { if (["w", "a", "s", "d", "q", "e", "shift"].includes(e.key.toLowerCase())) { e.preventDefault(); stage3d.flyKey(e.key, true); } return; }
   if (conductor && !e.repeat) {   // conducting: sections and gestures take the keys
     const k = e.key.toLowerCase();
