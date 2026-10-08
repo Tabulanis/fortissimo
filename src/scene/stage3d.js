@@ -147,8 +147,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     const msg = [gl.getProgramInfoLog(program), gl.getShaderInfoLog(vs), gl.getShaderInfoLog(fs)].filter(Boolean).join(" | ").slice(0, 600);
     bootlog("shader error", { msg }); console.error("shader error", msg);
   };
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.3;   // 1.15 -> 1.3 with the brighter fill (owner 2026-10-06)
+  renderer.toneMapping = THREE.AgXToneMapping;   // (10-08 "more real": AgX keeps colours natural where ACES pushed everything orange)
+  renderer.toneMappingExposure = 1.15;
   renderer.xr.setReferenceSpaceType("local-floor");   // y = 0 is the real floor
 
   const scene = new THREE.Scene();
@@ -246,16 +246,25 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       if (old) old.dispose();
       pm.dispose();
     }, undefined, (err) => console.warn("sky panorama failed to load", err));
-    scene.environmentIntensity = 0.55;
+    scene.environmentIntensity = 0.4;
     }
   }
 
   // light: cool sky from above, warm bounce below, a low warm AFTERGLOW from the
   // horizon behind the archers that rims the drums, and the warm lantern close in
-  scene.add(new THREE.HemisphereLight(0x6a78b8, 0x4a3426, 0.72));   // lifted 0.45 -> 0.72 (owner 2026-10-06: "it's dark"); warmer ground bounce
-  scene.add(new THREE.AmbientLight(0x2a2440, 0.3));                   // 0.15 -> 0.3
-  const afterglow = new THREE.DirectionalLight(0xff9a6a, 0.9);
-  const AFTERGLOW = 0.9;   // full sunlight; clouds over the sun dim it (below)
+  // REAL LIGHT (owner, 2026-10-08: "fix the lighting so it looks more real"): the low SUN is the key — strong, warm,
+  // CASTING SHADOWS (long column shadows down the courtyard; the courtyard wall shades the cove) — and what it doesn't
+  // reach is lit only by the cool dusk SKY (no flat ambient any more): warm light, blue shadows, like a real sunset.
+  scene.add(new THREE.HemisphereLight(0x5a6aa8, 0x2e2420, 0.42));    // (was 0.72 + an ambient 0.3: lit from everywhere)
+  const afterglow = new THREE.DirectionalLight(0xffa066, 2.6);
+  const AFTERGLOW = 2.6;   // full sunlight; clouds over the sun dim it (below)
+  if (!LOW) {
+    afterglow.castShadow = true;
+    const sc = afterglow.shadow.camera, R = 58;
+    sc.left = -R; sc.right = R; sc.top = R; sc.bottom = -R; sc.near = 1; sc.far = 260;   // the whole courtyard and the cove
+    afterglow.shadow.mapSize.set(MOBILE ? 2048 : 4096, MOBILE ? 2048 : 4096);
+    afterglow.shadow.bias = -0.0004; afterglow.shadow.normalBias = 0.04;
+  }
   // CLOUDS: the owner's cloud map rotates slowly across the sky; the game reads
   // the map's pixels to know how much cloud is in front of the sun, and the
   // sunlight dims / brightens with it
@@ -286,8 +295,10 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     const cov = sum / n;
     return Math.min(1, Math.max(0, (cov - 0.18) / 0.57));         // same thresholds as the sky shader
   }
-  afterglow.position.set(0, 4, -40);           // low, from the panorama's sun (dead ahead)
-  scene.add(afterglow);
+  // from the panorama's sun: dead ahead (-z), ~9.5° up; the light looks at the middle of the level so its shadow box covers it
+  afterglow.target.position.set(0, 0, 4);
+  afterglow.position.set(0, Math.sin(0.166) * 120, 4 - Math.cos(0.166) * 120);
+  scene.add(afterglow, afterglow.target);
   // the drum lantern: textured wood/leather needs a warm key light close in
   // the drum lantern: a warm SPOT just above and behind the player, aimed at the
   // drums, casting soft shadows (drums onto the ground, hands/sticks onto drums)

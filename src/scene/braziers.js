@@ -77,7 +77,7 @@ export function createBraziers(scene, { fireSim, fireTexture, flameTexture, laye
         b.g.localToWorld(b.fire.set(0, 1.42, 0));                  // follows the basin if the editor moved it
         const f = 0.82 + 0.18 * Math.sin(t * 9.1 + b.seed) * Math.sin(t * 5.3 + b.seed * 1.7);
         b.flame.material.opacity = 0.75 * f; b.flame.scale.set(1.4 + 0.2 * f, 2.3 + 0.5 * f, 1);
-        b.glow.material.opacity = 0.42 + 0.14 * f;
+        b.glow.material.opacity = 0.16 + 0.06 * f;   // (10-08: the painted pool of light read fake — the real fire lights do the floor)
         b.dist = _d.copy(b.fire).distanceTo(camera.position);
         if (particles && fireSim && b.dist < 34) {
           const r = rate * (b.dist < 14 ? 1 : 0.45);   // far basins burn thinner: the sprite carries them
