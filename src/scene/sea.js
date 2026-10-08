@@ -196,6 +196,9 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
     uniform float uSwellSpeed[${NSWELL}];   // crestAt() in the drops GLSL needs both here too
     varying float vTorn;
     varying float vHeight, vPinch;
+    #if defined(SEA_BREAK) && !defined(NO_VCHOP)
+    varying float vBroken;   // TEST (?seabreak): never written by the vertex stage → a LINK failure, like his phone's
+    #endif
     float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     float foamNoise(vec2 p) {   // value noise, 2 octaves are added by the caller
       vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -256,6 +259,9 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       col = mix(col, vec3(0.75, 0.8, 0.82), foam * 0.6);
       // the far edge melts into the open sea painted on the sky dome (stage3d) — no line where the water ends
       gl_FragColor = vec4(col, 1.0 - smoothstep(150.0, 205.0, length(vWorld.xz - cameraPosition.xz)));
+      #if defined(SEA_BREAK) && !defined(NO_VCHOP)
+      gl_FragColor.a += vBroken * 0.0;
+      #endif
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }`;

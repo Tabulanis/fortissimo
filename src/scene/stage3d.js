@@ -153,6 +153,14 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       linkOk: gl.getProgramParameter(program, gl.LINK_STATUS), vUniforms: gl.getParameter(gl.MAX_VERTEX_UNIFORM_VECTORS), fUniforms: gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS),
       vTex: gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS), varyings: gl.getParameter(gl.MAX_VARYING_VECTORS) });
     console.error("shader error", msg);
+    // THE SEA HEALS ITSELF (10-08: his phone couldn't LINK the full sea — measured: dropping any one per-vertex part fixes it):
+    // on a sea failure, switch off the next part (chop height, then ripple rings, then the cloth) and let it rebuild
+    try {   // (sea may not exist yet: an early shader is someone else's)
+      if (marks.includes("uSwell") && sea) {
+        const d = sea.mesh.material.defines, next = ["NO_VCHOP", "NO_RIPPLES", "NO_SIM"].find((k) => !d[k]);
+        if (next) { d[next] = 1; sea.mesh.material.needsUpdate = true; bootlog("sea fallback", { dropped: next }); }
+      }
+    } catch { /* not built yet */ }
   };
   renderer.toneMapping = THREE.AgXToneMapping;   // (10-08 "more real": AgX keeps colours natural where ACES pushed everything orange)
   renderer.toneMappingExposure = 1.15;
@@ -493,6 +501,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // (10-08, MEASURED on his phone with ?seatest: the full sea shader won't LINK there; dropping ANY ONE of the per-vertex parts —
   // cloth, chop height, ripple rings — links it. Phones drop the vertex chop HEIGHT: a few cm of bump; the chop you see is per pixel)
   if (MOBILE) { sea.mesh.material.defines.NO_VCHOP = 1; sea.mesh.material.needsUpdate = true; }
+  if (new URLSearchParams(location.search).has("seabreak")) sea.mesh.material.defines.SEA_BREAK = 1;   // TEST: the sea won't link until a part is dropped
   setLevelScene(scene);
   // SEA LINK TEST (10-08, his phone can't LINK the sea shader): ?seatest builds the sea material with each suspect switched off
   // and reports which versions link — run it once on the phone, read device.log ("seatest")
