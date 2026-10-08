@@ -63,7 +63,8 @@ export function createBraziers(scene, { fireSim, fireTexture, flameTexture, laye
   const pool = [];
   for (let i = 0; i < lights; i++) { const l = new THREE.PointLight(0xff9a4a, 0, 13, 2); scene.add(l); pool.push(l); }
   const _d = new THREE.Vector3();
-  return {
+  const api = {
+    lightScale: 1,   // the fire lights' brightness (the editor's Lighting: fires)
     get count() { return basins.length; },
     /** a new basin (the editor's palette); returns its group, registered under id */
     add(p, id, label = "fire basin (added)") { const b = makeBasin(p, id, label); basins.push(b); return b.g; },
@@ -87,8 +88,9 @@ export function createBraziers(scene, { fireSim, fireTexture, flameTexture, laye
       if (pool.length) {
         const near = [...basins].sort((a, b) => a.dist - b.dist).slice(0, pool.length);
         near.forEach((b, i) => { const l = pool[i]; l.position.copy(b.fire).setY(b.fire.y + 0.25);   // just over the rim: the bowl's outside catches it too
-          l.intensity = (16 + 4 * Math.sin(t * 11 + b.seed)) * (b.dist > 10 ? Math.max(0, 1 - (b.dist - 10) / 8) : 1); });
+          l.intensity = api.lightScale * (16 + 4 * Math.sin(t * 11 + b.seed)) * (b.dist > 10 ? Math.max(0, 1 - (b.dist - 10) / 8) : 1); });
       }
     },
   };
+  return api;
 }

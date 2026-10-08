@@ -96,3 +96,7 @@ function applyLevelPieces() {
 }
 /** the scene the level roots live in (stage3d calls this once the courtyard and the cove are built) */
 export function setLevelScene(scene) { levelScene = scene; if (loaded) applyLevelPieces(); }
+
+/** level-wide settings saved in the same layout file under "_<key>" (10-08: "_lighting") — not objects */
+export function setSetting(key, value) { edits["_" + key] = value; }
+export const getSetting = (key) => edits["_" + key];

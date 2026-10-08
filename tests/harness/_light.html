@@ -1,0 +1,13 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1280px;height:720px;border:0"></iframe>
+<script type="module">
+// the editor's LIGHTING sliders (2026-10-08): 7 rows, a drag changes the light live, the setting is staged for Save
+const f = document.getElementById("f");
+f.onload = () => setTimeout(() => { const w = f.contentWindow, d = w.document;
+  const rows = d.querySelectorAll("[data-l]"), sun = d.querySelector('[data-l="sun"]'), L = w.__gr.stage3d.lighting;
+  const before = L.values.sun; sun.value = "0.8"; sun.dispatchEvent(new w.Event("input"));
+  const panel = sun.closest("div[style*='position']") || sun.parentElement.parentElement, r = panel.getBoundingClientRect();
+  fetch("http://127.0.0.1:8899/light", { method: "POST", body: JSON.stringify({ rows: rows.length, sunBefore: before, sunAfter: L.values.sun,
+    exposure: w.__gr.stage3d.lighting.values.exposure, panelBottom: Math.round(r.bottom), windowH: w.innerHeight, status: (d.querySelector("[data-k=status]") || {}).textContent }) });
+}, 9000);
+f.src = "/?fly=1";
+</script>

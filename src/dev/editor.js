@@ -8,9 +8,9 @@
    scene/editables.js can be picked; gameplay pieces (drums, guns, crystals) are not, on purpose. */
 import * as THREE from "three";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
-import { allEditables, editableOf, capture, reset, saveEdits, editCount, levelPieceOf, LEVEL_ROOTS } from "../scene/editables.js";
+import { allEditables, editableOf, capture, reset, saveEdits, editCount, levelPieceOf, LEVEL_ROOTS, setSetting } from "../scene/editables.js";
 
-export function createEditor({ scene, camera, dom, props = null, log = () => {} }) {
+export function createEditor({ scene, camera, dom, props = null, lighting = null, log = () => {} }) {
   const tc = new TransformControls(camera, dom);
   const helper = tc.getHelper(); scene.add(helper);
   tc.setSize(0.9);
@@ -21,7 +21,7 @@ export function createEditor({ scene, camera, dom, props = null, log = () => {} 
 
   // ---- the panel
   const el = document.createElement("div");
-  el.style.cssText = "position:fixed;top:10px;right:10px;z-index:60;width:250px;padding:10px 12px;border-radius:10px;" +
+  el.style.cssText = "position:fixed;top:10px;right:10px;z-index:60;width:250px;max-height:calc(100vh - 20px);overflow:auto;box-sizing:border-box;padding:10px 12px;border-radius:10px;" +
     "background:rgba(20,14,10,.88);color:#f1e3cc;font:13px system-ui;box-shadow:0 4px 18px rgba(0,0,0,.5);display:none;user-select:none";
   el.innerHTML = `
     <div style="font-weight:700;letter-spacing:.08em;margin-bottom:6px">EDIT <span data-k="status" style="font-weight:400;opacity:.7;float:right"></span></div>
@@ -38,6 +38,8 @@ export function createEditor({ scene, camera, dom, props = null, log = () => {} 
       <button data-a="reset">Reset</button><button data-a="undo">Undo</button><button data-a="save" style="font-weight:700">Save</button></div>
     <div style="margin-top:10px;font-weight:700;letter-spacing:.08em">ADD <span style="font-weight:400;opacity:.6;font-size:11px">click one — it lands in front of you</span></div>
     <div data-k="palette" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;max-height:160px;overflow:auto"></div>
+    <div style="margin-top:10px;font-weight:700;letter-spacing:.08em">LIGHTING <button data-k="lightReset" style="font:11px system-ui;margin-left:6px">defaults</button></div>
+    <div data-k="light" style="display:grid;grid-template-columns:auto 1fr 38px;gap:3px 6px;align-items:center;margin-top:5px;font-size:12px"></div>
     <div style="margin-top:8px;opacity:.6;font-size:11px;line-height:1.35">HOLD right mouse to look · W A S D fly · Q/E down/up · Shift fast · wheel = fly speed · Esc let go · tilde (~) leaves (the game was paused; it resumes)</div>`;
   for (const b of el.querySelectorAll("button")) b.style.cssText = "flex:1;padding:5px 6px;border-radius:6px;border:1px solid #6a4a2a;background:#3a2414;color:#f1e3cc;cursor:pointer;font:12px system-ui";
   for (const i of el.querySelectorAll("input:not([type])")) i.style.cssText = "width:100%;box-sizing:border-box;background:#120c08;color:#f1e3cc;border:1px solid #5a3e24;border-radius:4px;padding:2px 4px;font:12px ui-monospace,monospace";
@@ -157,6 +159,19 @@ export function createEditor({ scene, camera, dom, props = null, log = () => {} 
     select(hit ? levelPieceOf(hit.object) : null);
   });
 
+  // LIGHTING (owner, 2026-10-08): sliders for the level's light, live; saved with the layout ("_lighting")
+  const LIGHT_UI = [["sun", "Sun", 0, 6, 0.05], ["sunHeight", "Sun height°", 2, 60, 0.5], ["shadowBlur", "Shadow blur", 0, 12, 0.5],
+    ["sky", "Sky fill", 0, 1.2, 0.01], ["reflections", "Reflections", 0, 1.2, 0.01], ["exposure", "Exposure", 0.4, 2.5, 0.01], ["fires", "Fires", 0, 3, 0.05]];
+  function paintLight() {
+    if (!lighting) { $("light").textContent = "(no lighting here)"; return; }
+    $("light").innerHTML = LIGHT_UI.map(([k, label, lo, hi, step]) => `<span>${label}</span><input type="range" data-l="${k}" min="${lo}" max="${hi}" step="${step}" value="${lighting.values[k]}"><span data-lv="${k}">${(+lighting.values[k]).toFixed(2)}</span>`).join("");
+    for (const r of el.querySelectorAll("[data-l]")) r.addEventListener("input", () => {
+      lighting.set({ [r.dataset.l]: +r.value }); el.querySelector(`[data-lv="${r.dataset.l}"]`).textContent = (+r.value).toFixed(2);
+      setSetting("lighting", { ...lighting.values }); dirty = true; status();
+    });
+  }
+  paintLight();
+  if (lighting) $("lightReset").onclick = (e) => { e.stopPropagation(); lighting.set(lighting.defaults); setSetting("lighting", { ...lighting.values }); dirty = true; status(); paintLight(); };
   window.__grEdit = { allEditables, tc, select: (o) => select(o), levelPieceOf, act,   // harness handle (dev only)
     screenOf: (o) => { const v = o.getWorldPosition(new THREE.Vector3()).project(camera), r = dom.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; } };
   return {

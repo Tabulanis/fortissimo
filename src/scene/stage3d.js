@@ -11,7 +11,7 @@ import { createCourtyard, ARCHER_ROOF_Y, ARCHER_ROOF_X, ARCHER_ROOF_Z, FAR_WALL 
 import { createBraziers } from "./braziers.js";
 import { createCove, BOOTH_POS, DOCK, COVE } from "./cove.js";
 import { createHydra } from "./hydraBoss.js";
-import { loadEdits, setLevelScene } from "./editables.js";
+import { loadEdits, setLevelScene, getSetting } from "./editables.js";
 import { createProps } from "./props.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
@@ -113,7 +113,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: TIER === "high" || TIER === "medium",
     preserveDrawingBuffer: new URLSearchParams(location.search).has("shot") });   // ?shot: the dev photo hook in main.js reads the canvas
   renderer.shadowMap.enabled = true;                 // the foreground lantern casts shadows
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;   // (10-08 "blurry shadows a bit": PCF honours shadow.radius; PCFSoft ignores it — edges were one 3 cm texel)
   // GRAPHICS LEVEL — the game chooses it (auto-measured per device, or Settings):
   //   high    everything
   //   medium  phones: fewer pixels, no AO/SMAA, smaller shadow + mirror maps,
@@ -246,7 +246,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       if (old) old.dispose();
       pm.dispose();
     }, undefined, (err) => console.warn("sky panorama failed to load", err));
-    scene.environmentIntensity = 0.4;
+    scene.environmentIntensity = 0.25;   // (10-08: "reduce ambient" 0.4 → 0.25)
     }
   }
 
@@ -255,15 +255,16 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // REAL LIGHT (owner, 2026-10-08: "fix the lighting so it looks more real"): the low SUN is the key — strong, warm,
   // CASTING SHADOWS (long column shadows down the courtyard; the courtyard wall shades the cove) — and what it doesn't
   // reach is lit only by the cool dusk SKY (no flat ambient any more): warm light, blue shadows, like a real sunset.
-  scene.add(new THREE.HemisphereLight(0x5a6aa8, 0x2e2420, 0.42));    // (was 0.72 + an ambient 0.3: lit from everywhere)
+  const skyFill = new THREE.HemisphereLight(0x5a6aa8, 0x2e2420, 0.26); scene.add(skyFill);   // (10-08: "reduce ambient" 0.42 → 0.26)    // (was 0.72 + an ambient 0.3: lit from everywhere)
   const afterglow = new THREE.DirectionalLight(0xffa066, 2.6);
-  const AFTERGLOW = 2.6;   // full sunlight; clouds over the sun dim it (below)
+  let AFTERGLOW = 2.6;   // full sunlight; clouds over the sun dim it (below) — the editor's Lighting: sun
   if (!LOW) {
     afterglow.castShadow = true;
     const sc = afterglow.shadow.camera, R = 58;
     sc.left = -R; sc.right = R; sc.top = R; sc.bottom = -R; sc.near = 1; sc.far = 260;   // the whole courtyard and the cove
     afterglow.shadow.mapSize.set(MOBILE ? 2048 : 4096, MOBILE ? 2048 : 4096);
     afterglow.shadow.bias = -0.0004; afterglow.shadow.normalBias = 0.04;
+    afterglow.shadow.radius = 5;   // soft edges: a low sun through dusty air (owner 10-08: "blurry shadows a bit")
   }
   // CLOUDS: the owner's cloud map rotates slowly across the sky; the game reads
   // the map's pixels to know how much cloud is in front of the sun, and the
@@ -297,7 +298,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   }
   // from the panorama's sun: dead ahead (-z), ~9.5° up; the light looks at the middle of the level so its shadow box covers it
   afterglow.target.position.set(0, 0, 4);
-  afterglow.position.set(0, Math.sin(0.166) * 120, 4 - Math.cos(0.166) * 120);
+  const sunAt = (deg) => { const a = THREE.MathUtils.degToRad(deg); afterglow.position.set(0, Math.sin(a) * 120, 4 - Math.cos(a) * 120); };
+  sunAt(9.5);
   scene.add(afterglow, afterglow.target);
   // the drum lantern: textured wood/leather needs a warm key light close in
   // the drum lantern: a warm SPOT just above and behind the player, aimed at the
@@ -309,6 +311,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   lantern.shadow.mapSize.set(MOBILE ? 1024 : 2048, MOBILE ? 1024 : 2048);
   lantern.shadow.camera.near = 0.3;
   lantern.shadow.camera.far = 9;
+  lantern.shadow.radius = 3;   // (PCF now: a touch of blur, as PCFSoft gave it)
   lantern.shadow.bias = -0.0004;
   lantern.shadow.normalBias = 0.02;
   lantern.shadow.radius = 4;
@@ -458,7 +461,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // the environment mock-up (owner's reference: sandstone colonnade courtyard)
   bootlog("courtyard: start");
   const courtyard = createCourtyard(scene);
-  const editsLoaded = loadEdits(); editsLoaded.then((e) => bootlog("level edits", { n: Object.keys(e).length }));   // the saved layout, applied as each piece registers
+  const editsLoaded = loadEdits();
+  editsLoaded.then(() => { const L = getSetting("lighting"); if (L) lighting.set(L); });   // his saved lighting (the editor's Lighting section) editsLoaded.then((e) => bootlog("level edits", { n: Object.keys(e).length }));   // the saved layout, applied as each piece registers
   const cove = createCove(scene), sea = cove.userData.sea;
   setLevelScene(scene);   // the level's own geometry becomes editable (editables.js levelPieceOf); saved piece edits apply now   // round 4's cove behind the sea gate (blockout); the sea rolls and ripples (sea.js)
   // THE HYDRA (hydraBoss.js): three necks out of the sea in front of the dock, the rigged heads
@@ -641,6 +645,17 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // the FIRE BASINS that light the town (braziers.js): real lights only on the nearest few
   const braziers = createBraziers(scene, { fireSim, fireTexture, flameTexture, layer: FX_LAYER,
     lights: LOW ? 0 : MOBILE ? 2 : 4, particles: !LOW, rate: MOBILE ? 0.5 : 1 });
+  // THE LIGHTING KNOBS (owner, 2026-10-08: "may as well put lighting settings in the editor") — the dev editor's Lighting
+  // section drives these live; saved in the layout file as "_lighting" and applied when the layout loads
+  const LIGHT_DEFAULTS = { sun: 2.6, sunHeight: 9.5, shadowBlur: 5, sky: 0.26, reflections: 0.25, exposure: 1.15, fires: 1 };
+  const lighting = {
+    defaults: LIGHT_DEFAULTS, values: { ...LIGHT_DEFAULTS },
+    set(v) {
+      Object.assign(this.values, v); const L = this.values;
+      AFTERGLOW = L.sun; sunAt(L.sunHeight); afterglow.shadow.radius = L.shadowBlur; skyFill.intensity = L.sky;
+      scene.environmentIntensity = L.reflections; renderer.toneMappingExposure = L.exposure; braziers.lightScale = L.fires;
+    },
+  };
   // scenery ADDED in the dev editor (props.js): rebuilt from the saved layout on every load
   const props = createProps(scene, { braziers });
   editsLoaded.then((ed) => props.spawnSaved(ed)).then((list) => list && list.length && bootlog("props", { n: list.length }));
@@ -2097,7 +2112,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     fly.on = !!on; fly.keys.clear();
     if (fly.on) { fly.pos.copy(camera.position); _eul.setFromQuaternion(camera.quaternion, "YXZ"); fly.yaw = _eul.y; fly.pitch = _eul.x; }
     if (fly.on && !editor) import("../dev/editor.js").then(({ createEditor }) => {
-      editor = createEditor({ scene, camera, dom: renderer.domElement, props, log: (step, data) => bootlog("editor " + step, data) });
+      editor = createEditor({ scene, camera, dom: renderer.domElement, props, lighting, log: (step, data) => bootlog("editor " + step, data) });
       editor.setOn(fly.on);
     });
     else if (editor) editor.setOn(fly.on);
@@ -2672,7 +2687,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         hand.rest.copy(HAND_RESTS[name][h]);
         if (!hand.active && !vrOn()) { hand.group.position.copy(hand.rest); hand.group.quaternion.setFromUnitVectors(UP, restDir); }
       });
-    }, get scene() { return scene; }, boothPos: BOOTH_POS, get station() { return station; }, melodyStations, kit: KIT, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
+    }, get scene() { return scene; }, boothPos: BOOTH_POS, lighting, get station() { return station; }, melodyStations, kit: KIT, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */
