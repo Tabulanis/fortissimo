@@ -1,0 +1,28 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1280px;height:720px;border:0"></iframe>
+<script type="module">
+// the editor's placed LIGHTS (2026-10-08): add an omni + a spot from the palette, change their settings, photograph. Never saves.
+const say = (t, b) => fetch("http://127.0.0.1:8899/" + t, { method: "POST", body: typeof b === "string" ? b : JSON.stringify(b) });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const f = document.getElementById("f");
+f.onload = async () => { const w = f.contentWindow, d = w.document; await wait(9000);
+  try {
+    const X = w.__grEdit, btn = (t) => [...d.querySelectorAll("button")].find((b) => b.textContent.includes(t));
+    const n0 = X.allEditables().length;
+    btn("omni light").click(); await wait(600); btn("spot light").click(); await wait(600);
+    const added = X.allEditables().slice(n0), out = { added: added.map((a) => a.userData.addKind) };
+    const spot = added.find((a) => a.userData.addKind === "light-spot"), omni = added.find((a) => a.userData.addKind === "light-omni");
+    X.select(spot); await wait(100);
+    const panelShown = getComputedStyle(d.querySelector("[data-k=lprops]")).display;
+    const set = (k, v) => { const i = d.querySelector(`[data-lp="${k}"]`); if (i.type === "checkbox") { i.checked = v; i.dispatchEvent(new w.Event("change")); } else { i.value = v; i.dispatchEvent(new w.Event("input")); } };
+    set("intensity", 150); set("color", "#5ad1ff"); set("angle", 25); set("shadow", true);
+    spot.position.set(0, 4, -6); omni.position.set(2.5, 1.2, -3); X.select(omni); set("intensity", 60); set("color", "#ff4a2a");
+    out.panelShown = panelShown;
+    out.spot = { type: spot.userData.light.type, intensity: spot.userData.light.intensity, color: spot.userData.light.color.getHexString(), angleDeg: +(spot.userData.light.angle * 57.3).toFixed(1), shadow: spot.userData.light.castShadow, params: spot.userData.lightParams };
+    out.omni = { type: omni.userData.light.type, intensity: omni.userData.light.intensity, color: omni.userData.light.color.getHexString(), marker: omni.userData.marker.visible };
+    say("lights", out);
+    await wait(1500);
+    say("png/lights-test", d.querySelector("canvas").toDataURL("image/png"));
+  } catch (e) { say("lights", { err: String(e.stack || e) }); }
+};
+f.src = "/?fly=1&shot=999&cam=0,3,1.5,0,-0.35";
+</script>

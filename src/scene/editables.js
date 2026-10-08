@@ -49,7 +49,7 @@ export const allEditables = () => [...objs.values()];
 /** record an object's current transform as an edit (call after every change); an ADDED prop also
  *  records what it is ({ add: "Cliffs" }) so the next load can build it again (props.js) */
 export function capture(o) {
-  edits[o.userData.editId] = { ...(o.userData.addKind ? { add: o.userData.addKind } : {}),
+  edits[o.userData.editId] = { ...(o.userData.addKind ? { add: o.userData.addKind } : {}), ...(o.userData.lightParams ? { light: o.userData.lightParams } : {}),
     p: o.position.toArray(), q: o.quaternion.toArray(), s: o.scale.toArray(), ...(o.visible ? {} : { hidden: true }) };
 }
 export const isRegistered = (id) => objs.has(id);

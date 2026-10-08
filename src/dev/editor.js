@@ -38,6 +38,16 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
       <button data-a="reset">Reset</button><button data-a="undo">Undo</button><button data-a="save" style="font-weight:700">Save</button></div>
     <div style="margin-top:10px;font-weight:700;letter-spacing:.08em">ADD <span style="font-weight:400;opacity:.6;font-size:11px">click one — it lands in front of you</span></div>
     <div data-k="palette" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;max-height:160px;overflow:auto"></div>
+    <div data-k="lprops" style="display:none;margin-top:10px;padding:6px;border:1px solid #6a5a2a;border-radius:8px">
+      <div style="font-weight:700;letter-spacing:.08em;margin-bottom:4px">THIS LIGHT</div>
+      <div style="display:grid;grid-template-columns:auto 1fr 38px;gap:3px 6px;align-items:center;font-size:12px">
+        <span>Colour</span><input type="color" data-lp="color"><span></span>
+        <span>Brightness</span><input type="range" data-lp="intensity" min="0" max="300" step="1"><span data-lpv="intensity"></span>
+        <span>Reach (m)</span><input type="range" data-lp="distance" min="1" max="80" step="0.5"><span data-lpv="distance"></span>
+        <span data-spot>Cone°</span><input data-spot type="range" data-lp="angle" min="5" max="85" step="1"><span data-spot data-lpv="angle"></span>
+        <span data-spot>Soft edge</span><input data-spot type="range" data-lp="penumbra" min="0" max="1" step="0.05"><span data-spot data-lpv="penumbra"></span>
+        <span>Shadows</span><input type="checkbox" data-lp="shadow"><span></span></div>
+      <div style="font-size:11px;opacity:.6;margin-top:3px">a spot shines down its own "down": aim it with 2 Turn</div></div>
     <div style="margin-top:10px;font-weight:700;letter-spacing:.08em">LIGHTING <button data-k="lightReset" style="font:11px system-ui;margin-left:6px">defaults</button></div>
     <div data-k="light" style="display:grid;grid-template-columns:auto 1fr 38px;gap:3px 6px;align-items:center;margin-top:5px;font-size:12px"></div>
     <div style="margin-top:8px;opacity:.6;font-size:11px;line-height:1.35">HOLD right mouse to look · W A S D fly · Q/E down/up · Shift fast · wheel = fly speed · Esc let go · tilde (~) leaves (the game was paused; it resumes)</div>`;
@@ -56,7 +66,16 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
     N("s").value = Math.abs(sel.scale.x).toFixed(2);   // (a mirrored object has a negative x size: the box shows the size)
   };
   const changed = () => { if (sel) capture(sel); dirty = true; status(); showNums(); };
-  const select = (o) => { sel = o; if (o) tc.attach(o); else tc.detach(); showNums(); log("select", { id: o ? o.userData.editId : null }); };
+  const select = (o) => { sel = o; if (o) tc.attach(o); else tc.detach(); showNums(); showLightProps(); log("select", { id: o ? o.userData.editId : null }); };
+  // THIS LIGHT (10-08): a selected placed light shows its own settings
+  function showLightProps() {
+    const box = $("lprops"), P = sel && sel.userData.lightParams;
+    box.style.display = P ? "block" : "none"; if (!P) return;
+    const spot = sel.userData.addKind === "light-spot";
+    for (const e of box.querySelectorAll("[data-spot]")) e.style.display = spot ? "" : "none";
+    for (const i of box.querySelectorAll("[data-lp]")) { const k = i.dataset.lp; if (i.type === "checkbox") i.checked = !!P[k]; else i.value = P[k]; }
+    for (const v of box.querySelectorAll("[data-lpv]")) v.textContent = (+P[v.dataset.lpv]).toFixed(v.dataset.lpv === "penumbra" ? 2 : 0);
+  }
   const setMode = (m) => { tc.setMode(m); for (const b of el.querySelectorAll("[data-a]")) b.style.outline = b.dataset.a === m ? "2px solid #ffb35a" : ""; };
   setMode("translate");
   const setSnap = (v) => { snap = v; tc.setTranslationSnap(v ? 0.25 : null); tc.setRotationSnap(v ? THREE.MathUtils.degToRad(15) : null); tc.setScaleSnap(v ? 0.1 : null); $("snap").checked = v; };
@@ -69,7 +88,8 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
     dup: () => { if (!sel || !props) return; const kind = sel.userData.addKind || sel.userData.model;
       if (!kind) { $("status").textContent = "can't copy this one"; return; }
       const at = sel.position.clone().add(new THREE.Vector3(2, 0, 2));
-      addProp(kind, at, (o) => { o.quaternion.copy(sel.quaternion); o.scale.copy(sel.scale); }); },
+      const lp = sel.userData.lightParams;
+      addProp(kind, at, (o) => { o.quaternion.copy(sel.quaternion); o.scale.copy(sel.scale); if (lp && o.userData.setLight) o.userData.setLight(lp); }); },
     // MIRROR (owner, 2026-10-08: "we could use a mirror object option"): flip it left-right where it stands; MIRROR COPY:
     // a copy on the other side of the level's centre line (world x = 0 — the courtyard and the cove are built about it)
     mirror: () => { if (!sel) return; undo.push(snapshot(sel)); sel.updateMatrixWorld(true);
@@ -77,7 +97,8 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
     mirrorCopy: () => { if (!sel || !props) return; const kind = sel.userData.addKind || sel.userData.model;
       if (!kind) { $("status").textContent = "can't copy this one"; return; }
       const src = sel; src.updateMatrixWorld(true); const w = src.matrixWorld.clone(), p = src.getWorldPosition(new THREE.Vector3());
-      addProp(kind, new THREE.Vector3(-p.x, p.y, p.z), (o) => { reflectWorld(o, w, 0); }); },
+      const lp = src.userData.lightParams;
+      addProp(kind, new THREE.Vector3(-p.x, p.y, p.z), (o) => { reflectWorld(o, w, 0); if (lp && o.userData.setLight) o.userData.setLight(lp); }); },
     del: () => { if (!sel) return;
       if (props && props.remove(sel)) { log("delete", { id: sel.userData.editId }); select(null); dirty = true; status(); }
       else act.hide(); },   // built-in pieces can only be hidden
@@ -115,7 +136,7 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
   if (props) props.kinds().then((list) => {
     const box = $("palette");
     for (const k of list) {
-      const b = document.createElement("button"); b.textContent = k === "brazier" ? "fire basin" : k;
+      const b = document.createElement("button"); b.textContent = { brazier: "fire basin", "light-omni": "💡 omni light", "light-spot": "🔦 spot light" }[k] || k;
       b.style.cssText = "padding:4px 7px;border-radius:6px;border:1px solid #4a5a3a;background:#1f2a18;color:#e6f0d6;cursor:pointer;font:12px system-ui";
       b.addEventListener("click", (e) => { e.stopPropagation(); addProp(k); });
       box.appendChild(b);
@@ -172,12 +193,17 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
     });
   }
   paintLight();
+  for (const i of el.querySelectorAll("[data-lp]")) i.addEventListener(i.type === "checkbox" ? "change" : "input", () => {
+    if (!sel || !sel.userData.setLight) return;
+    const k = i.dataset.lp, v = i.type === "checkbox" ? i.checked : i.type === "color" ? i.value : +i.value;
+    sel.userData.setLight({ [k]: v }); capture(sel); dirty = true; status(); showLightProps();
+  });
   if (lighting) $("lightReset").onclick = (e) => { e.stopPropagation(); lighting.set(lighting.defaults); setSetting("lighting", { ...lighting.values }); dirty = true; status(); paintLight(); };
   window.__grEdit = { allEditables, tc, select: (o) => select(o), levelPieceOf, act,   // harness handle (dev only)
     screenOf: (o) => { const v = o.getWorldPosition(new THREE.Vector3()).project(camera), r = dom.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; } };
   return {
     get on() { return on; }, get selected() { return sel; },
-    setOn(v) { on = !!v; el.style.display = on ? "block" : "none"; helper.visible = on; if (!on) select(null); status(); },
+    setOn(v) { on = !!v; el.style.display = on ? "block" : "none"; helper.visible = on; if (props && props.setMarkers) props.setMarkers(on); if (!on) select(null); status(); },
     /** keys while editing; true = consumed */
     key(e) {
       if (!on) return false;
