@@ -30,7 +30,7 @@ const CSS = `
     height: 48px; padding: 0 14px 0 11px; font-size: 16px; background: rgba(20, 12, 6, 0.8); }
   #gr-gear svg { width: 26px; height: 26px; }
 }
-#gr-set { position: fixed; inset: 0; z-index: 40; display: none; place-items: center;
+#gr-set { position: fixed; inset: 0; z-index: 70; display: none; place-items: center;
   background: rgba(8, 6, 4, 0.6); backdrop-filter: blur(3px); font: 15px system-ui, sans-serif; color: #f4e9d8; }
 #gr-set .card { background: rgba(28, 20, 14, 0.96); border: 1px solid rgba(255, 190, 110, 0.35);
   border-radius: 14px; padding: 20px 26px; width: min(460px, 92vw); max-height: 92vh; overflow: auto; box-sizing: border-box; }
@@ -98,7 +98,7 @@ export function createSettings({ onChange, onRestart, onEditor } = {}) {
         </select></div>
       <h3>Make</h3>
       <div class="row"><button data-act="editor" class="wide">🛠 Level editor</button></div>
-      <div class="foot"><button data-act="restart">Restart song</button><button data-act="close2">Close</button></div>
+      <div class="foot"><button data-act="restart">Restart song</button><button data-act="close2">Done ✓</button></div>
     </div>`;
   document.body.appendChild(root);
 
@@ -113,8 +113,9 @@ export function createSettings({ onChange, onRestart, onEditor } = {}) {
       onChange && onChange(k, v, s);
     });
   }
-  const open = () => { root.style.display = "grid"; };
-  const close = () => { root.style.display = "none"; };
+  let afterClose = null;   // (10-08) the main menu's Options: the menu hides while these are open and comes back on Done
+  const open = (then = null) => { root.style.display = "grid"; afterClose = typeof then === "function" ? then : null; };
+  const close = () => { root.style.display = "none"; const f = afterClose; afterClose = null; if (f) f(); };
   gear.addEventListener("click", open);
   if (new URLSearchParams(location.search).has("settings")) open();   // dev: ?settings opens it (screenshots)
   root.querySelector("[data-act=close]").addEventListener("click", close);

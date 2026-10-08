@@ -68,7 +68,9 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
       ${onOptions ? `<button class="big" data-a="options">Options ⚙</button>` : ""}`;
     card.querySelector("[data-a=play]").onclick = levelsScreen;
     if (onCreate) card.querySelector("[data-a=create]").onclick = () => onCreate(card, title);
-    if (onOptions) card.querySelector("[data-a=options]").onclick = onOptions;   // (10-08: "in the main it should have start and options")   // the song-maker (maker-ui.js) draws in this card
+    if (onOptions) card.querySelector("[data-a=options]").onclick = () => {   // (10-08) the menu steps aside so the settings show, and comes back on Done
+      root.style.display = "none"; onOptions(() => { root.style.display = ""; });
+    };   // the song-maker (maker-ui.js) draws in this card
   }
 
   function levelsScreen() {

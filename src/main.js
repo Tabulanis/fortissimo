@@ -1618,7 +1618,7 @@ roundsReady.then(() => {
     levels: list.map((r) => ({ name: r.name, title: r.title, bpm: r.bpm, made: !!r.made })),
     hydras: levelGroups(list).map((g) => ({ ...g, open: g.rounds.every((i) => list[i].made || i <= unlockedLevel()) })),   // round 4 of each level: open once its round 3 is
     onHydra: goHydra,
-    onOptions: () => settingsUI.open(),
+    onOptions: (back) => settingsUI.open(back),
     onCreate: async (card, back) => {   // the song-maker's first screen draws in the menu card; Start writing reloads into the arena
       const worlds = await (await fetch("/banks/worlds.json")).json(), banks = await (await fetch(`/banks/${worlds[0].id}.json`)).json();
       pickSounds(card, { worlds, banks, onBack: back, onDone: (picks) => {

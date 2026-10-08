@@ -6,6 +6,9 @@ f.onload = () => setTimeout(() => { const w = f.contentWindow, d = w.document, o
   out.buttons = [...d.querySelectorAll("#gr-menu .card button")].map((b) => b.textContent.trim());
   d.querySelector("#gr-menu [data-a=options]").click();
   out.settingsOpen = getComputedStyle(d.getElementById("gr-set")).display;
+  out.menuWhileOpen = getComputedStyle(d.getElementById("gr-menu")).display;
+  d.querySelector("#gr-set [data-act=close2]").click();
+  out.done = { settings: getComputedStyle(d.getElementById("gr-set")).display, menu: getComputedStyle(d.getElementById("gr-menu")).display, label: d.querySelector("#gr-set [data-act=close2]").textContent };
   fetch("http://127.0.0.1:8899/title", { method: "POST", body: JSON.stringify(out) }); }, 6000);
 f.src = "/";
 </script>
