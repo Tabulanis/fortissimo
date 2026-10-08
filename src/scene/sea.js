@@ -106,7 +106,11 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       return h * uChopAmp * (0.35 + 1.1 * c * c);   // builds on the crests, dies in the troughs
     }
     float chopAt(vec2 xz, float t) { return chopOct(xz, t, 4); }`;
+  // (10-08 DIAGNOSIS: his phone fails to LINK this shader — NO_SIM / NO_VCHOP / NO_FCHOP / NO_RIPPLES switch the suspects off, ?seatest)
   const simGlsl = /* glsl */ `
+    #ifdef NO_SIM
+    float simAt(vec2 xz) { return 0.0; }
+    #else
     uniform sampler2D uSim;
     uniform vec4 uSimRect;
     // the cloth's height at a world point, fading to 0 over the patch's outer 3 m
@@ -116,7 +120,8 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       vec2 e = min(uv, 1.0 - uv) * uSimRect.z / 3.0;
       float fade = clamp(min(e.x, e.y), 0.0, 1.0);
       return texture2D(uSim, uv).r * fade;
-    }`;
+    }
+    #endif`;
   const vert = /* glsl */ `
     uniform float uTime;
     uniform vec4 uSwell[${NSWELL}];        // declared BEFORE the shared chop code: crestAt() uses them
@@ -149,6 +154,7 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       wp.xz += slide * calm;   // a point just before the crest (cos > 0) moves forward, just past it back: both bunch at the crest
       dhx /= max(0.25, 1.0 - pinch); dhz /= max(0.25, 1.0 - pinch);   // the pinched crests are steeper
       // ripple rings: a damped circular wave from each ring's centre
+      #ifndef NO_RIPPLES
       for (int i = 0; i < ${MAX_RIPPLES}; i++) {
         vec4 r = uRipples[i];
         float age = uTime - r.z;
@@ -161,11 +167,14 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
         vec2 g = (dd / max(dist, 0.001)) * (-w * 4.0 * sin(ph));
         dhx += g.x; dhz += g.y;
       }
+      #endif
       // (the chop: always on now)
       {
         // (10-08: HIS PHONE failed to LINK this shader — 12 noise octaves per vertex was too much for its chip. The vertex
         // now takes the chop's HEIGHT only, 2 octaves; its slope and the fine octaves are per pixel in the fragment anyway)
+        #ifndef NO_VCHOP
         h += chopOct(wp.xz, uTime, 2);
+        #endif
       }
       {   // the cloth: the simulated waves around the podium and the hydra
         float e = 0.3;
@@ -210,12 +219,14 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
         n = normalize(n + vec3(-(sx - s0) / e, 0.0, -(sz - s0) / e));
       }
       // (the chop: always on now)
+      #ifndef NO_FCHOP
       {   // per-pixel chop normal (the vertex grid is too coarse for the small rings)
         float e = 0.03;
         float c0 = chopAt(vWorld.xz, uTime), cx = chopAt(vWorld.xz + vec2(e, 0.0), uTime), cz = chopAt(vWorld.xz + vec2(0.0, e), uTime);
         float near = 1.0 - smoothstep(40.0, 130.0, length(vWorld.xz - cameraPosition.xz));
         n = normalize(n + vec3(-(cx - c0) / e, 0.0, -(cz - c0) / e) * near);   // the chop's facets, per pixel (the grid is too coarse for the shortest waves)
       }
+      #endif
       vec3 v = normalize(cameraPosition - vWorld);
       float far = clamp((vWorld.z - 20.0) / 70.0, 0.0, 1.0);
       // REFLECTION BY ANGLE (Schlick Fresnel, water's 2%): looking down you see INTO the water, at a glancing

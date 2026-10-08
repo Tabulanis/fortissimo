@@ -490,7 +490,23 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   function refreshSunShadow() { afterglow.shadow.needsUpdate = true; }
   for (const ms of [1500, 4000, 8000, 15000]) setTimeout(refreshSunShadow, ms);   // his saved lighting (the editor's Lighting section) editsLoaded.then((e) => bootlog("level edits", { n: Object.keys(e).length }));   // the saved layout, applied as each piece registers
   const cove = createCove(scene), sea = cove.userData.sea;
-  setLevelScene(scene);   // the level's own geometry becomes editable (editables.js levelPieceOf); saved piece edits apply now   // round 4's cove behind the sea gate (blockout); the sea rolls and ripples (sea.js)
+  // (10-08, MEASURED on his phone with ?seatest: the full sea shader won't LINK there; dropping ANY ONE of the per-vertex parts —
+  // cloth, chop height, ripple rings — links it. Phones drop the vertex chop HEIGHT: a few cm of bump; the chop you see is per pixel)
+  if (MOBILE) { sea.mesh.material.defines.NO_VCHOP = 1; sea.mesh.material.needsUpdate = true; }
+  setLevelScene(scene);
+  // SEA LINK TEST (10-08, his phone can't LINK the sea shader): ?seatest builds the sea material with each suspect switched off
+  // and reports which versions link — run it once on the phone, read device.log ("seatest")
+  if (new URLSearchParams(location.search).has("seatest")) setTimeout(() => {
+    const gl = renderer.getContext(), base = sea.mesh.material, res = {};
+    for (const v of ["FULL", "NO_SIM", "NO_VCHOP", "NO_FCHOP", "NO_RIPPLES", "NO_SIM+NO_FCHOP", "NO_SIM+NO_VCHOP+NO_FCHOP+NO_RIPPLES"]) {
+      const m = base.clone(); m.uniforms = base.uniforms; m.defines = { ...base.defines };
+      if (v !== "FULL") for (const d of v.split("+")) m.defines[d] = 1;
+      const t = new THREE.Scene(), mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m); mesh.frustumCulled = false; t.add(mesh);
+      try { renderer.compile(t, camera); const p = renderer.properties.get(m).currentProgram;
+        res[v] = p ? gl.getProgramParameter(p.program, gl.LINK_STATUS) : "no program"; } catch (e) { res[v] = "threw " + String(e).slice(0, 80); }
+    }
+    bootlog("seatest", res);
+  }, 3000);   // the level's own geometry becomes editable (editables.js levelPieceOf); saved piece edits apply now   // round 4's cove behind the sea gate (blockout); the sea rolls and ripples (sea.js)
   // THE HYDRA (hydraBoss.js): three necks out of the sea in front of the dock, the rigged heads
   // on top; rises on hydra.rise() — round 4 / the conduct feel-test; ?hydra=1 raises it at load (dev)
   const _sprayP = new THREE.Vector3();
