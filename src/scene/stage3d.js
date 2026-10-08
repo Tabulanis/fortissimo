@@ -2527,7 +2527,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       // the AO blacks out the SEA (found 2026-10-07: its own depth/normal pass doesn't see the sea's waves and
       // returns full occlusion there) — so it is off whenever the view faces the cove (+z): the sea station,
       // the gate behind you, flying out there. The three courts keep it.
-      if (gtao) gtao.enabled = AO_ON && camera.getWorldDirection(_aoDir).z < 0.15;
+      if (gtao) gtao.enabled = AO_ON && camera.getWorldDirection(_aoDir).z < 0.15 && camera.position.z < COVE.wallZ - 1;   // (10-08: also off anywhere IN the cove — looking sideways there blacked the sea too)
       if (!shieldOnly) composer.render();
     }
   }

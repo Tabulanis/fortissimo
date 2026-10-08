@@ -9,6 +9,7 @@
    be swapped one at a time: "beach", "sea", "cliff-left", "cliff-right", "dock", "ship",
    "booth". BOOTH_POS is where the player stands for round 4. */
 import * as THREE from "three";
+import { bootlog } from "../bootlog.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { createSea } from "./sea.js";
 import { register } from "./editables.js";
@@ -111,6 +112,19 @@ export function createCove(scene) {
   box("yard", 7, 0.18, 0.18, wood, 0, 11.5, -1, 0, ship);
   box("sail", 6.6, 5.5, 0.06, new THREE.MeshStandardMaterial({ color: 0xd8cbb0, roughness: 1, side: THREE.DoubleSide }), 0, 8.4, -0.8, 0, ship);
   box("gangplank", 0.9, 0.08, 5.5, wood, -3.9, 2.3, 3, Math.PI / 2, ship).rotation.z = 0.5;   // across to the pier
+  // HIS MESHY SHIP (2026-10-08, Boats/Ancientship.glb → public/models/AncientShip.glb): replaces the box ship inside the
+  // same group (so "cove-ship" in the editor still moves it). The model lies along its x: turned to run along the pier,
+  // 16 m long like the box hull, its keel ~1.2 m under the water. The boxes stay built but hidden (as the cliffs do).
+  new GLTFLoader().load("/models/AncientShip.glb", (gltf) => {
+    const src = gltf.scene; src.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(src), size = bb.getSize(new THREE.Vector3()), k = 16 / size.x;
+    src.scale.setScalar(k); src.rotation.y = Math.PI / 2;
+    src.position.set((bb.min.z + bb.max.z) / 2 * k, -bb.min.y * k - 0.35, -(bb.min.x + bb.max.x) / 2 * k);   // centred; keel just under the group's waterline
+    src.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    for (const c of ship.children) c.visible = false;
+    ship.add(src);
+    bootlog("placed AncientShip.glb", { scale: +k.toFixed(2), size: size.toArray().map((v) => +(v * k).toFixed(1)) });
+  }, undefined, (e) => console.warn("AncientShip.glb failed to load", e));
   // the dev editor may move / size / hide these (pieces whose parts sit at world coords — wharf, dock,
   // pier, cliffs — turn about the cove's origin, so for those MOVE is the useful tool)
   for (const [name, label] of [["ship", "ship"], ["booth", "podium"], ["dock", "dock"], ["wharf", "wharf"], ["pier-right", "pier"]]) {
