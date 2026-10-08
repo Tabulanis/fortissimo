@@ -86,43 +86,38 @@ export function createCove(scene) {
     box("fader-cap", 0.14, 0.06, 0.08, new THREE.MeshStandardMaterial({ color: [0xd9442a, 0x3a7ad9, 0xe8c640][i] }), x, DOCK.y + 1.03, 0.5 + 0.15, 0, booth);
   });
   // the SHIP: run up on the beach to the right, listing a little; a mast and a gangplank down to the sand
-  const ship = new THREE.Group(); ship.name = "ship"; ship.position.copy(SHIP_POS); ship.rotation.set(0, 0.04, 0.03); root.add(ship);   // alongside the pier, a slight roll
-  box("hull", 5.5, 3.2, 16, hull, 0, 1.2, 0, 0, ship);
-  box("deck", 5.0, 0.2, 15, wood, 0, 2.9, 0, 0, ship);
-  box("prow", 1.6, 2.6, 2.4, hull, 0, 1.6, -8.6, 0, ship).rotation.y = Math.PI / 4;
-  box("sterncastle", 4.6, 2.2, 3.6, hull, 0, 4.0, 6.2, 0, ship);
-  box("mast", 0.3, 11, 0.3, wood, 0, 8.4, -1, 0, ship);
-  box("yard", 7, 0.18, 0.18, wood, 0, 11.5, -1, 0, ship);
-  box("sail", 6.6, 5.5, 0.06, new THREE.MeshStandardMaterial({ color: 0xd8cbb0, roughness: 1, side: THREE.DoubleSide }), 0, 8.4, -0.8, 0, ship);
-  box("gangplank", 0.9, 0.08, 5.5, wood, -3.9, 2.3, 3, Math.PI / 2, ship).rotation.z = 0.5;   // across to the pier
+  const ship = new THREE.Group(); ship.name = "ship"; ship.position.copy(SHIP_POS).add(new THREE.Vector3(0, -0.35, 0)); ship.rotation.set(0, 0.04 + Math.PI / 2, 0.03); root.add(ship);
+  // (10-08: turned HERE, not on load — a saved edit must not get the turn twice) the model's length along the pier, keel ~1.2 m under  (was: alongside the pier, a slight roll)
+  // (10-08: the box hull, deck, mast, sail and gangplank are gone — his Meshy ship below is the ship)
   // HIS MESHY DOCK (2026-10-08, meshy/dock/newdock.glb → public/models/NewDock.glb): a stone landing with steps at one end,
   // a plank pier with a crane at the other. Its length runs along its x: turned so the stone sits at the gate and the pier
   // runs out to the podium, scaled to reach from the wall to just past the podium; its DECK (measured: 1.92 units above the
   // posts' feet, the pier's centre line at z -0.25) at the old dock's plank height, so the podium and camera stay put.
+  // Both are built in the PALETTE's layout (props.js: the model base-centred and unturned inside its pivot; turn and place
+  // on the pivot), so Duplicate / Mirror copy — which rebuild through props.js — come out exactly like them (10-08).
+  const propLayout = (src, k) => {   // props.js spawn(), the same maths
+    src.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(src);
+    src.scale.setScalar(k); src.position.set(-(bb.min.x + bb.max.x) / 2 * k, -bb.min.y * k, -(bb.min.z + bb.max.z) / 2 * k);
+    src.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    return bb;
+  };
   new GLTFLoader().load("/models/NewDock.glb", (gltf) => {
     const src = gltf.scene; src.updateMatrixWorld(true);
-    const bb = new THREE.Box3().setFromObject(src), k = (DOCK.z1 + 0.6 - COVE.wallZ) / (bb.max.x - bb.min.x);
+    const len = new THREE.Box3().setFromObject(src).getSize(new THREE.Vector3()).x, k = 23 / len;   // = props FIT NewDock { width: 23 }
+    const bb = propLayout(src, k), cz = (bb.min.z + bb.max.z) / 2;
     const DECK_ABOVE_FEET = 1.92, PIER_Z = -0.25, deckY = DOCK.y + 0.08;
-    const pivot = new THREE.Group(); pivot.name = "newdock";
-    src.scale.setScalar(k); src.rotation.y = -Math.PI / 2;   // its +x (toward the crane) → world +z (out to sea)
-    src.position.set(PIER_Z * k, deckY - (bb.min.y + DECK_ABOVE_FEET) * k, COVE.wallZ - bb.min.x * k);   // x' = -z·k, z' = x·k
-    src.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-    pivot.add(src); root.add(pivot);
+    const pivot = new THREE.Group(); pivot.name = "newdock"; pivot.rotation.y = -Math.PI / 2;   // its +x (toward the crane) → world +z
+    pivot.position.set((PIER_Z - cz) * k, deckY - DECK_ABOVE_FEET * k, COVE.wallZ + len * k / 2);   // stone end at the wall, pier on x = 0
+    pivot.add(src); root.add(pivot); pivot.userData.model = "NewDock";
     register(pivot, "cove-newdock", "dock (his)");
-    bootlog("placed NewDock.glb", { scale: +k.toFixed(2), length: +((bb.max.x - bb.min.x) * k).toFixed(1), deckY });
+    bootlog("placed NewDock.glb", { scale: +k.toFixed(2), length: +(len * k).toFixed(1), deckY });
   }, undefined, (e) => console.warn("NewDock.glb failed to load", e));
-  // HIS MESHY SHIP (2026-10-08, Boats/Ancientship.glb → public/models/AncientShip.glb): replaces the box ship inside the
-  // same group (so "cove-ship" in the editor still moves it). The model lies along its x: turned to run along the pier,
-  // 16 m long like the box hull, its keel ~1.2 m under the water. The boxes stay built but hidden (as the cliffs do).
   new GLTFLoader().load("/models/AncientShip.glb", (gltf) => {
     const src = gltf.scene; src.updateMatrixWorld(true);
-    const bb = new THREE.Box3().setFromObject(src), size = bb.getSize(new THREE.Vector3()), k = 16 / size.x;
-    src.scale.setScalar(k); src.rotation.y = Math.PI / 2;
-    src.position.set((bb.min.z + bb.max.z) / 2 * k, -bb.min.y * k - 0.35, -(bb.min.x + bb.max.x) / 2 * k);   // centred; keel just under the group's waterline
-    src.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-    for (const c of ship.children) c.visible = false;
-    ship.add(src);
-    bootlog("placed AncientShip.glb", { scale: +k.toFixed(2), size: size.toArray().map((v) => +(v * k).toFixed(1)) });
+    const k = 16 / new THREE.Box3().setFromObject(src).getSize(new THREE.Vector3()).x;   // = props FIT AncientShip { width: 16 }
+    propLayout(src, k);
+    ship.add(src); ship.userData.model = "AncientShip";
+    bootlog("placed AncientShip.glb", { scale: +k.toFixed(2) });
   }, undefined, (e) => console.warn("AncientShip.glb failed to load", e));
   // the dev editor may move / size / hide these (pieces whose parts sit at world coords — wharf, dock,
   // pier, cliffs — turn about the cove's origin, so for those MOVE is the useful tool)

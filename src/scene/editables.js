@@ -26,7 +26,7 @@ function apply(id) {
 /** load the saved layout (once, at startup) */
 export function loadEdits(url = "/levels/edits.json") {
   return fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}))
-    .then((j) => { edits = j || {}; loaded = true; for (const id of objs.keys()) apply(id); return edits; });
+    .then((j) => { edits = j || {}; loaded = true; for (const id of objs.keys()) apply(id); if (levelScene) applyLevelPieces(); return edits; });
 }
 
 /** scenery calls this as it is built; ids must be stable across loads */
@@ -66,3 +66,33 @@ export function saveEdits() {
     .then((r) => r.ok);
 }
 export const editCount = () => Object.keys(edits).length;
+
+/* LEVEL GEOMETRY (owner, 2026-10-08: "for the level I want to be able to select and move or remove level geom"):
+   every piece the courtyard and the cove are BUILT from (their boxes, columns, floors, steps…) is editable too, without
+   being registered up front: a click on one registers it on the spot under an id that is its PATH from its level root
+   ("@courtyard/3.1" = child 3, then its child 1) — the code builds those pieces in the same order every time, so the
+   id finds the same piece next load. Saved edits for such ids are applied once the scene is known (setLevelScene).
+   Gameplay (drums, guns, crystals), the sea, the sky and the ground live outside these roots: never selectable. */
+export const LEVEL_ROOTS = ["courtyard", "cove"];
+let levelScene = null;
+const rootOf = (name) => levelScene && levelScene.children.find((c) => c.name === name);
+/** the piece a click on `o` selects: the registered editable it is part of, else the level piece itself (registered now); null = not editable */
+export function levelPieceOf(o) {
+  const e = editableOf(o); if (e) return e;
+  let root = null;
+  for (let p = o.parent; p; p = p.parent) if (LEVEL_ROOTS.includes(p.name) && p.parent === levelScene) { root = p; break; }
+  if (!root) return null;
+  const path = []; for (let c = o; c !== root; c = c.parent) path.unshift(c.parent.children.indexOf(c));
+  const kind = o.geometry && o.geometry.type ? o.geometry.type.replace("Geometry", "").toLowerCase() : "piece";
+  return register(o, `@${root.name}/${path.join(".")}`, `${o.name || kind} (${root.name})`);
+}
+function applyLevelPieces() {
+  for (const id of Object.keys(edits)) {
+    const m = /^@([a-z]+)\/([\d.]+)$/.exec(id); if (!m || objs.has(id)) continue;
+    let o = rootOf(m[1]);
+    for (const i of m[2].split(".").map(Number)) o = o && o.children[i];
+    if (o) register(o, id, `${o.name || "piece"} (${m[1]})`);
+  }
+}
+/** the scene the level roots live in (stage3d calls this once the courtyard and the cove are built) */
+export function setLevelScene(scene) { levelScene = scene; if (loaded) applyLevelPieces(); }

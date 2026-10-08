@@ -8,7 +8,7 @@
    scene/editables.js can be picked; gameplay pieces (drums, guns, crystals) are not, on purpose. */
 import * as THREE from "three";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
-import { allEditables, editableOf, capture, reset, saveEdits, editCount } from "../scene/editables.js";
+import { allEditables, editableOf, capture, reset, saveEdits, editCount, levelPieceOf, LEVEL_ROOTS } from "../scene/editables.js";
 
 export function createEditor({ scene, camera, dom, props = null, log = () => {} }) {
   const tc = new TransformControls(camera, dom);
@@ -34,7 +34,7 @@ export function createEditor({ scene, camera, dom, props = null, log = () => {} 
       <span>size</span><input data-n="s"><span></span><span></span></div>
     <label style="display:block;margin-bottom:8px"><input type="checkbox" data-k="snap"> snap (25 cm · 15° · 10%)</label>
     <div style="display:flex;flex-wrap:wrap;gap:4px">
-      <button data-a="dup">Duplicate</button><button data-a="del">Delete</button><button data-a="hide">Hide</button>
+      <button data-a="dup">Duplicate</button><button data-a="mirror" title="M">Mirror</button><button data-a="mirrorCopy" title="Shift+M">Mirror copy</button><button data-a="del">Delete</button><button data-a="hide">Hide</button>
       <button data-a="reset">Reset</button><button data-a="undo">Undo</button><button data-a="save" style="font-weight:700">Save</button></div>
     <div style="margin-top:10px;font-weight:700;letter-spacing:.08em">ADD <span style="font-weight:400;opacity:.6;font-size:11px">click one — it lands in front of you</span></div>
     <div data-k="palette" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;max-height:160px;overflow:auto"></div>
@@ -51,7 +51,7 @@ export function createEditor({ scene, camera, dom, props = null, log = () => {} 
     if (!sel) return;
     N("px").value = sel.position.x.toFixed(2); N("py").value = sel.position.y.toFixed(2); N("pz").value = sel.position.z.toFixed(2);
     N("ry").value = THREE.MathUtils.radToDeg(new THREE.Euler().setFromQuaternion(sel.quaternion, "YXZ").y).toFixed(0);
-    N("s").value = sel.scale.x.toFixed(2);
+    N("s").value = Math.abs(sel.scale.x).toFixed(2);   // (a mirrored object has a negative x size: the box shows the size)
   };
   const changed = () => { if (sel) capture(sel); dirty = true; status(); showNums(); };
   const select = (o) => { sel = o; if (o) tc.attach(o); else tc.detach(); showNums(); log("select", { id: o ? o.userData.editId : null }); };
@@ -68,6 +68,14 @@ export function createEditor({ scene, camera, dom, props = null, log = () => {} 
       if (!kind) { $("status").textContent = "can't copy this one"; return; }
       const at = sel.position.clone().add(new THREE.Vector3(2, 0, 2));
       addProp(kind, at, (o) => { o.quaternion.copy(sel.quaternion); o.scale.copy(sel.scale); }); },
+    // MIRROR (owner, 2026-10-08: "we could use a mirror object option"): flip it left-right where it stands; MIRROR COPY:
+    // a copy on the other side of the level's centre line (world x = 0 — the courtyard and the cove are built about it)
+    mirror: () => { if (!sel) return; undo.push(snapshot(sel)); sel.updateMatrixWorld(true);
+      reflectWorld(sel, sel.matrixWorld, sel.getWorldPosition(new THREE.Vector3()).x); changed(); log("mirror", { id: sel.userData.editId }); },
+    mirrorCopy: () => { if (!sel || !props) return; const kind = sel.userData.addKind || sel.userData.model;
+      if (!kind) { $("status").textContent = "can't copy this one"; return; }
+      const src = sel; src.updateMatrixWorld(true); const w = src.matrixWorld.clone(), p = src.getWorldPosition(new THREE.Vector3());
+      addProp(kind, new THREE.Vector3(-p.x, p.y, p.z), (o) => { reflectWorld(o, w, 0); }); },
     del: () => { if (!sel) return;
       if (props && props.remove(sel)) { log("delete", { id: sel.userData.editId }); select(null); dirty = true; status(); }
       else act.hide(); },   // built-in pieces can only be hidden
@@ -79,7 +87,7 @@ export function createEditor({ scene, camera, dom, props = null, log = () => {} 
     const v = (n) => parseFloat(N(n).value);
     if (Number.isFinite(v("px"))) sel.position.set(v("px"), v("py"), v("pz"));
     if (Number.isFinite(v("ry"))) { const e = new THREE.Euler().setFromQuaternion(sel.quaternion, "YXZ"); e.y = THREE.MathUtils.degToRad(v("ry")); sel.quaternion.setFromEuler(e); }
-    if (Number.isFinite(v("s")) && v("s") > 0) sel.scale.setScalar(v("s"));
+    if (Number.isFinite(v("s")) && v("s") > 0) { const sx = Math.sign(sel.scale.x) || 1; sel.scale.setScalar(v("s")); sel.scale.x *= sx; }   // keeps a mirror
     changed();
   });
   // keep typing in the panel out of the game and the fly keys
@@ -90,6 +98,13 @@ export function createEditor({ scene, camera, dom, props = null, log = () => {} 
     const o = camera.getWorldPosition(new THREE.Vector3()), d = camera.getWorldDirection(new THREE.Vector3());
     let t = d.y < -0.05 ? -o.y / d.y : 10; t = Math.max(3, Math.min(25, t));
     const p = o.addScaledVector(d, t); p.y = 0; return p;
+  }
+  /** set o's transform to `world` reflected across the plane x = cx (its parent's space; three's decompose keeps the flip as a negative x size) */
+  const _m = new THREE.Matrix4(), _r = new THREE.Matrix4();
+  function reflectWorld(o, world, cx) {
+    _r.makeTranslation(2 * cx, 0, 0).multiply(new THREE.Matrix4().makeScale(-1, 1, 1));
+    _m.copy(o.parent.matrixWorld).invert().multiply(_r).multiply(world);
+    _m.decompose(o.position, o.quaternion, o.scale);
   }
   function addProp(kind, at = inFront(), tweak = null) {
     props.spawn(kind, at).then((o) => { if (tweak) tweak(o); capture(o); dirty = true; status(); select(o); setMode("translate"); log("add", { kind, id: o.userData.editId }); })
@@ -117,7 +132,7 @@ export function createEditor({ scene, camera, dom, props = null, log = () => {} 
   tc.addEventListener("dragging-changed", (e) => { if (e.value && sel) undo.push(snapshot(sel)); });
   tc.addEventListener("objectChange", () => {
     if (sizeDrag && sel) sel.scale.copy(sizeDrag.s0).multiplyScalar(Math.max(0.02, Math.pow(2, (sizeDrag.y0 - sizeDrag.y) / 140)));
-    if (sel && tc.mode === "scale") sel.scale.set(Math.max(0.02, sel.scale.x), Math.max(0.02, sel.scale.y), Math.max(0.02, sel.scale.z));
+    if (sel && tc.mode === "scale") { const k = (v) => (Math.sign(v) || 1) * Math.max(0.02, Math.abs(v)); sel.scale.set(k(sel.scale.x), k(sel.scale.y), k(sel.scale.z)); }   // a floor on SIZE, not on sign (mirrors stay mirrored)
     changed();
   });
 
@@ -131,17 +146,18 @@ export function createEditor({ scene, camera, dom, props = null, log = () => {} 
     if (moved || onHandle) return;
     const r = dom.getBoundingClientRect(); ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera); ray.layers.enableAll();
-    const pool = allEditables().filter((o) => o.visible || o === sel);
+    // the pool: everything registered, plus ALL the level geometry (the courtyard's and the cove's own pieces, 10-08)
+    const pool = [...allEditables().filter((o) => o.visible || o === sel), ...scene.children.filter((c) => LEVEL_ROOTS.includes(c.name))];
     const hits = ray.intersectObjects(pool, true);
     log("pick", { editables: pool.length, hits: hits.length, first: hits[0] ? (hits[0].object.name || hits[0].object.type) : null, at: [+ndc.x.toFixed(2), +ndc.y.toFixed(2)] });
     // only what's SEEN: a hidden part inside a visible group still catches rays (three doesn't check visibility),
     // and on 10-08 the old dock's hidden planks sat exactly under his new deck and stole every click
     const seen = (o) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
     const hit = hits.find((h) => seen(h.object));
-    select(hit ? editableOf(hit.object) : null);
+    select(hit ? levelPieceOf(hit.object) : null);
   });
 
-  window.__grEdit = { allEditables, tc,   // harness handle (dev only)
+  window.__grEdit = { allEditables, tc, select: (o) => select(o), levelPieceOf, act,   // harness handle (dev only)
     screenOf: (o) => { const v = o.getWorldPosition(new THREE.Vector3()).project(camera), r = dom.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; } };
   return {
     get on() { return on; }, get selected() { return sel; },
@@ -157,6 +173,7 @@ export function createEditor({ scene, camera, dom, props = null, log = () => {} 
       if (k === "3") { setMode("scale"); return true; }
       if (k === "delete" || k === "backspace") { act.del(); return true; }
       if ((e.ctrlKey || e.metaKey) && k === "d") { e.preventDefault(); act.dup(); return true; }
+      if (k === "m" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); if (e.shiftKey) act.mirrorCopy(); else act.mirror(); return true; }
       if (k === "escape") { select(null); return true; }
       return false;
     },

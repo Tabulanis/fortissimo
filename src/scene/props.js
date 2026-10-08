@@ -9,7 +9,8 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { register, unregister, isRegistered } from "./editables.js";
 
 // how big a fresh one comes in (metres): his models are exported ~2 m across, so they need a size
-const FIT = { Gate: { width: 5.2 }, Fountain: { width: 4.6 }, Cliffs: { height: 9 }, Ruins: { height: 16 }, Pillar: { height: 6.3 }, Bdrum: { height: 1 } };
+const FIT = { Gate: { width: 5.2 }, Fountain: { width: 4.6 }, Cliffs: { height: 9 }, Ruins: { height: 16 }, Pillar: { height: 6.3 }, Bdrum: { height: 1 },
+  NewDock: { width: 23 }, AncientShip: { width: 16 } };   // (10-08: his dock + ship, at the sizes the cove uses)
 // rigged characters would stand frozen in their bind pose — not scenery
 export const NOT_PROPS = new Set(["MinotaurRig", "Sentinel", "Cyclops", "HydraHead", "Minotaur"]);
 

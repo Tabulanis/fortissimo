@@ -11,7 +11,7 @@ import { createCourtyard, ARCHER_ROOF_Y, ARCHER_ROOF_X, ARCHER_ROOF_Z, FAR_WALL 
 import { createBraziers } from "./braziers.js";
 import { createCove, BOOTH_POS, DOCK, COVE } from "./cove.js";
 import { createHydra } from "./hydraBoss.js";
-import { loadEdits } from "./editables.js";
+import { loadEdits, setLevelScene } from "./editables.js";
 import { createProps } from "./props.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
@@ -448,7 +448,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   bootlog("courtyard: start");
   const courtyard = createCourtyard(scene);
   const editsLoaded = loadEdits(); editsLoaded.then((e) => bootlog("level edits", { n: Object.keys(e).length }));   // the saved layout, applied as each piece registers
-  const cove = createCove(scene), sea = cove.userData.sea;   // round 4's cove behind the sea gate (blockout); the sea rolls and ripples (sea.js)
+  const cove = createCove(scene), sea = cove.userData.sea;
+  setLevelScene(scene);   // the level's own geometry becomes editable (editables.js levelPieceOf); saved piece edits apply now   // round 4's cove behind the sea gate (blockout); the sea rolls and ripples (sea.js)
   // THE HYDRA (hydraBoss.js): three necks out of the sea in front of the dock, the rigged heads
   // on top; rises on hydra.rise() — round 4 / the conduct feel-test; ?hydra=1 raises it at load (dev)
   const _sprayP = new THREE.Vector3();

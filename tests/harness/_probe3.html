@@ -1,0 +1,14 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+// dev probe: where an object really is (#n=name): world box, visible chain, children count
+const n = new URLSearchParams(location.hash.slice(1)).get("n") || "ship";
+const f = document.getElementById("f");
+f.onload = () => setTimeout(() => { const w = f.contentWindow, S = w.__gr.stage3d.scene, out = [];
+  S.traverse((o) => { if (o.name !== n) return; let v = true; for (let p = o; p; p = p.parent) if (!p.visible) v = false;
+    const b = new (S.position.constructor === Object ? Object : w.__gr.stage3d.scene.constructor)(); 
+    const bb = new o.position.constructor(), lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+    o.updateMatrixWorld(true); o.traverse((c) => { if (c.isMesh) { c.geometry.computeBoundingBox(); for (const corner of [0, 1]) { const pt = (corner ? c.geometry.boundingBox.max : c.geometry.boundingBox.min).clone().applyMatrix4(c.matrixWorld); pt.toArray().forEach((x, i) => { lo[i] = Math.min(lo[i], x); hi[i] = Math.max(hi[i], x); }); } } });
+    out.push({ name: o.name, type: o.type, shown: v, children: o.children.length, pos: o.position.toArray().map((x) => +x.toFixed(2)), lo: lo.map((x) => +x.toFixed(1)), hi: hi.map((x) => +x.toFixed(1)) }); });
+  fetch("http://127.0.0.1:8899/probe3", { method: "POST", body: JSON.stringify(out) }); }, 9000);
+f.src = "/?fly=1";
+</script>
