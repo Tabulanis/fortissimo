@@ -24,7 +24,10 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
   el.style.cssText = "position:fixed;top:10px;right:10px;z-index:60;width:250px;max-height:calc(100vh - 20px);overflow:auto;box-sizing:border-box;padding:10px 12px;border-radius:10px;" +
     "background:rgba(20,14,10,.88);color:#f1e3cc;font:13px system-ui;box-shadow:0 4px 18px rgba(0,0,0,.5);display:none;user-select:none";
   el.innerHTML = `
-    <div style="font-weight:700;letter-spacing:.08em;margin-bottom:6px">EDIT <span data-k="status" style="font-weight:400;opacity:.7;float:right"></span></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-weight:700;letter-spacing:.08em">EDIT</span>
+      <span data-k="status" style="font-weight:400;opacity:.7;flex:1;text-align:right"></span>
+      <button data-k="fold" title="hide / show the panel" style="flex:none;padding:4px 10px;font-size:14px">▾ Hide</button></div>
+    <div data-k="body">
     <div data-k="name" style="margin-bottom:8px;opacity:.9">click something to grab it</div>
     <div style="display:flex;gap:4px;margin-bottom:8px">
       <button data-a="translate">1 Move</button><button data-a="rotate">2 Turn</button><button data-a="scale">3 Size</button></div>
@@ -50,13 +53,20 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
       <div style="font-size:11px;opacity:.6;margin-top:3px">a spot shines down its own "down": aim it with 2 Turn</div></div>
     <div style="margin-top:10px;font-weight:700;letter-spacing:.08em">LIGHTING <button data-k="lightReset" style="font:11px system-ui;margin-left:6px">defaults</button></div>
     <div data-k="light" style="display:grid;grid-template-columns:auto 1fr 38px;gap:3px 6px;align-items:center;margin-top:5px;font-size:12px"></div>
-    <div style="margin-top:8px;opacity:.6;font-size:11px;line-height:1.35">HOLD right mouse to look · W A S D fly · Q/E down/up · Shift fast · wheel = fly speed · Esc let go · tilde (~) leaves (the game was paused; it resumes)</div>`;
+    <div style="margin-top:8px;opacity:.6;font-size:11px;line-height:1.35">HOLD right mouse to look · W A S D fly · Q/E down/up · Shift fast · wheel = fly speed · Esc let go · tilde (~) leaves (the game was paused; it resumes)</div>
+    </div>`;
   for (const b of el.querySelectorAll("button")) b.style.cssText = "flex:1;padding:5px 6px;border-radius:6px;border:1px solid #6a4a2a;background:#3a2414;color:#f1e3cc;cursor:pointer;font:12px system-ui";
   for (const i of el.querySelectorAll("input:not([type])")) i.style.cssText = "width:100%;box-sizing:border-box;background:#120c08;color:#f1e3cc;border:1px solid #5a3e24;border-radius:4px;padding:2px 4px;font:12px ui-monospace,monospace";
   el.dataset.devEditor = "1";   // dev mode hides every other overlay, not this one
   document.body.appendChild(el);
   const $ = (k) => el.querySelector(`[data-k="${k}"]`), N = (n) => el.querySelector(`[data-n="${n}"]`);
+  $("fold").style.cssText = "flex:none;padding:7px 12px;border-radius:8px;border:1px solid #ffb35a;background:#3a2414;color:#ffd27a;cursor:pointer;font:600 14px system-ui";   // big enough for a thumb
   const status = () => { $("status").textContent = dirty ? "unsaved" : `${editCount()} saved`; $("status").style.color = dirty ? "#ffb35a" : ""; };
+  // FOLD (owner, 2026-10-08: "on phone in edit mode we need to be able to hide the tabs") — the panel shrinks to its header
+  // bar (EDIT · status · ▸ Show) so the view is clear; remembered on this device
+  let folded = false;
+  const setFold = (v) => { folded = v; $("body").style.display = v ? "none" : ""; $("fold").textContent = v ? "▸ Show" : "▾ Hide";
+    el.style.width = v ? "auto" : "250px"; try { localStorage.setItem("gr.editFold", v ? "1" : ""); } catch { /* fine */ } };
   const showNums = () => {
     $("name").textContent = sel ? `${sel.userData.editLabel}${sel.visible ? "" : " (hidden)"}` : "click something to grab it";
     $("nums").style.opacity = sel ? 1 : 0.35;
@@ -78,6 +88,8 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
   }
   const setMode = (m) => { tc.setMode(m); for (const b of el.querySelectorAll("[data-a]")) b.style.outline = b.dataset.a === m ? "2px solid #ffb35a" : ""; };
   setMode("translate");
+  $("fold").addEventListener("click", (e) => { e.stopPropagation(); setFold(!folded); });
+  try { if (localStorage.getItem("gr.editFold")) setFold(true); } catch { /* fine */ }
   const setSnap = (v) => { snap = v; tc.setTranslationSnap(v ? 0.25 : null); tc.setRotationSnap(v ? THREE.MathUtils.degToRad(15) : null); tc.setScaleSnap(v ? 0.1 : null); $("snap").checked = v; };
   $("snap").addEventListener("change", (e) => setSnap(e.target.checked));
   const act = {

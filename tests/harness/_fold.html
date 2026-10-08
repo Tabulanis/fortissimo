@@ -1,0 +1,14 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:384px;height:760px;border:0"></iframe>
+<script type="module">
+// the editor panel folds (10-08, phone): open the editor from Settings, Hide → the panel shrinks to its bar, Show → back
+const f = document.getElementById("f"); localStorage.removeItem("gr.editFold");
+f.onload = async () => { const w = f.contentWindow, d = w.document, wait = (ms) => new Promise((r) => setTimeout(r, ms)); await wait(7000);
+  try {
+  d.getElementById("gr-gear").click(); await wait(200); d.querySelector("[data-act=editor]").click(); await wait(1500);
+  const panel = d.querySelector("[data-k=fold]").parentElement.parentElement, h = () => Math.round(panel.getBoundingClientRect().height);
+  const open = h(); d.querySelector("[data-k=fold]").click(); await wait(100); const folded = h(), label = d.querySelector("[data-k=fold]").textContent;
+  d.querySelector("[data-k=fold]").click(); await wait(100);
+  fetch("http://127.0.0.1:8899/fold", { method: "POST", body: JSON.stringify({ open, folded, label, reopened: h(), screen: w.innerHeight }) });
+  } catch (e) { fetch("http://127.0.0.1:8899/fold", { method: "POST", body: "ERR " + String(e.stack || e) }); } };
+f.src = "/";
+</script>
