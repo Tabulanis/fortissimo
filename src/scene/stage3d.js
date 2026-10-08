@@ -9,7 +9,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { createCourtyard, ARCHER_ROOF_Y, ARCHER_ROOF_X, ARCHER_ROOF_Z, FAR_WALL } from "./courtyard.js";
 import { createBraziers } from "./braziers.js";
-import { createCove, BOOTH_POS, DOCK } from "./cove.js";
+import { createCove, BOOTH_POS, DOCK, COVE } from "./cove.js";
 import { createHydra } from "./hydraBoss.js";
 import { loadEdits } from "./editables.js";
 import { createProps } from "./props.js";
@@ -26,7 +26,7 @@ import { createFire } from "./fire.js";
 import { createStation, BAR_MID_Z, BARS, PER_ROW } from "./stations.js";
 import { createDefense } from "./defense.js";
 import { createTroops } from "./troops.js";
-import { createPool, poolContains, POOL, SURFACE_Y } from "./pool.js";
+import { createPool, poolContains, POOL } from "./pool.js";
 import { bootlog } from "../bootlog.js";
 
 const APPROACH_S = 4.0;   // seconds of visible flight (rocket arrows: a bit slower, owner) — must match main.js
@@ -304,6 +304,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   scene.add(lantern, lantern.target);
   if (LOW) { renderer.shadowMap.enabled = false; lantern.castShadow = false; }   // no real-time shadows on the low levels
 
+  let AO_ON = false; const _aoDir = new THREE.Vector3();   // the AO's own switch (off toward the sea, below)
   const camera = new THREE.PerspectiveCamera(
     60, canvas.clientWidth / canvas.clientHeight, 0.1, 200,
   );
@@ -373,7 +374,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   gtao.updateGtaoMaterial({ radius: 0.45, distanceExponent: 1.4, thickness: 1.2, scale: 1.0, samples: 16 });
   gtao.blendIntensity = 1.0;
   composer.addPass(gtao);
-  gtao.enabled = !MOBILE;
+  gtao.enabled = !MOBILE && !new URLSearchParams(location.search).has("noao");   // ?noao: dev, the AO off (to tell what it does)
+  AO_ON = gtao.enabled;
   // BLOOM: only what's brighter than white glows (fire, sparks, hit flashes)
   bloom = new UnrealBloomPass(new THREE.Vector2(canvas.clientWidth || 1280, canvas.clientHeight || 720), 0.55, 0.6, 0.85);
   composer.addPass(bloom);
@@ -431,12 +433,14 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   smaa.enabled = !MOBILE;   // the mobile tier relies on its higher pixel density instead
   }
 
-  // ground: dark stone, flat at y = 0
+  // ground: dark stone, flat at y = 0 — STOPPING AT THE SEA WALL (2026-10-07: it ran under the cove at sea
+  // level and hid the sea except where crests poked through — the "beach" he saw)
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(400, 400),
+    new THREE.PlaneGeometry(400, 200 + COVE.wallZ),
     new THREE.MeshStandardMaterial({ color: 0x1a1714, roughness: 1 }),
   );
   ground.rotation.x = -Math.PI / 2;
+  ground.position.z = (COVE.wallZ - 200) / 2;
   ground.receiveShadow = true;
   scene.add(ground);
 
@@ -460,6 +464,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // AO's extra scene render doesn't re-render its mirror a second time)
   bootlog("pool: start");
   const waterPool = createPool(scene, { bottomMap: courtyard.userData.flagsMap, layer: FX_LAYER, resolution: MOBILE ? 0.25 : 0.5, cheap: LOW });
+  // the water goes INSIDE the fountain (owner, 2026-10-07). The basin, measured from Fountain.glb: a rounded
+  // rectangle 84% x 78% of the model's footprint, its water a third of the way up (the rim is at 38%)
+  courtyard.userData.fountain.then(({ pivot, size }) => waterPool.fitInto(pivot, { hx: size.w / 2 * 0.84, hz: size.d / 2 * 0.78, y: size.h * 0.33, corner: size.d * 0.08 }));
 
   // drums
   const drumMat = [];
@@ -1785,7 +1792,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       // into the pool: it'll hiss out and float
       // the FAR half of the pool (owner, 2026-10-03: decoys keep well back)
       const zMid = (POOL.z0 + POOL.z1) / 2;
-      d.to.set(POOL.x0 + 0.4 + Math.random() * (POOL.x1 - POOL.x0 - 0.8), SURFACE_Y,
+      d.to.set(POOL.x0 + 0.4 + Math.random() * (POOL.x1 - POOL.x0 - 0.8), POOL.y,
         POOL.z0 + 0.4 + Math.random() * (zMid - POOL.z0 - 0.4));
     } else {
       // a ground spot well back, beyond the pool (owner, 2026-10-03) — never near the player
@@ -1842,7 +1849,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
           const t = heardNow - d.landed;
           if (t >= FLOAT_S) { d.active = false; d.group.visible = false; continue; }
           const sink = Math.max(0, (t - (FLOAT_S - 1.5)) / 1.5);          // last 1.5 s: going under
-          d.group.position.set(d.to.x + d.drift.x * t, SURFACE_Y + 0.012 + 0.008 * Math.sin(t * 2.4) - 0.12 * sink,
+          d.group.position.set(d.to.x + d.drift.x * t, POOL.y + 0.012 + 0.008 * Math.sin(t * 2.4) - 0.12 * sink,
             d.to.z + d.drift.z * t);
           _dT.set(Math.cos(d.yaw + 0.05 * t), 0.06 * Math.sin(t * 1.9), Math.sin(d.yaw + 0.05 * t)).normalize();
           d.group.quaternion.setFromUnitVectors(UP, _dT);
@@ -2517,6 +2524,10 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         shieldGlow.renderToScreen = shieldOnly;   // harness: show the channel alone
         shieldGlow.render();
       }
+      // the AO blacks out the SEA (found 2026-10-07: its own depth/normal pass doesn't see the sea's waves and
+      // returns full occlusion there) — so it is off whenever the view faces the cove (+z): the sea station,
+      // the gate behind you, flying out there. The three courts keep it.
+      if (gtao) gtao.enabled = AO_ON && camera.getWorldDirection(_aoDir).z < 0.15;
       if (!shieldOnly) composer.render();
     }
   }
@@ -2649,7 +2660,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         hand.rest.copy(HAND_RESTS[name][h]);
         if (!hand.active && !vrOn()) { hand.group.position.copy(hand.rest); hand.group.quaternion.setFromUnitVectors(UP, restDir); }
       });
-    }, get station() { return station; }, melodyStations, kit: KIT, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
+    }, get scene() { return scene; }, get station() { return station; }, melodyStations, kit: KIT, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */

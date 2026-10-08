@@ -14,7 +14,7 @@ import { createSea } from "./sea.js";
 import { register } from "./editables.js";
 
 export const COVE = { wallZ: 8.6, beachZ0: 9.6, beachZ1: 17, seaZ1: 90, halfWidth: 30 };
-export const DOCK = { z0: 13, z1: 31, width: 2.6, y: 0.55 };
+export const DOCK = { z0: 11, z1: 31, width: 2.6, y: 0.55 };   // (10-07: starts at the landing — the wide wharf is gone)
 export const BOOTH_POS = new THREE.Vector3(0, 0, DOCK.z1 - 1.6);
 export const SHIP_POS = new THREE.Vector3(14.2, -0.9, 33);   // moored alongside the right pier, afloat
 
@@ -32,11 +32,13 @@ export function createCove(scene) {
   // the WHARF (owner, 2026-10-06: "easier to render a dock than a beach"): a wide deck of planks on
   // posts from the gate out to the water, the dock running on from its middle
   const wharf = new THREE.Group(); wharf.name = "wharf"; root.add(wharf);
-  box("deck", 24, 0.18, COVE.beachZ1 - COVE.beachZ0 + 0.6, wood, 0, DOCK.y, (COVE.beachZ0 + COVE.beachZ1) / 2, 0, wharf);
-  for (let x = -11; x <= 11; x += 2.75) for (const z of [COVE.beachZ0 + 1, COVE.beachZ1 - 0.6]) box("post", 0.26, DOCK.y + 1.4, 0.26, wood, x, DOCK.y / 2 - 0.4, z, 0, wharf);
-  for (const s of [-1, 1]) box("rail", 0.08, 0.9, COVE.beachZ1 - COVE.beachZ0, wood, s * 11.9, DOCK.y + 0.55, (COVE.beachZ0 + COVE.beachZ1) / 2, 0, wharf);
+  // (owner, 2026-10-07: "lose the beach, just make it deeper") — the 24 m wharf is gone; what's left is a LANDING
+  // the width of the gate, holding the two fire basins at the dock's foot; the sea comes right up to it
+  const LAND = { w: 8, z0: COVE.wallZ, z1: DOCK.z0 };
+  box("deck", LAND.w, 0.18, LAND.z1 - LAND.z0 + 0.2, wood, 0, DOCK.y, (LAND.z0 + LAND.z1) / 2, 0, wharf);
+  for (const x of [-LAND.w / 2 + 0.2, -1.5, 1.5, LAND.w / 2 - 0.2]) box("post", 0.26, DOCK.y + 3, 0.26, wood, x, DOCK.y / 2 - 1.2, LAND.z1 - 0.15, 0, wharf);   // long: the water is deep now
   // SEA: sea.js — swell, sky-fresnel, moon glint, ripple rings; stage3d ticks it and the hydra ripples it
-  const sea = createSea(scene, { x: 0, z: (COVE.beachZ1 + COVE.seaZ1) / 2 + 10, width: COVE.halfWidth * 2 + 40, depth: COVE.seaZ1 - COVE.beachZ1 + 20, y: -0.15 });
+  const sea = createSea(scene, { x: 0, z: (COVE.wallZ + COVE.seaZ1) / 2 + 10, width: COVE.halfWidth * 2 + 40, depth: COVE.seaZ1 - COVE.wallZ + 20, y: -0.15 });   // from the wall out
   root.userData.sea = sea;
   // the PIER the ship ties up to: along the right, out past the dock
   const pier = new THREE.Group(); pier.name = "pier-right"; root.add(pier);

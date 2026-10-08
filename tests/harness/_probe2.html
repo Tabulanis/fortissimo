@@ -1,0 +1,17 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" style="width:1280px;height:720px;border:0"></iframe>
+<script type="module">
+// dev probe 2: paint the sea flat red, photograph — tells "the sea's shader" from "the sea isn't drawn"
+const f = document.getElementById("f");
+f.onload = () => setTimeout(() => {
+  const w = f.contentWindow, S = w.__gr.stage3d, sea = S.scene.getObjectByName("sea");
+  const mode = new URLSearchParams(location.hash.slice(1)).get("m") || "red";
+  const logs = []; for (const k of ["warn", "error", "log"]) { const o = w.console[k].bind(w.console); w.console[k] = (...a) => { if (logs.length < 30) logs.push(k + ": " + a.map(String).join(" ").slice(0, 300)); o(...a); }; }
+  setTimeout(() => fetch("http://127.0.0.1:8899/probe-console", { method: "POST", body: JSON.stringify({ logs, seaVerts: sea.geometry.attributes.position.count, idx: sea.geometry.index && sea.geometry.index.count, idxType: sea.geometry.index && sea.geometry.index.array.constructor.name, nan: [...sea.geometry.attributes.position.array].some((v) => !Number.isFinite(v)), maxIdx: Math.max(...sea.geometry.index.array.slice(-100)) }) }), 2500);
+  if (mode === "red") { const M = sea.material.constructor; sea.userData.keep = sea.material; sea.material = new (Object.getPrototypeOf(S.scene.getObjectByName("sea").material).constructor === M ? w.__gr.redMat || M : M)({ vertexShader: "void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }", fragmentShader: "void main(){ gl_FragColor = vec4(1.0,0.0,0.0,1.0); }" }); }
+  if (mode === "up") { sea.material = new sea.material.constructor({ vertexShader: "void main(){ gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }", fragmentShader: "void main(){ gl_FragColor = vec4(1.0,0.0,0.0,1.0); }" }); sea.position.y = 0.6; }
+  if (mode === "info") fetch("http://127.0.0.1:8899/probe-info", { method: "POST", body: JSON.stringify({ near: S.camera && S.camera.near, fog: S.scene.fog && { type: S.scene.fog.type, near: S.scene.fog.near, far: S.scene.fog.far, density: S.scene.fog.density }, bg: S.scene.background && String(S.scene.background) }) });
+  setTimeout(() => { const c = w.document.querySelector("canvas"); fetch("http://127.0.0.1:8899/png/probe-" + mode, { method: "POST", body: c.toDataURL("image/png") }); }, 1500);
+}, 9000);
+f.src = "/?shot=999&fly=1&cam=0,5,11,3.1416,-0.18";
+</script>

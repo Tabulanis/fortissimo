@@ -1,0 +1,21 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" style="width:1280px;height:720px;border:0"></iframe>
+<script type="module">
+// dev probe: what is at the sea's surface? (rays straight down over the cove) + the sea mesh's state
+const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body: JSON.stringify(body) });
+const f = document.getElementById("f");
+f.onload = () => setTimeout(() => {
+  const w = f.contentWindow;
+  try {
+    const S = w.__gr.stage3d, scene = S.scene, THREE = w.__THREE;
+    const sea = scene.getObjectByName("sea"), out = { sea: sea ? { visible: sea.visible, parentVisible: sea.parent && sea.parent.visible, layers: sea.layers.mask, pos: sea.position.toArray(), defines: sea.material.defines, verts: sea.geometry.attributes.position.count } : null };
+    const hits = [];
+    scene.traverse((o) => { if (o.isMesh && o.visible && o.geometry && o.geometry.boundingBox == null) o.geometry.computeBoundingBox(); });
+    scene.traverse((o) => { if (!o.isMesh || o === sea || !o.geometry.boundingBox) return; const b = o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld);
+      for (const [x, z] of [[5, 25], [-6, 40], [3, 20]]) if (x >= b.min.x && x <= b.max.x && z >= b.min.z && z <= b.max.z && b.max.y > -50) { const m = o.material; let p = o, all = true; while (p) { if (!p.visible) all = false; p = p.parent; } hits.push(`${o.name || o.type}<${o.parent && o.parent.name}>@${x},${z} y ${b.min.y.toFixed(2)}..${b.max.y.toFixed(2)} shown ${all} mvis ${m.visible} cw ${m.colorWrite} dw ${m.depthWrite} op ${m.opacity} tr ${m.transparent} ${m.type} ro ${o.renderOrder}`); } });
+    out.covering = [...new Set(hits)].slice(0, 20);
+    say("probe", out);
+  } catch (e) { say("probe", { err: String(e.stack || e) }); }
+}, 9000);
+f.src = "/?fly=1&cam=0,5,11,3.1416,-0.18";
+</script>

@@ -1,4 +1,4 @@
-/* pool.js — the shallow reflecting pool in the middle of the courtyard.
+/* pool.js — the reflecting water, since 2026-10-07 INSIDE THE FOUNTAIN's basin (see createPool).
 
    A stone curb around a sheet of water at y = SURFACE_Y. The water is a
    planar mirror (three's Reflector renders the scene from below the surface,
@@ -12,9 +12,8 @@
 import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
 
-export const POOL = { x0: -4.2, x1: 4.2, z0: -15.5, z1: -3.5 };   // the water (metres): big and close, just past the drum kit (owner, 2026-10-02)
+export const POOL = { x0: -4.2, x1: 4.2, z0: -15.5, z1: -3.5, y: 0.17 };   // updated live to the fountain's water (createPool)   // the water (metres): big and close, just past the drum kit (owner, 2026-10-02)
 export const SURFACE_Y = 0.17;
-const CURB_W = 0.35, CURB_H = 0.28;
 const MAX_RIPPLES = 6;
 
 export function poolContains(x, z, inset = 0) {
@@ -126,61 +125,58 @@ const WaterShader = {
  * @param {THREE.Scene} scene
  * @param {{ bottomMap: THREE.Texture, layer?: number, resolution?: number }} opts
  */
+/* THE FOUNTAIN IS THE POOL (owner, 2026-10-07: "lose the old pool, just use the fountain and put the
+   pool water in it"): no curb, no water of its own until fitInto(pivot, …) puts the mirror inside the
+   fountain's basin — a child of the fountain's pivot, so it follows the editor (his fountain is sunk
+   0.49 m and doubled). POOL (x0..z1, y) is then kept up to date with where the water really is, so the
+   arrows that fall in it still find it. */
 export function createPool(scene, { bottomMap, layer = 0, resolution = 0.5, cheap = false } = {}) {
   const root = new THREE.Group();
   root.name = "pool";
   scene.add(root);
-  const W = POOL.x1 - POOL.x0, D = POOL.z1 - POOL.z0;
-  const cx = (POOL.x0 + POOL.x1) / 2, cz = (POOL.z0 + POOL.z1) / 2;
-
-  // --- the curb: four stone blocks, with a slightly darker, wetter inner face
-  const curbMat = new THREE.MeshStandardMaterial({ color: 0xb8956b, roughness: 0.85 });
-  const curb = (w, d, x, z) => {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w, CURB_H, d), curbMat);
-    m.position.set(x, CURB_H / 2, z);
-    m.castShadow = true; m.receiveShadow = true;
-    root.add(m);
-  };
-  curb(W + 2 * CURB_W, CURB_W, cx, POOL.z0 - CURB_W / 2);
-  curb(W + 2 * CURB_W, CURB_W, cx, POOL.z1 + CURB_W / 2);
-  curb(CURB_W, D, POOL.x0 - CURB_W / 2, cz);
-  curb(CURB_W, D, POOL.x1 + CURB_W / 2, cz);
-
-  // --- LOW graphics levels: a dark polished surface that reflects only the sky
-  // lighting (no mirror: the mirror re-draws the whole scene every frame)
-  if (cheap) {
-    const water = new THREE.Mesh(new THREE.PlaneGeometry(W, D),
-      new THREE.MeshStandardMaterial({ color: 0x0c1a1c, metalness: 0.85, roughness: 0.12, envMapIntensity: 1.3 }));
+  let water = null, U = null, next = 0, frame = 0;
+  const box = new THREE.Box3();
+  /** fill a basin: hx / hz = the water's half size, y = its height, corner = the rounded corners' radius (pivot units) */
+  function fitInto(pivot, { hx, hz, y, corner = 0 }) {
+    const sh = new THREE.Shape(), r = Math.min(corner, hx, hz);
+    sh.moveTo(-hx + r, -hz); sh.lineTo(hx - r, -hz); sh.quadraticCurveTo(hx, -hz, hx, -hz + r);
+    sh.lineTo(hx, hz - r); sh.quadraticCurveTo(hx, hz, hx - r, hz); sh.lineTo(-hx + r, hz);
+    sh.quadraticCurveTo(-hx, hz, -hx, hz - r); sh.lineTo(-hx, -hz + r); sh.quadraticCurveTo(-hx, -hz, -hx + r, -hz);
+    const geo = new THREE.ShapeGeometry(sh, 6);
+    if (cheap) {   // LOW graphics: a dark polished surface that reflects only the sky lighting (no mirror)
+      water = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x0c1a1c, metalness: 0.85, roughness: 0.12, envMapIntensity: 1.3 }));
+    } else {
+      const dpr = window.devicePixelRatio || 1;
+      water = new Reflector(geo, {
+        shader: WaterShader,
+        textureWidth: Math.round(window.innerWidth * dpr * resolution),
+        textureHeight: Math.round(window.innerHeight * dpr * resolution),
+        clipBias: 0.003,
+      });
+      water.layers.set(layer);
+      water.camera.layers.enableAll();          // the mirror sees everything, fire included
+      U = water.material.uniforms;
+      U.uBottom.value = bottomMap;
+    }
+    water.name = "fountain-water";
     water.rotation.x = -Math.PI / 2;
-    water.position.set(cx, SURFACE_Y, cz);
-    root.add(water);
-    return { root, water, addRipple() {}, update() {} };
+    water.position.set(0, y, 0);
+    pivot.add(water);
+    track();
   }
-
-  // --- the water: a mirror with the shader above
-  const dpr = window.devicePixelRatio || 1;
-  const water = new Reflector(new THREE.PlaneGeometry(W, D), {
-    shader: WaterShader,
-    textureWidth: Math.round(window.innerWidth * dpr * resolution),
-    textureHeight: Math.round(window.innerHeight * dpr * resolution),
-    clipBias: 0.003,
-  });
-  water.rotation.x = -Math.PI / 2;
-  water.position.set(cx, SURFACE_Y, cz);
-  water.layers.set(layer);
-  water.camera.layers.enableAll();          // the mirror sees everything, fire included
-  const U = water.material.uniforms;
-  U.uBottom.value = bottomMap;
-  root.add(water);
-
-  let next = 0;
+  function track() {   // where the water really is now (the editor may have moved the fountain)
+    if (!water) return;
+    water.updateWorldMatrix(true, false); box.setFromObject(water);
+    POOL.x0 = box.min.x; POOL.x1 = box.max.x; POOL.z0 = box.min.z; POOL.z1 = box.max.z; POOL.y = box.max.y;
+  }
   return {
     root,
-    water,
+    get water() { return water; },
+    fitInto,
     /** a ring spreading from (x, z); strength 0..1 */
     addRipple(x, z, strength = 1) {
-      U.uRipples.value[next++ % MAX_RIPPLES].set(x, z, U.uTime.value, strength);
+      if (U) U.uRipples.value[next++ % MAX_RIPPLES].set(x, z, U.uTime.value, strength);
     },
-    update(t) { U.uTime.value = t; },
+    update(t) { if (U) U.uTime.value = t; if (++frame % 60 === 0) track(); },
   };
 }

@@ -11,12 +11,18 @@ import * as THREE from "three";
 import { WaveSim } from "./wavesim.js";
 
 const MAX_RIPPLES = 8;
-// the swells: direction (x, z), wavelength (m), amplitude (m), speed (m/s)
+// the swells: direction (x, z), wavelength (m), amplitude (m), speed (m/s). OCEAN SHAPE (owner, 2026-10-07,
+// his photo: "THERE" — rolling swells, peaked crests, chop riding them; "chipped obsidian" = that SHAPE):
+// five waves fanned around the wind, each PEAKED (Gerstner: the water slides toward the crest, so crests
+// pinch sharp and troughs go broad). Amplitudes sum under the dock deck's 0.7 m clearance.
 const SWELL = [
-  { dx: 0.0, dz: -1.0, len: 11, amp: 0.42, speed: 2.4 },   // (owner 10-07: "a lot more chop — practically flat"; trimmed so it stays under the dock deck)
-  { dx: 0.6, dz: -0.8, len: 6.5, amp: 0.24, speed: 1.9 },
-  { dx: -0.8, dz: -0.6, len: 3.2, amp: 0.13, speed: 1.3 },
+  { dx: 0.0, dz: -1.0, len: 9.0, amp: 0.30, speed: 2.2 },
+  { dx: 0.45, dz: -0.9, len: 5.6, amp: 0.17, speed: 1.75 },
+  { dx: -0.5, dz: -0.86, len: 3.5, amp: 0.10, speed: 1.4 },
+  { dx: 0.8, dz: -0.6, len: 2.2, amp: 0.055, speed: 1.1 },
+  { dx: -0.25, dz: -0.97, len: 1.4, amp: 0.03, speed: 0.9 },
 ];
+const NSWELL = SWELL.length, STEEP = 0.8;   // STEEP: how hard the crests pinch (0 = plain sines, 1 = just short of looping over)
 
 /** a plane grid in xz whose spacing grows with distance from (fx, fz): spacing = fine * (1 + d / falloff), capped at coarse */
 function gradedGrid({ x0, x1, z0, z1, fx, fz, fine, coarse, falloff }) {
@@ -42,19 +48,20 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
   const U = {
     uTime: { value: 0 },
     uRipples: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector4(0, 0, -100, 0)) },
-    uDeep: { value: new THREE.Color(0x04080c) },      // obsidian (owner: "chips of obsidian that are moving")
-    uShallow: { value: new THREE.Color(0x0b2229) },
-    uFacet: { value: 0.75 },         // 0 smooth skin .. 1 hard flat shards
+    uDeep: { value: new THREE.Color(0x0f1e2b) },      // deep slate (10-07: off pure black so the shapes read; "deeper": no shallow tint near the gate)
+    uShallow: { value: new THREE.Color(0x162a3a) },
+    uSunDir: { value: new THREE.Vector3(0.1, 0.18, 1.0).normalize() },   // the afterglow low over the sea: warm light on the crests (his photo)
+    uFacet: { value: 0.3 },          // 0 smooth skin .. 1 hard flat shards (10-07: broad chipped faces, not tiny shards)
     uSky: { value: new THREE.Color(0x2e2a52) },        // the dusk sky it reflects toward the horizon (dark: it is night)
     uHorizon: { value: new THREE.Color(0x8a4a48) },    // the band of afterglow at the far edge
     uMoonDir: { value: new THREE.Vector3(-0.3, 0.55, 0.78).normalize() },
     uSwell: { value: SWELL.map((s) => new THREE.Vector4(s.dx, s.dz, s.len, s.amp)) },
-    uSwellSpeed: { value: new THREE.Vector3(...SWELL.map((s) => s.speed)) },
+    uSwellSpeed: { value: SWELL.map((s) => s.speed) },
     // the DROPS atlas (tools/make-water-tile.py): rain-ring height frames that loop in x, y and time
     uDrops: { value: null },
     uDropsLayout: { value: new THREE.Vector4(8, 4, 32, 0) },   // cols, rows, frames, (unused)
-    uDropsAmp: { value: 0.32 },      // metres of displacement at the map's peak (the reverse-rain chop)
-    uDropsTile: { value: 6.0 },      // metres per tile (smaller: denser chop)
+    uDropsAmp: { value: 0.035 },      // (10-07: fine ripples riding the swells only — the big rain rings made white swirl blotches)      // metres of displacement at the map's peak (the reverse-rain chop)
+    uDropsTile: { value: 3.0 },      // metres per tile (smaller: denser chop)
     uDropsLoop: { value: 7.0 },      // seconds per loop in T
     uDropsInvert: { value: 1.0 },    // 1 = the rings stand up as peaks (owner: "like choppy waves")
     // the CLOTH (wavesim.js): simulated heights over a patch around the focus, as a float texture
@@ -121,8 +128,8 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
     }`;
   const vert = /* glsl */ `
     uniform float uTime;
-    uniform vec4 uSwell[3];        // declared BEFORE the shared chop code: crestAt() uses them
-    uniform vec3 uSwellSpeed;
+    uniform vec4 uSwell[${NSWELL}];        // declared BEFORE the shared chop code: crestAt() uses them
+    uniform float uSwellSpeed[${NSWELL}];
     ${simGlsl}
     #ifdef HAS_DROPS
     ${dropsGlsl}
@@ -136,15 +143,20 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       vec4 wp = modelMatrix * vec4(position, 1.0);
       vTorn = 0.0;
       float h = 0.0; float dhx = 0.0; float dhz = 0.0; float crest = 0.0;
-      for (int i = 0; i < 3; i++) {
+      vec2 slide = vec2(0.0); float pinch = 0.0;
+      for (int i = 0; i < ${NSWELL}; i++) {   // GERSTNER: height + the slide toward the crest (peaked crests, broad troughs)
         vec2 d = normalize(uSwell[i].xy);
         float k = 6.2831853 / uSwell[i].z;
         float ph = dot(d, wp.xz) * k - uTime * uSwellSpeed[i] * k;
-        float a = uSwell[i].w;
+        float a = uSwell[i].w, q = ${STEEP.toFixed(2)} / (k * a * ${NSWELL}.0);
         h += a * sin(ph);
+        slide += q * a * d * cos(ph);
         dhx += a * k * d.x * cos(ph); dhz += a * k * d.y * cos(ph);
-        crest += 0.5 + 0.5 * sin(ph);
+        pinch += q * a * k * sin(ph);
+        crest += (0.5 + 0.5 * sin(ph)) * a;
       }
+      wp.xz += slide;   // a point just before the crest (cos > 0) moves forward, just past it back: both bunch at the crest
+      dhx /= max(0.25, 1.0 - pinch); dhz /= max(0.25, 1.0 - pinch);   // the pinched crests are steeper
       // ripple rings: a damped circular wave from each ring's centre
       for (int i = 0; i < ${MAX_RIPPLES}; i++) {
         vec4 r = uRipples[i];
@@ -174,13 +186,13 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       wp.y += h;
       vWorld = wp.xyz;
       vNormal = normalize(vec3(-dhx, 1.0, -dhz));
-      vCrest = crest / 3.0;
+      vCrest = crest / ${SWELL.reduce((t, s) => t + s.amp, 0).toFixed(3)};
       gl_Position = projectionMatrix * viewMatrix * wp;
     }`;
   const frag = /* glsl */ `
     uniform float uTime;
-    uniform vec4 uSwell[3];
-    uniform vec3 uSwellSpeed;   // crestAt() in the drops GLSL needs both here too
+    uniform vec4 uSwell[${NSWELL}];
+    uniform float uSwellSpeed[${NSWELL}];   // crestAt() in the drops GLSL needs both here too
     varying float vTorn;
     float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     float foamNoise(vec2 p) {   // value noise, 2 octaves are added by the caller
@@ -191,7 +203,7 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
     #ifdef HAS_DROPS
     ${dropsGlsl}
     #endif
-    uniform vec3 uDeep, uShallow, uSky, uHorizon, uMoonDir;
+    uniform vec3 uDeep, uShallow, uSky, uHorizon, uMoonDir, uSunDir;
     uniform float uFacet;
     varying vec3 vWorld;
     varying vec3 vNormal;
@@ -210,7 +222,7 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       {   // per-pixel chop normal (the vertex grid is too coarse for the small rings)
         float e = 0.06;
         float c0 = chopAt(vWorld.xz, uTime), cx = chopAt(vWorld.xz + vec2(e, 0.0), uTime), cz = chopAt(vWorld.xz + vec2(0.0, e), uTime);
-        n = normalize(n + vec3(-(cx - c0) / e, 0.0, -(cz - c0) / e) * 1.2);
+        n = normalize(n + vec3(-(cx - c0) / e, 0.0, -(cz - c0) / e) * 0.35);   // (10-07: a whisper of ripple — the rain RINGS read as circles at 1.2)
       }
       #endif
       vec3 v = normalize(cameraPosition - vWorld);
@@ -218,11 +230,18 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       float far = clamp((vWorld.z - 20.0) / 70.0, 0.0, 1.0);
       vec3 water = mix(uShallow, uDeep, clamp(far * 1.5, 0.0, 1.0));
       vec3 sky = mix(uSky, uHorizon, far * far);
-      vec3 col = mix(water, sky, 0.05 + 0.42 * fres);   // (the steep chop faces went icy-white at 0.55)
+      // FACE SHADING (10-07, his photo): each face lit by how it turns to the afterglow over the sea — the
+      // faces toward it pale slate, the backs of the waves dark: that contrast IS the chipped-stone look
+      float face = max(dot(n, normalize(uSunDir + vec3(0.0, 0.7, 0.0))), 0.0);
+      water *= 0.55 + 1.6 * face * face;
+      vec3 col = mix(water, sky, 0.08 + 0.42 * fres);   // (the steep chop faces went icy-white at 0.55)
       // the moon's glint, sharp on the slopes that face it
       vec3 hv = normalize(uMoonDir + v);
       float spec = pow(max(dot(n, hv), 0.0), 420.0) * 2.2 + pow(max(dot(n, hv), 0.0), 40.0) * 0.1;   // glass-hard glints
-      col += vec3(0.85, 0.9, 1.0) * spec;
+      col += vec3(0.85, 0.9, 1.0) * spec * 0.35;
+      // the afterglow catching the crests: a broad warm sheen on the faces turned to the horizon
+      vec3 hs = normalize(uSunDir + v);
+      col += vec3(1.0, 0.55, 0.32) * (pow(max(dot(n, hs), 0.0), 60.0) * 0.55 + pow(max(dot(n, hs), 0.0), 900.0) * 1.5) * (0.4 + 0.6 * smoothstep(0.45, 0.9, vCrest));
       // FOAM (owner, 2026-10-07: "generate foam as a texture wherever it's really chopped up"):
       // how torn-up the surface is here = slope of the final normal + the crest factor + the cloth's motion;
       // past a threshold, a streaky hash-noise foam (stretched along the wind) is laid over the water
@@ -230,8 +249,8 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       vec2 wind = normalize(uSwell[0].xy);
       vec2 fuv = vec2(dot(vWorld.xz, wind) * 0.35 - uTime * 0.25, dot(vWorld.xz, vec2(-wind.y, wind.x)) * 1.4);   // long along the wind
       float fn = foamNoise(fuv) * 0.6 + foamNoise(fuv * 2.7 + 3.1) * 0.4;
-      float foam = smoothstep(0.55, 1.25, torn) * smoothstep(0.35, 0.75, fn);
-      col = mix(col, vec3(0.88, 0.92, 0.95), foam * 0.85);
+      float foam = smoothstep(1.1, 1.8, torn) * smoothstep(0.45, 0.8, fn);   // (10-07: his photo has almost none — only the really torn water)
+      col = mix(col, vec3(0.78, 0.82, 0.86), foam * 0.7);
       col += vec3(0.05, 0.06, 0.07) * smoothstep(0.86, 0.99, vCrest) * (1.0 - foam);
       gl_FragColor = vec4(col, 1.0);
       #include <tonemapping_fragment>
@@ -276,7 +295,7 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
     /** the swell's height at a point (no ripples): for things that should bob */
     heightAt(px, pz) {
       let h = 0; const t = U.uTime.value;
-      for (const s of SWELL) { const l = Math.hypot(s.dx, s.dz), k = Math.PI * 2 / s.len; h += s.amp * Math.sin((s.dx / l * px + s.dz / l * pz) * k - t * s.speed * k); }
+      for (const s of SWELL) { const l = Math.hypot(s.dx, s.dz), k = Math.PI * 2 / s.len; h += s.amp * Math.sin((s.dx / l * px + s.dz / l * pz) * k - t * s.speed * k); }   // (the crest slide is left out: a few cm)
       return y + h + sim.heightAt(px, pz);
     },
   };

@@ -272,6 +272,7 @@ export function createCourtyard(scene) {
       pivot.add(m); parent.add(pivot);
       pivot.userData.model = base;   // the editor can Duplicate it (props.js builds the copy)
       register(pivot, id || `${base}#${i}`, id || `${base} ${i + 1}`);
+      if (fit.onPlaced) fit.onPlaced(pivot, { w: size.x * k, h: size.y * k, d: size.z * k });   // its size in the pivot's units
     });
     bootlog("placed " + url.split("/").pop(), { n: spots.length, scale: +k.toFixed(2) });
   }, undefined, (err) => console.warn(url + " failed to load", err));
@@ -283,7 +284,9 @@ export function createCourtyard(scene) {
   // (the T-pose minotaur STATUES that stood at the bass/treble court mouths were removed 2026-10-07,
   //  his call: living axe minotaurs charge the bass court now — troops.js / MinotaurRig.glb)
   // the FOUNTAIN basin stands in the pool (the water, its mirror and the ripples stay around it)
-  placeGlb("/models/Fountain.glb", [{ x: 0, y: 0.02, z: (POOL.z0 + POOL.z1) / 2, id: "fountain" }], { width: 4.6 });
+  // and its basin holds the pool's mirror water (stage3d: pool.fitInto) — root.userData.fountain resolves with it
+  root.userData.fountain = new Promise((done) =>
+    placeGlb("/models/Fountain.glb", [{ x: 0, y: 0.02, z: (POOL.z0 + POOL.z1) / 2, id: "fountain" }], { width: 4.6, onPlaced: (pivot, size) => done({ pivot, size }) }));
 
   return root;
 }
