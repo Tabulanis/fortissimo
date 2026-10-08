@@ -481,6 +481,21 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // on top; rises on hydra.rise() — round 4 / the conduct feel-test; ?hydra=1 raises it at load (dev)
   const _sprayP = new THREE.Vector3();
   sea.onSpray = LOW ? null : (x, y, z, power, dir) => fireSim.spray(_sprayP.set(x, y, z), power, dir);   // the sea's spray through the particle sim
+  // ROUND 4's PLAY SPOT (10-08): the top of his altar (cove.js) if it's there, else the old podium. The camera, the hands, the
+  // heads' aim and the acid dome all follow it, so moving the altar in the editor moves the whole play area.
+  const EYE = 1.65;
+  function playSpot() {
+    const a = cove.userData.altar;
+    if (!a || !a.visible) return new THREE.Vector3(0, DOCK.y + 0.08, BOOTH_POS.z);
+    a.updateMatrixWorld(true);
+    return a.localToWorld(new THREE.Vector3(0, a.userData.topY, 0));
+  }
+  function usePlaySpot() {
+    const p = playSpot();
+    STATIONS.sea.pos.set(p.x, p.y + EYE, p.z - 0.5);
+    HAND_RESTS.sea[0].set(p.x + 0.66, p.y + 1.0, p.z + 0.1); HAND_RESTS.sea[1].set(p.x - 0.66, p.y + 1.0, p.z + 0.1);
+    if (hydra) hydra.moveTo(p.clone().setY(p.y + EYE));
+  }
   const hydra = createHydra(scene, { origin: new THREE.Vector3(0, -4.6, DOCK.z1 + 7.5), target: BOOTH_POS.clone().setY(2.2), sea });   // close (owner): bases under the water, necks stretched, never reaching further
   if (new URLSearchParams(location.search).has("hydra")) hydra.rise();
   { const b = new URLSearchParams(location.search).get("bite");   // dev: &bite=1 bites every 3 s, heads in turn; &bite=hold freezes the middle head at full lunge
@@ -2693,13 +2708,14 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     /** turn to a station: "drums" | "bass" | "treble" */
     setStation(name) {
       if (!STATIONS[name]) return;
+      if (name === "sea") usePlaySpot();   // round 4 stands on his altar, wherever it is now
       station = name;
       restDir.copy(REST_DIR).applyAxisAngle(UP, STATIONS[name].yaw);
       hands.forEach((hand, h) => {
         hand.rest.copy(HAND_RESTS[name][h]);
         if (!hand.active && !vrOn()) { hand.group.position.copy(hand.rest); hand.group.quaternion.setFromUnitVectors(UP, restDir); }
       });
-    }, get scene() { return scene; }, boothPos: BOOTH_POS, lighting, get station() { return station; }, melodyStations, kit: KIT, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
+    }, get scene() { return scene; }, boothPos: BOOTH_POS, playSpot: () => playSpot(), lighting, get station() { return station; }, melodyStations, kit: KIT, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */

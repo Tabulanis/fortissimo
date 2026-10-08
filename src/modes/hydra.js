@@ -57,8 +57,9 @@ export function hydraMode(G) {
     const songs = G.HYDRA.rounds.map((i) => G.lessonAt(i));
     const dmg = { gentle: 0.7, normal: 1, harsh: 1.4 }[G.RUN.damage] || 1;   // the run's Damage setting, as in rounds 1-3
     fight = new HydraFight({ hp: songs.map(hpOf), life: 100, bite: 2.5 * dmg, acid: 4 * dmg });
+    G.stage3d.setStation("sea");   // re-read the play spot: his altar may have loaded after the camera was placed
     const H = G.stage3d.hydra; H.rise();
-    acid = createAcid(G.stage3d.scene, { center: G.stage3d.boothPos.clone().setY(0.6), radius: 6 });   // wide: the acid bursts on it well out in front of you
+    acid = createAcid(G.stage3d.scene, { center: G.stage3d.playSpot(), radius: 6 });   // over his altar (the play spot)   // wide: the acid bursts on it well out in front of you
     acid.onLand = (head) => { const ev = fight.acidLands(head); events(ev); return ev.some((e) => e.type === "acidBlocked"); };
     highway = createHighway({ drums: DRUMS.map((d) => ({ key: d.key, label: d.key.toUpperCase() })),
       notes: NOTE_KEYS.map((k) => ({ key: k, head: 0, label: k === ";" ? ";" : k.toUpperCase() })), headColors: HEAD_COLORS });

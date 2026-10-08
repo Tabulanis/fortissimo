@@ -43,6 +43,9 @@ export function createHydra(scene, { origin = new THREE.Vector3(0, -1.4, 37), ta
     api.ready = true;
   });
   const _to = new THREE.Vector3(), _q = new THREE.Quaternion(), _e = new THREE.Euler();
+  const target0 = target.clone();
+  /** round 4's play spot moved (his altar): the heads keep the same place relative to it, and aim at it */
+  api.moveTo = (spot) => { group.position.set(spot.x - target0.x, 0, spot.z - target0.z); target.set(spot.x, spot.y, spot.z); };
   api.rise = () => { api._levelTo = 1; };
   api.submerge = () => { api._levelTo = 0; };
   const _sx = new THREE.Vector3();

@@ -80,6 +80,7 @@ export function createCove(scene) {
   placeModel("/models/Ruins.glb", [{ x: -22, y: -1.0, z: 50, yaw: Math.PI / 2, id: "ruins", label: "ruins" }], 16);
   // the BOOTH at the end of the dock: a table with three fader slots (placeholder for the DJ rig)
   const booth = new THREE.Group(); booth.name = "booth"; booth.position.copy(BOOTH_POS); root.add(booth);
+  booth.visible = false;   // (10-08: the ALTAR is the play area now — the old podium table stays built, hidden; the editor can unhide it)
   box("table", 2.0, 0.08, 0.7, wood, 0, DOCK.y + 0.95, 0.5, 0, booth);
   for (const s of [-1, 1]) box("leg", 0.1, 0.95, 0.6, wood, s * 0.9, DOCK.y + 0.48, 0.5, 0, booth);
   [-0.6, 0, 0.6].forEach((x, i) => {
@@ -113,6 +114,21 @@ export function createCove(scene) {
     register(pivot, "cove-newdock", "dock (his)");
     bootlog("placed NewDock.glb", { scale: +k.toFixed(2), length: +(len * k).toFixed(1), deckY });
   }, undefined, (e) => console.warn("NewDock.glb failed to load", e));
+  // HIS ALTAR (2026-10-08, meshy/alter/alter.glb → public/models/Altar.glb): "put that at the end of the dock — I'll move it —
+  // that will be the end hydra play area". A stepped stone altar rising out of the water past the dock's end, its stairs facing
+  // the dock. ROUND 4 IS PLAYED ON ITS TOP, wherever he moves it: stage3d.playSpot() reads root.userData.altar.
+  new GLTFLoader().load("/models/Altar.glb", (gltf) => {
+    const src = gltf.scene; src.updateMatrixWorld(true);
+    const size = new THREE.Box3().setFromObject(src).getSize(new THREE.Vector3()), k = 7 / size.x;   // = props FIT Altar { width: 7 }
+    propLayout(src, k);
+    const pivot = new THREE.Group(); pivot.name = "altar"; pivot.rotation.y = Math.PI;   // its stairs (+z in the file) toward the dock
+    pivot.position.set(0, -0.6, DOCK.z1 + 0.6 + 3.6);   // just past the dock's end, its base under the water
+    pivot.userData.topY = size.y * k;                    // its top, in the pivot's own units (the editor's size scales it)
+    pivot.add(src); root.add(pivot); pivot.userData.model = "Altar";
+    register(pivot, "cove-altar", "altar (round 4 play area)");
+    root.userData.altar = pivot;
+    bootlog("placed Altar.glb", { scale: +k.toFixed(2), top: +(pivot.position.y + size.y * k).toFixed(2) });
+  }, undefined, (e) => console.warn("Altar.glb failed to load", e));
   new GLTFLoader().load("/models/AncientShip.glb", (gltf) => {
     const src = gltf.scene; src.updateMatrixWorld(true);
     const k = 16 / new THREE.Box3().setFromObject(src).getSize(new THREE.Vector3()).x;   // = props FIT AncientShip { width: 16 }
