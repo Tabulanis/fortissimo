@@ -134,7 +134,7 @@ export function createPool(scene, { bottomMap, layer = 0, resolution = 0.5, chea
   const root = new THREE.Group();
   root.name = "pool";
   scene.add(root);
-  let water = null, U = null, next = 0, frame = 0;
+  let water = null, U = null, next = 0, frame = 0, rippleMap = null;
   const box = new THREE.Box3();
   /** fill a basin: hx / hz = the water's half size, y = its height, corner = the rounded corners' radius (pivot units) */
   function fitInto(pivot, { hx, hz, y, corner = 0 }) {
@@ -143,8 +143,18 @@ export function createPool(scene, { bottomMap, layer = 0, resolution = 0.5, chea
     sh.lineTo(hx, hz - r); sh.quadraticCurveTo(hx, hz, hx - r, hz); sh.lineTo(-hx + r, hz);
     sh.quadraticCurveTo(-hx, hz, -hx, hz - r); sh.lineTo(-hx, -hz + r); sh.quadraticCurveTo(-hx, -hz, -hx + r, -hz);
     const geo = new THREE.ShapeGeometry(sh, 6);
-    if (cheap) {   // LOW graphics: a dark polished surface that reflects only the sky lighting (no mirror)
-      water = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x0c1a1c, metalness: 0.85, roughness: 0.12, envMapIntensity: 1.3 }));
+    if (cheap) {   // PHONES / LOW: a dark polished surface lit by the sky — no mirror — with RIPPLES (10-08: "water on the phone is flat"):
+      // a small tiling ripple NORMAL map, drawn once, drifting two ways (update) so the sky light shivers across it
+      const N = 128, px = new Uint8Array(N * N * 4);
+      for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+        const u = (x / N) * Math.PI * 2, v = (y / N) * Math.PI * 2;
+        const dx = 0.5 * Math.cos(u * 3 + v) + 0.3 * Math.cos(u * 5 - v * 2) + 0.2 * Math.cos(u * 7 + v * 4);
+        const dy = 0.5 * Math.cos(v * 3 - u) + 0.3 * Math.cos(v * 4 + u * 3) + 0.2 * Math.cos(v * 6 - u * 5);
+        const k = (y * N + x) * 4; px[k] = 128 + dx * 60; px[k + 1] = 128 + dy * 60; px[k + 2] = 255; px[k + 3] = 255;
+      }
+      rippleMap = new THREE.DataTexture(px, N, N); rippleMap.wrapS = rippleMap.wrapT = THREE.RepeatWrapping; rippleMap.repeat.set(3, 3); rippleMap.needsUpdate = true;
+      water = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0x0c1a1c, metalness: 0.85, roughness: 0.12, envMapIntensity: 1.3,
+        normalMap: rippleMap, normalScale: new THREE.Vector2(0.35, 0.35) }));
     } else {
       const dpr = window.devicePixelRatio || 1;
       water = new Reflector(geo, {
@@ -180,6 +190,6 @@ export function createPool(scene, { bottomMap, layer = 0, resolution = 0.5, chea
     addRipple(x, z, strength = 1) {
       if (U) U.uRipples.value[next++ % MAX_RIPPLES].set(x, z, U.uTime.value, strength);
     },
-    update(t) { if (U) U.uTime.value = t; if (++frame % 60 === 0) track(); },
+    update(t) { if (U) U.uTime.value = t; if (rippleMap) rippleMap.offset.set(t * 0.013, t * 0.008); if (++frame % 60 === 0) track(); },
   };
 }

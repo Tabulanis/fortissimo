@@ -93,17 +93,19 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       float rx = 1.0 - abs(sin(p.x)), rz = 1.0 - abs(sin(p.y));
       return rx * rz;                                                       // sharp chips where both ridges meet
     }
-    float chopAt(vec2 xz, float t) {
+    float chopOct(vec2 xz, float t, int octaves) {
       vec2 p = xz * (3.1415927 / 1.7);          // the biggest chop: 1.7 m between ridges
       float amp = 0.12, h = 0.0;
       mat2 R = mat2(0.8, 0.6, -0.6, 0.8);       // each octave turned ~37°
       for (int i = 0; i < 4; i++) {
+        if (i >= octaves) break;
         h += amp * (chopOctave(p + vec2(0.31 * float(i), t * (1.3 + 0.35 * float(i)))) - 0.3);   // travelling toward the shore
         p = R * p * 1.9; amp *= 0.42;
       }
       float c = crestAt(xz, t);
       return h * uChopAmp * (0.35 + 1.1 * c * c);   // builds on the crests, dies in the troughs
-    }`;
+    }
+    float chopAt(vec2 xz, float t) { return chopOct(xz, t, 4); }`;
   const simGlsl = /* glsl */ `
     uniform sampler2D uSim;
     uniform vec4 uSimRect;
@@ -161,9 +163,9 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       }
       // (the chop: always on now)
       {
-        float e = 0.05;
-        float c0 = chopAt(wp.xz, uTime), cx = chopAt(wp.xz + vec2(e, 0.0), uTime), cz = chopAt(wp.xz + vec2(0.0, e), uTime);
-        h += c0; dhx += (cx - c0) / e; dhz += (cz - c0) / e;
+        // (10-08: HIS PHONE failed to LINK this shader — 12 noise octaves per vertex was too much for its chip. The vertex
+        // now takes the chop's HEIGHT only, 2 octaves; its slope and the fine octaves are per pixel in the fragment anyway)
+        h += chopOct(wp.xz, uTime, 2);
       }
       {   // the cloth: the simulated waves around the podium and the hydra
         float e = 0.3;

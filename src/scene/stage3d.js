@@ -145,7 +145,14 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // a shader that fails to compile is SKIPPED silently by three — log it so device.log shows it (2026-10-07: the sea vanished for a pass)
   renderer.debug.onShaderError = (gl, program, vs, fs) => {
     const msg = [gl.getProgramInfoLog(program), gl.getShaderInfoLog(vs), gl.getShaderInfoLog(fs)].filter(Boolean).join(" | ").slice(0, 600);
-    bootlog("shader error", { msg }); console.error("shader error", msg);
+    // (10-08: his phone logged EMPTY messages — say which shader, which stage failed, and the device's limits)
+    const src = (sh) => (gl.getShaderSource(sh) || "");
+    const name = (/#define SHADER_NAME (.*)/.exec(src(fs)) || /#define SHADER_NAME (.*)/.exec(src(vs)) || [])[1] || "";
+    const marks = ["uSwell", "chopAt", "skyCol", "uDrops", "WaveShader", "uSim", "uLevel", "Reflector", "panoSample"].filter((m) => src(vs).includes(m) || src(fs).includes(m));
+    bootlog("shader error", { msg, name, marks, vsOk: gl.getShaderParameter(vs, gl.COMPILE_STATUS), fsOk: gl.getShaderParameter(fs, gl.COMPILE_STATUS),
+      linkOk: gl.getProgramParameter(program, gl.LINK_STATUS), vUniforms: gl.getParameter(gl.MAX_VERTEX_UNIFORM_VECTORS), fUniforms: gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS),
+      vTex: gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS), varyings: gl.getParameter(gl.MAX_VARYING_VECTORS) });
+    console.error("shader error", msg);
   };
   renderer.toneMapping = THREE.AgXToneMapping;   // (10-08 "more real": AgX keeps colours natural where ACES pushed everything orange)
   renderer.toneMappingExposure = 1.15;
