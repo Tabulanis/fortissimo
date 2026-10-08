@@ -57,49 +57,17 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
     uMoonDir: { value: new THREE.Vector3(-0.3, 0.55, 0.78).normalize() },
     uSwell: { value: SWELL.map((s) => new THREE.Vector4(s.dx, s.dz, s.len, s.amp)) },
     uSwellSpeed: { value: SWELL.map((s) => s.speed) },
-    // the DROPS atlas (tools/make-water-tile.py): rain-ring height frames that loop in x, y and time
-    uDrops: { value: null },
-    uDropsLayout: { value: new THREE.Vector4(8, 4, 32, 0) },   // cols, rows, frames, (unused)
-    uDropsAmp: { value: 0.035 },      // (10-07: fine ripples riding the swells only — the big rain rings made white swirl blotches)      // metres of displacement at the map's peak (the reverse-rain chop)
-    uDropsTile: { value: 3.0 },      // metres per tile (smaller: denser chop)
-    uDropsLoop: { value: 7.0 },      // seconds per loop in T
-    uDropsInvert: { value: 1.0 },    // 1 = the rings stand up as peaks (owner: "like choppy waves")
+    // THE CHOP (owner, 2026-10-07: "instead of the rain ripples let's do more chop"): eight short PEAKED waves
+    // fanned around the wind, riding the swells and bunching on their crests (no texture any more)
+    uChopAmp: { value: 1.0 },        // overall strength of the ridged chop
     // the CLOTH (wavesim.js): simulated heights over a patch around the focus, as a float texture
     uSim: { value: null },
     uSimRect: { value: new THREE.Vector4(0, 0, 1, 1) },   // x0, z0, size, cells
   };
   const sim = new WaveSim({ x0: focus.x - 24, z0: focus.z - 20, size: 48, n: 160 });
   U.uSim.value = sim.texture; U.uSimRect.value.set(sim.x0, sim.z0, sim.size, sim.n);
-  new THREE.TextureLoader().load("/textures/water-drops.png", (tex) => {
-    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;   // the atlas itself must not wrap — frames tile by uv maths
-    tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;
-    U.uDrops.value = tex; mat.defines.HAS_DROPS = 1; mat.needsUpdate = true;
-  }, undefined, (e) => console.warn("water-drops.png failed to load", e));
-  const dropsGlsl = /* glsl */ `
-    uniform sampler2D uDrops;
-    uniform vec4 uDropsLayout;
-    uniform float uDropsAmp, uDropsTile, uDropsLoop, uDropsInvert;
-    // one frame's texel: frame f of the atlas at tile uv (wrapping in x, y by fract)
-    float dropFrame(vec2 uv, float f) {
-      float cols = uDropsLayout.x, rows = uDropsLayout.y;
-      vec2 cell = vec2(mod(f, cols), floor(f / cols));
-      vec2 inner = fract(uv);
-      // keep off the frame's outer half-texel so bilinear filtering never bleeds the neighbour frame
-      inner = (inner * (1.0 - 2.0 / 256.0) + 1.0 / 256.0);
-      vec2 auv = (cell + inner) / vec2(cols, rows);
-      auv.y = 1.0 - auv.y;
-      return texture2D(uDrops, auv).r * 2.0 - 1.0;
-    }
-    // height at tile uv, looping in T: blend the two frames either side of the phase
-    float dropHeight(vec2 uv, float phase) {
-      float frames = uDropsLayout.z;
-      float fp = fract(phase) * frames;
-      float f0 = floor(fp), f1 = mod(f0 + 1.0, frames);
-      float h = mix(dropFrame(uv, f0), dropFrame(uv, f1), fp - f0);
-      // INVERTED (owner): the rings stand up as PEAKS — sharp crests, broad hollows — choppy water
-      return mix(h, abs(h) * 1.9 - 0.45, uDropsInvert);   // sharper peaks, deeper hollows
-    }
-    // two layers drifting across each other: the chop at a world point
+  const chopGlsl = /* glsl */ `
+    uniform float uChopAmp;
     // the main swell's crest factor at a point (0 trough .. 1 crest): the chop COALESCES onto it
     float crestAt(vec2 xz, float t) {
       vec2 d = normalize(uSwell[0].xy); float k = 6.2831853 / uSwell[0].z;
@@ -108,12 +76,31 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       float c1 = 0.5 + 0.5 * sin(dot(d1, xz) * k1 - t * uSwellSpeed[1] * k1);
       return 0.65 * c0 + 0.35 * c1;
     }
+    // THE CHOP (owner 10-07: "look at what people do for oceans — Sea of Thieves… steal from those guys"): the
+    // technique most game oceans use for the small waves — layered RIDGED octaves. Each octave is two crossing
+    // wave trains warped by noise (no straight lines), folded with 1-|sin| so the tops are sharp ridges and the
+    // hollows round; each next octave is turned, ~1.9x finer and ~0.42x lower. Written fresh for this game (the
+    // famous Shadertoy "Seascape" is non-commercial licensed — the idea is free, its code is not).
+    float chopHash(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
+    float chopNoise(vec2 p) {
+      vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+      return mix(mix(chopHash(i), chopHash(i + vec2(1.0, 0.0)), u.x), mix(chopHash(i + vec2(0.0, 1.0)), chopHash(i + vec2(1.0, 1.0)), u.x), u.y);
+    }
+    float chopOctave(vec2 p) {
+      p += (vec2(chopNoise(p * 0.5), chopNoise(p * 0.5 + 7.3)) - 0.5) * 2.2;   // warp
+      float rx = 1.0 - abs(sin(p.x)), rz = 1.0 - abs(sin(p.y));
+      return rx * rz;                                                       // sharp chips where both ridges meet
+    }
     float chopAt(vec2 xz, float t) {
-      vec2 wind = normalize(uSwell[0].xy) * 0.018;   // both layers travel WITH the swell (owner: "they look all over the place")
-      float a = dropHeight(xz / uDropsTile + wind * t, t / uDropsLoop);
-      float b = dropHeight(xz / (uDropsTile * 1.7) + wind * t * 0.7 + vec2(0.31, 0.57), t / (uDropsLoop * 1.3) + 0.37);
+      vec2 p = xz * (3.1415927 / 1.7);          // the biggest chop: 1.7 m between ridges
+      float amp = 0.12, h = 0.0;
+      mat2 R = mat2(0.8, 0.6, -0.6, 0.8);       // each octave turned ~37°
+      for (int i = 0; i < 4; i++) {
+        h += amp * (chopOctave(p + vec2(0.31 * float(i), t * (1.3 + 0.35 * float(i)))) - 0.3);   // travelling toward the shore
+        p = R * p * 1.9; amp *= 0.42;
+      }
       float c = crestAt(xz, t);
-      return (a + 0.5 * b) * uDropsAmp * (0.25 + 0.95 * c * c);   // builds on the crests, dies in the troughs
+      return h * uChopAmp * (0.35 + 1.1 * c * c);   // builds on the crests, dies in the troughs
     }`;
   const simGlsl = /* glsl */ `
     uniform sampler2D uSim;
@@ -131,14 +118,13 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
     uniform vec4 uSwell[${NSWELL}];        // declared BEFORE the shared chop code: crestAt() uses them
     uniform float uSwellSpeed[${NSWELL}];
     ${simGlsl}
-    #ifdef HAS_DROPS
-    ${dropsGlsl}
-    #endif
+    ${chopGlsl}
     uniform vec4 uRipples[${MAX_RIPPLES}];
     varying vec3 vWorld;
     varying vec3 vNormal;
     varying float vCrest;
     varying float vTorn;
+    varying float vHeight, vPinch;
     void main() {
       vec4 wp = modelMatrix * vec4(position, 1.0);
       vTorn = 0.0;
@@ -170,13 +156,12 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
         vec2 g = (dd / max(dist, 0.001)) * (-w * 4.0 * sin(ph));
         dhx += g.x; dhz += g.y;
       }
-      #ifdef HAS_DROPS
+      // (the chop: always on now)
       {
-        float e = 0.18;
+        float e = 0.05;
         float c0 = chopAt(wp.xz, uTime), cx = chopAt(wp.xz + vec2(e, 0.0), uTime), cz = chopAt(wp.xz + vec2(0.0, e), uTime);
         h += c0; dhx += (cx - c0) / e; dhz += (cz - c0) / e;
       }
-      #endif
       {   // the cloth: the simulated waves around the podium and the hydra
         float e = 0.3;
         float s0 = simAt(wp.xz), sx = simAt(wp.xz + vec2(e, 0.0)), sz = simAt(wp.xz + vec2(0.0, e));
@@ -184,6 +169,7 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
         vTorn = min(1.5, abs(s0) * 2.5 + length(vec2(sx - s0, sz - s0)) / e * 1.2);   // the cloth's own disturbance feeds the foam
       }
       wp.y += h;
+      vHeight = h; vPinch = pinch;
       vWorld = wp.xyz;
       vNormal = normalize(vec3(-dhx, 1.0, -dhz));
       vCrest = crest / ${SWELL.reduce((t, s) => t + s.amp, 0).toFixed(3)};
@@ -194,15 +180,14 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
     uniform vec4 uSwell[${NSWELL}];
     uniform float uSwellSpeed[${NSWELL}];   // crestAt() in the drops GLSL needs both here too
     varying float vTorn;
+    varying float vHeight, vPinch;
     float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
     float foamNoise(vec2 p) {   // value noise, 2 octaves are added by the caller
       vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
       return mix(mix(hash2(i), hash2(i + vec2(1, 0)), f.x), mix(hash2(i + vec2(0, 1)), hash2(i + vec2(1, 1)), f.x), f.y);
     }
     ${simGlsl}
-    #ifdef HAS_DROPS
-    ${dropsGlsl}
-    #endif
+    ${chopGlsl}
     uniform vec3 uDeep, uShallow, uSky, uHorizon, uMoonDir, uSunDir;
     uniform float uFacet;
     varying vec3 vWorld;
@@ -218,40 +203,39 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
         float s0 = simAt(vWorld.xz), sx = simAt(vWorld.xz + vec2(e, 0.0)), sz = simAt(vWorld.xz + vec2(0.0, e));
         n = normalize(n + vec3(-(sx - s0) / e, 0.0, -(sz - s0) / e));
       }
-      #ifdef HAS_DROPS
+      // (the chop: always on now)
       {   // per-pixel chop normal (the vertex grid is too coarse for the small rings)
-        float e = 0.06;
+        float e = 0.03;
         float c0 = chopAt(vWorld.xz, uTime), cx = chopAt(vWorld.xz + vec2(e, 0.0), uTime), cz = chopAt(vWorld.xz + vec2(0.0, e), uTime);
-        n = normalize(n + vec3(-(cx - c0) / e, 0.0, -(cz - c0) / e) * 0.35);   // (10-07: a whisper of ripple — the rain RINGS read as circles at 1.2)
+        n = normalize(n + vec3(-(cx - c0) / e, 0.0, -(cz - c0) / e));   // the chop's facets, per pixel (the grid is too coarse for the shortest waves)
       }
-      #endif
       vec3 v = normalize(cameraPosition - vWorld);
-      float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
       float far = clamp((vWorld.z - 20.0) / 70.0, 0.0, 1.0);
-      vec3 water = mix(uShallow, uDeep, clamp(far * 1.5, 0.0, 1.0));
-      vec3 sky = mix(uSky, uHorizon, far * far);
-      // FACE SHADING (10-07, his photo): each face lit by how it turns to the afterglow over the sea — the
-      // faces toward it pale slate, the backs of the waves dark: that contrast IS the chipped-stone look
-      float face = max(dot(n, normalize(uSunDir + vec3(0.0, 0.7, 0.0))), 0.0);
-      water *= 0.55 + 1.6 * face * face;
-      vec3 col = mix(water, sky, 0.08 + 0.42 * fres);   // (the steep chop faces went icy-white at 0.55)
-      // the moon's glint, sharp on the slopes that face it
-      vec3 hv = normalize(uMoonDir + v);
-      float spec = pow(max(dot(n, hv), 0.0), 420.0) * 2.2 + pow(max(dot(n, hv), 0.0), 40.0) * 0.1;   // glass-hard glints
-      col += vec3(0.85, 0.9, 1.0) * spec * 0.35;
-      // the afterglow catching the crests: a broad warm sheen on the faces turned to the horizon
-      vec3 hs = normalize(uSunDir + v);
-      col += vec3(1.0, 0.55, 0.32) * (pow(max(dot(n, hs), 0.0), 60.0) * 0.55 + pow(max(dot(n, hs), 0.0), 900.0) * 1.5) * (0.4 + 0.6 * smoothstep(0.45, 0.9, vCrest));
-      // FOAM (owner, 2026-10-07: "generate foam as a texture wherever it's really chopped up"):
-      // how torn-up the surface is here = slope of the final normal + the crest factor + the cloth's motion;
-      // past a threshold, a streaky hash-noise foam (stretched along the wind) is laid over the water
-      float torn = (1.0 - n.y) * 6.0 + smoothstep(0.7, 1.0, vCrest) * 0.6 + vTorn;
+      // REFLECTION BY ANGLE (Schlick Fresnel, water's 2%): looking down you see INTO the water, at a glancing
+      // angle it's a mirror of the sky — the reflected ray picks the sky's colour by how high it points
+      float F = 0.02 + 0.98 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
+      vec3 r = reflect(-v, n);
+      vec3 skyR = mix(uHorizon, uSky, smoothstep(-0.05, 0.4, r.y));
+      // the BODY: deep slate, lit a little by how each face turns to the afterglow
+      vec3 L = normalize(uSunDir);
+      float face = max(dot(n, normalize(L + vec3(0.0, 0.8, 0.0))), 0.0);
+      vec3 body = mix(uShallow, uDeep, clamp(far * 1.5, 0.0, 1.0)) * (0.65 + 0.55 * face);
+      // SUBSURFACE (Sea of Thieves' signature): with the low light BEHIND a wave, its thin top glows teal —
+      // strongest looking toward the light, on the highest water, on faces turned away from you
+      float back = pow(clamp(dot(-v, L), 0.0, 1.0), 3.0);
+      float tip = clamp(vHeight * 1.6 + 0.25, 0.0, 1.0);
+      vec3 sss = vec3(0.12, 0.48, 0.42) * back * tip * tip * (0.5 + 0.5 * clamp(1.0 - dot(n, v), 0.0, 1.0));
+      vec3 col = mix(body + sss, skyR, F);
+      // the low light's glint off the slopes (warm), and the moon's (cool, small)
+      vec3 hs = normalize(L + v), hv = normalize(uMoonDir + v);
+      col += vec3(1.0, 0.6, 0.36) * (pow(max(dot(n, hs), 0.0), 120.0) * 0.6 + pow(max(dot(n, hs), 0.0), 1200.0) * 2.0);
+      col += vec3(0.85, 0.9, 1.0) * pow(max(dot(n, hv), 0.0), 600.0) * 0.8;
+      // FOAM only where a crest really PINCHES (the swells' Jacobian) or the cloth is torn up — streaked by the wind
       vec2 wind = normalize(uSwell[0].xy);
-      vec2 fuv = vec2(dot(vWorld.xz, wind) * 0.35 - uTime * 0.25, dot(vWorld.xz, vec2(-wind.y, wind.x)) * 1.4);   // long along the wind
+      vec2 fuv = vec2(dot(vWorld.xz, wind) * 0.35 - uTime * 0.25, dot(vWorld.xz, vec2(-wind.y, wind.x)) * 1.4);
       float fn = foamNoise(fuv) * 0.6 + foamNoise(fuv * 2.7 + 3.1) * 0.4;
-      float foam = smoothstep(1.1, 1.8, torn) * smoothstep(0.45, 0.8, fn);   // (10-07: his photo has almost none — only the really torn water)
-      col = mix(col, vec3(0.78, 0.82, 0.86), foam * 0.7);
-      col += vec3(0.05, 0.06, 0.07) * smoothstep(0.86, 0.99, vCrest) * (1.0 - foam);
+      float foam = clamp(smoothstep(0.55, 0.8, vPinch) + smoothstep(0.6, 1.3, vTorn), 0.0, 1.0) * smoothstep(0.4, 0.75, fn);
+      col = mix(col, vec3(0.75, 0.8, 0.82), foam * 0.6);
       gl_FragColor = vec4(col, 1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
