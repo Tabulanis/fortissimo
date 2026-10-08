@@ -32,7 +32,8 @@ export function createCove(scene) {
   };
   // (10-08: the box wharf/landing, box dock and box side pier are GONE — his Meshy dock (below) replaces them; he lays it out in the editor)
   // SEA: sea.js — swell, sky-fresnel, moon glint, ripple rings; stage3d ticks it and the hydra ripples it
-  const sea = createSea(scene, { x: 0, z: (COVE.wallZ + COVE.seaZ1) / 2 + 10, width: COVE.halfWidth * 2 + 40, depth: COVE.seaZ1 - COVE.wallZ + 20, y: -0.15 });   // from the wall out
+  const SEA_FAR = 230;   // (10-08: the sea runs out to the draw distance, then the sky dome's painted sea takes over)
+  const sea = createSea(scene, { x: 0, z: COVE.wallZ + SEA_FAR / 2, width: SEA_FAR * 2, depth: SEA_FAR, y: -0.15 });   // from the wall out
   root.userData.sea = sea;
   // LIGHT for this side: every light in the game faces the sunset behind us, so the cove
   // gets a cool MOON over the sea (no shadows: cost) and a warm lantern over the booth

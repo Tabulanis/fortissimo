@@ -160,8 +160,9 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
   });
 
   // LIGHTING (owner, 2026-10-08): sliders for the level's light, live; saved with the layout ("_lighting")
-  const LIGHT_UI = [["sun", "Sun", 0, 6, 0.05], ["sunHeight", "Sun height°", 2, 60, 0.5], ["shadowBlur", "Shadow blur", 0, 12, 0.5],
-    ["sky", "Sky fill", 0, 1.2, 0.01], ["reflections", "Reflections", 0, 1.2, 0.01], ["exposure", "Exposure", 0.4, 2.5, 0.01], ["fires", "Fires", 0, 3, 0.05]];
+  // (10-08: wider — he pinned sun, sky fill and fires at their tops and exposure at its bottom)
+  const LIGHT_UI = [["sun", "Sun", 0, 15, 0.05], ["sunHeight", "Sun height°", 2, 70, 0.5], ["shadowBlur", "Shadow blur", 0, 16, 0.5],
+    ["sky", "Sky fill", 0, 4, 0.01], ["reflections", "Reflections", 0, 2, 0.01], ["exposure", "Exposure", 0.05, 2.5, 0.01], ["fires", "Fires", 0, 10, 0.05]];
   function paintLight() {
     if (!lighting) { $("light").textContent = "(no lighting here)"; return; }
     $("light").innerHTML = LIGHT_UI.map(([k, label, lo, hi, step]) => `<span>${label}</span><input type="range" data-l="${k}" min="${lo}" max="${hi}" step="${step}" value="${lighting.values[k]}"><span data-lv="${k}">${(+lighting.values[k]).toFixed(2)}</span>`).join("");

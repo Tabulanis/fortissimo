@@ -26,7 +26,9 @@ const NSWELL = SWELL.length, STEEP = 0.8;   // STEEP: how hard the crests pinch 
 
 /** a plane grid in xz whose spacing grows with distance from (fx, fz): spacing = fine * (1 + d / falloff), capped at coarse */
 function gradedGrid({ x0, x1, z0, z1, fx, fz, fine, coarse, falloff }) {
-  const axis = (a0, a1, f) => { const out = [a0]; let a = a0; while (a < a1) { a += Math.min(coarse, fine * (1 + Math.abs(a - f) / falloff)); out.push(Math.min(a, a1)); } return out; };
+  // (10-08: past 40 m the spacing grows fast — the open sea runs out to the draw distance on about the same budget)
+  const step = (d) => Math.min(d > 40 ? 12 : coarse, fine * (1 + d / falloff) * (1 + Math.max(0, d - 40) / 12));
+  const axis = (a0, a1, f) => { const out = [a0]; let a = a0; while (a < a1) { a += step(Math.abs(a - f)); out.push(Math.min(a, a1)); } return out; };
   const xs = axis(x0, x1, fx), zs = axis(z0, z1, fz);
   const nx = xs.length, nz = zs.length, pos = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2);
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
@@ -128,6 +130,7 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
     void main() {
       vec4 wp = modelMatrix * vec4(position, 1.0);
       vTorn = 0.0;
+      float calm = 1.0 - smoothstep(45.0, 140.0, length(wp.xz - cameraPosition.xz));   // far water: gentle (and no jitter on the big far triangles)
       float h = 0.0; float dhx = 0.0; float dhz = 0.0; float crest = 0.0;
       vec2 slide = vec2(0.0); float pinch = 0.0;
       for (int i = 0; i < ${NSWELL}; i++) {   // GERSTNER: height + the slide toward the crest (peaked crests, broad troughs)
@@ -141,7 +144,7 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
         pinch += q * a * k * sin(ph);
         crest += (0.5 + 0.5 * sin(ph)) * a;
       }
-      wp.xz += slide;   // a point just before the crest (cos > 0) moves forward, just past it back: both bunch at the crest
+      wp.xz += slide * calm;   // a point just before the crest (cos > 0) moves forward, just past it back: both bunch at the crest
       dhx /= max(0.25, 1.0 - pinch); dhz /= max(0.25, 1.0 - pinch);   // the pinched crests are steeper
       // ripple rings: a damped circular wave from each ring's centre
       for (int i = 0; i < ${MAX_RIPPLES}; i++) {
@@ -168,6 +171,7 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
         h += s0; dhx += (sx - s0) / e; dhz += (sz - s0) / e;
         vTorn = min(1.5, abs(s0) * 2.5 + length(vec2(sx - s0, sz - s0)) / e * 1.2);   // the cloth's own disturbance feeds the foam
       }
+      h *= calm; dhx *= calm; dhz *= calm;
       wp.y += h;
       vHeight = h; vPinch = pinch;
       vWorld = wp.xyz;
@@ -207,7 +211,8 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       {   // per-pixel chop normal (the vertex grid is too coarse for the small rings)
         float e = 0.03;
         float c0 = chopAt(vWorld.xz, uTime), cx = chopAt(vWorld.xz + vec2(e, 0.0), uTime), cz = chopAt(vWorld.xz + vec2(0.0, e), uTime);
-        n = normalize(n + vec3(-(cx - c0) / e, 0.0, -(cz - c0) / e));   // the chop's facets, per pixel (the grid is too coarse for the shortest waves)
+        float near = 1.0 - smoothstep(40.0, 130.0, length(vWorld.xz - cameraPosition.xz));
+        n = normalize(n + vec3(-(cx - c0) / e, 0.0, -(cz - c0) / e) * near);   // the chop's facets, per pixel (the grid is too coarse for the shortest waves)
       }
       vec3 v = normalize(cameraPosition - vWorld);
       float far = clamp((vWorld.z - 20.0) / 70.0, 0.0, 1.0);
@@ -236,7 +241,8 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
       float fn = foamNoise(fuv) * 0.6 + foamNoise(fuv * 2.7 + 3.1) * 0.4;
       float foam = clamp(smoothstep(0.55, 0.8, vPinch) + smoothstep(0.6, 1.3, vTorn), 0.0, 1.0) * smoothstep(0.4, 0.75, fn);
       col = mix(col, vec3(0.75, 0.8, 0.82), foam * 0.6);
-      gl_FragColor = vec4(col, 1.0);
+      // the far edge melts into the open sea painted on the sky dome (stage3d) — no line where the water ends
+      gl_FragColor = vec4(col, 1.0 - smoothstep(150.0, 205.0, length(vWorld.xz - cameraPosition.xz)));
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
     }`;
@@ -245,7 +251,7 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
   // around the focus (the podium / the hydra) growing to `coarse` at the far edges. The same vertex
   // budget as a uniform grid, spent where it is seen; the swell and the chop become real geometry.
   const geo = gradedGrid({ x0: -width / 2, x1: width / 2, z0: -depth / 2, z1: depth / 2, fx: focus.x - x, fz: focus.z - z, fine, coarse, falloff });
-  const mat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: vert, fragmentShader: frag });
+  const mat = new THREE.ShaderMaterial({ uniforms: U, vertexShader: vert, fragmentShader: frag, transparent: true });   // (its far edge fades)
   const mesh = new THREE.Mesh(geo, mat); mesh.name = "sea"; mesh.position.set(x, y, z); mesh.frustumCulled = false;
   scene.add(mesh);
   console.log(`sea: graded grid, ${geo.userData.verts} vertices`);

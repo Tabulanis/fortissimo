@@ -196,15 +196,27 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
           c *= 1.0 + 5.0 * smoothstep(0.82, 1.0, lum);     // the sun and hot cloud rims glow (bloom)
           return vec4(c, edge * panoOn);
         }
+        // the sky's colour in a direction (gradient + afterglow band + the painted sunset), no clouds
+        vec3 skyCol(vec3 d) {
+          float h = max(d.y, 0.0), toward = smoothstep(-0.2, 1.0, -d.z);
+          float band = exp(-h * 9.0) * (0.35 + 0.65 * toward);
+          vec3 c = mix(mix(mid, zenith, smoothstep(0.0, 0.55, h)), glow, clamp(band, 0.0, 1.0) * 0.85);
+          vec4 p = panoSample(d); return mix(c, p.rgb, p.a);
+        }
         void main(){
           float h = vDir.y;
-          // the afterglow is strongest toward the archers (-z) and hugs the horizon
-          float toward = smoothstep(-0.2, 1.0, -vDir.z);
-          float band = exp(-abs(h) * 9.0) * (0.35 + 0.65 * toward);
-          vec3 c = h > 0.0 ? mix(mid, zenith, smoothstep(0.0, 0.55, h)) : ground;
-          c = mix(c, glow, clamp(band, 0.0, 1.0) * 0.85);
-          vec4 p = panoSample(vDir);
-          c = mix(c, p.rgb, p.a);
+          vec3 c;
+          vec4 p = panoSample(vDir);   // (the clouds below use it: lighter over the painted sunset)
+          if (h >= 0.0) c = skyCol(vDir);
+          else {
+            // THE OPEN SEA to the horizon (owner, 2026-10-08: "the ocean has to at least LOOK like it goes out forever"):
+            // below the horizon the dome is water — deep slate looking down, a mirror of the sky toward the horizon
+            // (Schlick, water's 2%); the real sea mesh fades into this at its far edge (sea.js)
+            float F = 0.02 + 0.98 * pow(1.0 - min(1.0, -h * 1.0), 5.0);
+            vec3 refl = skyCol(vec3(vDir.x, -h, vDir.z)) * 0.85;
+            c = mix(vec3(0.035, 0.07, 0.10), refl, F);
+            c = mix(c, ground, smoothstep(0.35, 0.9, -h));   // straight down (never seen) stays dark
+          }
           if (cloudOn > 0.5 && h > 0.0) {
             float az = atan(vDir.x, -vDir.z) + cloudRot;
             float el = asin(clamp(h, 0.0, 1.0));
@@ -320,7 +332,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
 
   let AO_ON = false; const _aoDir = new THREE.Vector3();   // the AO's own switch (off toward the sea, below)
   const camera = new THREE.PerspectiveCamera(
-    60, canvas.clientWidth / canvas.clientHeight, 0.1, 200,
+    60, canvas.clientWidth / canvas.clientHeight, 0.1, 260,   // (10-08: 200 → 260: the open sea reaches the draw distance)
   );
   // FOV is set HORIZONTALLY (games' convention; owner: 110), vertical follows the window shape
   // held upright (portrait) a 110-degree width would mean a ~145-degree fisheye
