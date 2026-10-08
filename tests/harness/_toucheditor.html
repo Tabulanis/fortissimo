@@ -1,0 +1,31 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:384px;height:760px;border:0"></iframe>
+<script type="module">
+// the level editor from ⚙ Settings, with touch controls (10-08): open it, push the thumbstick, drag to look, Done closes it
+const say = (b) => fetch("http://127.0.0.1:8899/toucheditor", { method: "POST", body: JSON.stringify(b) });
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const f = document.getElementById("f");
+f.onload = async () => { const w = f.contentWindow, d = w.document; await wait(7000);
+  try {
+    const S = w.__gr.stage3d, out = {};
+    d.getElementById("gr-gear").click(); await wait(200);
+    d.querySelector("[data-act=editor]").click(); await wait(1500);
+    out.flyOn = S.fly; const wrap = d.querySelector("[data-dev-editor] [data-t=stick]"); out.stickShown = !!wrap && getComputedStyle(wrap.closest("[data-dev-editor]")).display !== "none";
+    out.editorPanel = !!(S.editor && S.editor.on);
+    const P = (t, el, x, y, id = 7) => el.dispatchEvent(new w.PointerEvent(t, { clientX: x, clientY: y, pointerId: id, pointerType: "touch", bubbles: true }));
+    const stick = d.querySelector("[data-t=stick]"); stick.setPointerCapture = () => {}; const r = stick.getBoundingClientRect();
+    const cam0 = S.scene.parent ? null : null, pos0 = w.__gr.stage3d.camera ? null : null;
+    const before = JSON.stringify(w.__gr.stage3d.flyPose ? 0 : 0);
+    // push forward for 1 s: the camera must move
+    const c = d.querySelector("canvas"), getCam = () => { const m = /cam/.test(""); return null; };
+    const cam = S.camera, p0 = cam.position.clone(), q0 = cam.quaternion.clone();
+    P("pointerdown", stick, r.left + r.width / 2, r.top + 10); await wait(1000); P("pointerup", stick, r.left + r.width / 2, r.top + 10);
+    out.movedBy = +cam.position.distanceTo(p0).toFixed(2);
+    const cr = c.getBoundingClientRect(); P("pointerdown", c, cr.left + 150, cr.top + 300, 9); for (let i = 1; i <= 8; i++) { P("pointermove", c, cr.left + 150 + i * 15, cr.top + 300, 9); await wait(20); } P("pointerup", c, cr.left + 270, cr.top + 300, 9);
+    out.turnedBy = +(cam.quaternion.angleTo(q0) * 57.3).toFixed(1);
+    d.querySelector("[data-t=done]").click(); await wait(500);
+    out.flyAfterDone = S.fly;
+    say(out);
+  } catch (e) { say({ err: String(e.stack || e) }); }
+};
+f.src = "/";
+</script>

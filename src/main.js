@@ -229,6 +229,7 @@ const settingsUI = createSettings({
     if (mixer) mixer.setVolume(k, v);
   },
   onRestart: () => location.reload(),   // difficulty sets the tempo; graphics rebuild the scene
+  onEditor: () => { if (stage3d && !stage3d.fly) toggleFly(); },   // the level editor without a keyboard (10-08)
 });
 settingsUI.setAutoNote(`Auto — measures this device (now: ${TIER})`);
 
@@ -802,8 +803,14 @@ const AUTO_BEGIN = new URLSearchParams(location.search).has("autobegin");
 // the podium facing the sea and CONDUCT the three section buses: 1/2/3 pick a section, U cue, I cut,
 // O accent, hold P to swell (conductor.js judges on the bar line). Proper round-4 flow comes after.
 const CONDUCT = new URLSearchParams(location.search).has("conduct");   // (dev feel-test only since 2026-10-08: round 4 is drums + notes now)
+let touchFly = null;   // the editor's touch controls (dev/touchfly.js), made on first use
 function toggleFly() {
   const on = !stage3d.fly; stage3d.setFly(on);
+  if (on && !touchFly) import("./dev/touchfly.js").then(({ createTouchFly }) => {
+    touchFly = createTouchFly({ stage3d, dom: stage3d.canvas || stage, onDone: () => { if (stage3d.fly) toggleFly(); } });
+    touchFly.show(!!stage3d.fly);
+  });
+  if (touchFly) touchFly.show(on);
   // DEV MODE pauses the game and clears the screen (owner, 2026-10-07: "all on-screen stuff vanish,
   // game pauses if playing"). Suspending the AudioContext freezes the song clock, so every note, cue,
   // enemy and timer that runs on it stops dead and picks up exactly where it was; the water and the
@@ -910,6 +917,11 @@ function makeStartButton() {
     stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat
     if (CONDUCT) { conductor = new Conductor({ beatsPerBar: 4 }); if (!HYDRA) hudUI.say("CONDUCT — 1/2/3 pick a section · U cue · I cut · O accent · hold P to swell", "good", 7000); if (stage3d.hydra) stage3d.hydra.rise(); }
     if (AUTO_GFX) measureFps(8000, (fps) => judgeGraphics(fps, "in play"));   // the real test: with the battle on
+    else measureFps(8000, (measured) => { const fps = +new URLSearchParams(location.search).get("fakefps") || measured;   // a HAND-PICKED setting that runs slow: say so (10-08: his phone sat on Medium at 20 fps — Low ran 60)
+      bootlog("graphics check", { tier: TIER, fps: Math.round(fps), when: "in play (hand-picked)" });
+      const lower = TIERS[TIERS.indexOf(TIER) + 1];
+      if (fps < 28 && lower) hudUI.say(`Graphics: ${TIER} runs slow on this device (${Math.round(fps)} fps) — try ${lower[0].toUpperCase() + lower.slice(1)} or Auto in ⚙ Settings`, "bad", 7000);
+    });
     if (!CREATE && !HYDRA) siege = new Siege({ miss: (LIFE[RUN.damage] || LIFE.normal).miss, beatDur: clock.beatDur });
     defendFrom = clock.first + Math.ceil((ctx.currentTime + 1.5 - clock.first) / (4 * clock.beatDur)) * 4 * clock.beatDur;   // misses count from the next bar after a breath
     if (defend) defend.drain();

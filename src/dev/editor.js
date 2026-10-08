@@ -202,7 +202,7 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
   window.__grEdit = { allEditables, tc, select: (o) => select(o), levelPieceOf, act,   // harness handle (dev only)
     screenOf: (o) => { const v = o.getWorldPosition(new THREE.Vector3()).project(camera), r = dom.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; } };
   return {
-    get on() { return on; }, get selected() { return sel; },
+    get on() { return on; }, get selected() { return sel; }, get dragging() { return tc.dragging; },
     setOn(v) { on = !!v; el.style.display = on ? "block" : "none"; helper.visible = on; if (props && props.setMarkers) props.setMarkers(on); if (!on) select(null); status(); },
     /** keys while editing; true = consumed */
     key(e) {
