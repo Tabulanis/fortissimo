@@ -2660,7 +2660,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         hand.rest.copy(HAND_RESTS[name][h]);
         if (!hand.active && !vrOn()) { hand.group.position.copy(hand.rest); hand.group.quaternion.setFromUnitVectors(UP, restDir); }
       });
-    }, get scene() { return scene; }, get station() { return station; }, melodyStations, kit: KIT, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
+    }, get scene() { return scene; }, boothPos: BOOTH_POS, get station() { return station; }, melodyStations, kit: KIT, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */

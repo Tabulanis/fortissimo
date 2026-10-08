@@ -1,102 +1,216 @@
-/* modes/hydra.js — ROUND 4, THE HYDRA, in the game (moved out of main.js 2026-10-07). The rules are
-   game/hydrafight.js; this is the band, the bar lines, the movements and what the player sees.
-   main.js hands in G: getters/setters onto its own state. */
-import { HydraFight, HEAD_SECTION } from "../game/hydrafight.js";
-import { Conductor } from "../game/conductor.js";
+/* modes/hydra.js — ROUND 4, THE HYDRA (owner, 2026-10-08: "screw conductor — a full kit and notes… drums are
+   kinda constant and notes are the hydra attack… have them spit acid so the drums shield has to stay up").
+
+   You stand on the podium at the end of the dock and play BOTH HANDS at once, cued by a note highway
+   (ui/highway.js) under the view of the sea:
+     LEFT HAND  the drums (Q W E / A S D) of the movement's song — they hold up the SHIELD (a dome over the
+                podium) against the ACID the heads keep lobbing at you (scene/acid.js).
+     RIGHT HAND the song's bass + treble notes on J K L ; / U I O P (low → high by pitch) — each one is a STRIKE
+                by the movement's head: hit it and the head is wounded, miss it and it bites.
+   MOVEMENTS: head 1 attacks to round 1's music, head 2 to round 2's, head 3 to round 3's; a head going down moves
+   the band on at the next bar line, at that song's own tempo. All three down: the finale, then the results.
+   The rules are game/hydrafight.js (pure, tested). main.js hands in G: getters/setters onto its own state. */
+import { HydraFight, SHIELD_HOLDS } from "../game/hydrafight.js";
 import { startClock } from "../audio/clock.js";
 import { gradeRound } from "../game/grade.js";
 import { scoreMultiplier } from "../game/run.js";
 import { bootlog } from "../bootlog.js";
+import { createHighway } from "../ui/highway.js";
+import { createAcid } from "../scene/acid.js";
 const { VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
 
+const DRUMS = [{ lane: "hat", key: "q" }, { lane: "snare", key: "w" }, { lane: "crash", key: "e" },
+  { lane: "kick", key: "a" }, { lane: "tom low", key: "s" }, { lane: "tom high", key: "d" }];
+const NOTE_KEYS = ["j", "k", "l", ";", "u", "i", "o", "p"];   // lowest → highest: the right hand's home row, then the row above
+const HEAD_COLORS = ["#ff7a5a", "#e8c84a", "#5ad1ff"];
+const APPROACH = 1.7;   // seconds a note is on the highway before its beat
+
 export function hydraMode(G) {
-  // --- ROUND 4: THE HYDRA ----------------------------------------------------------------------------
-  // The band plays the movement's song (round 1's, then 2's, then 3's) — every note, each section at the
-  // conductor's level — and the back recordings follow the same levels. The fight (hydrafight.js) runs on
-  // bar lines (judged half a beat after each, so a late-but-clean accent still counts) and the gestures.
-  let hydraBarBase = 0, hydraLastBar = null, hydraMovement = 0, hydraOffsets = [], hydraFinale = false;
-  const metronomeBeat = (time) => G.pool.noteOn({ channel: 0, midi: 72, baseNote: 60, buffer: G.drums.click, velocity: 0.35, when: time, destination: G.mixer.metronome, settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
-  const sectionOfLane = (lane) => (lane.startsWith("bass") ? "bass" : lane.startsWith("treble") ? "treble" : "drums");
-  const hydraKeys = { drums: "1", bass: "2", treble: "3" };
+  let fight = null, acid = null, highway = null, active = false;
+  let movement = 0, items = [], L = 16, judged = new Set(), offsets = [], startAt = 0, until = 0;
+  let lastBeat = null, spitTurn = 0, lastTickT = 0, finale = false;
+  const metronomeBeat = (time) => G.pool.noteOn({ channel: 0, midi: 72, baseNote: 60, buffer: G.drums.click, velocity: 0.3, when: time, destination: G.mixer.metronome, settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
+  const isDrum = (lane) => DRUMS.some((d) => d.lane === lane);
+
+  /** a song's notes as highway items: drums by name, melody lanes ranked by pitch onto the 8 note columns */
+  function itemsOf(song) {
+    const play = song.playNotes || song.notes, pitch = (n) => n.midi ?? (song.sounds[n.lane] && song.sounds[n.lane].note) ?? 60;
+    const mel = [...new Set(play.filter((n) => !isDrum(n.lane)).map((n) => n.lane))];
+    const avg = Object.fromEntries(mel.map((l) => { const ps = play.filter((n) => n.lane === l).map(pitch); return [l, ps.reduce((a, b) => a + b, 0) / ps.length]; }));
+    mel.sort((a, b) => avg[a] - avg[b]);
+    const colOf = (l) => (mel.length <= 1 ? 3 : Math.round((mel.indexOf(l) * 7) / (mel.length - 1)));
+    return play.map((n, i) => ({ i, lane: n.lane, beat: n.beat, midi: n.midi, vel: n.vel ?? 0.9,
+      col: isDrum(n.lane) ? DRUMS.findIndex((d) => d.lane === n.lane) : 6 + colOf(n.lane), drum: isDrum(n.lane) }));
+  }
+  /** how many wounds each head can take: one and a half passes of its movement's notes (at least 8) */
+  const hpOf = (song) => Math.max(8, Math.round(1.5 * (song.playNotes || song.notes).filter((n) => !isDrum(n.lane)).length));
+
+  function setupMovement() {
+    const s = G.song(); L = 4 * s.bars; items = itemsOf(s); judged = new Set(); startAt = G.clock.first; until = G.clock.first;
+    lastBeat = null;
+    for (let i = 0; i < 3; i++) G.stage3d.hydra.standBack(i, i !== movement);   // the attacker owns the stage
+    bootlog("hydra movement", { movement: movement + 1, song: s.name, bpm: G.BPM, drums: items.filter((x) => x.drum).length, notes: items.filter((x) => !x.drum).length, hp: fight.heads[movement].hp });
+  }
+  const timeOf = (k, it) => G.clock.first + (k * L + it.beat) * G.clock.beatDur;
+
   function startHydra() {
-    G.hydraFight = new HydraFight({ life: 100 });
+    const songs = G.HYDRA.rounds.map((i) => G.lessonAt(i));
+    const dmg = { gentle: 0.7, normal: 1, harsh: 1.4 }[G.RUN.damage] || 1;   // the run's Damage setting, as in rounds 1-3
+    fight = new HydraFight({ hp: songs.map(hpOf), life: 100, bite: 2.5 * dmg, acid: 4 * dmg });
+    const H = G.stage3d.hydra; H.rise();
+    acid = createAcid(G.stage3d.scene, { center: G.stage3d.boothPos.clone().setY(0.6), radius: 6 });   // wide: the acid bursts on it well out in front of you
+    acid.onLand = (head) => { const ev = fight.acidLands(head); events(ev); return ev.some((e) => e.type === "acidBlocked"); };
+    highway = createHighway({ drums: DRUMS.map((d) => ({ key: d.key, label: d.key.toUpperCase() })),
+      notes: NOTE_KEYS.map((k) => ({ key: k, head: 0, label: k === ";" ? ";" : k.toUpperCase() })), headColors: HEAD_COLORS });
+    highway.show(true); active = true; movement = 0;
+    setupMovement(); recolor();
     G.hudUI.setLife(100, 100);
-    G.hudUI.say("THE HYDRA — when a head rears, pick its section (1 drums · 2 bass · 3 treble) and ACCENT (O) on the next bar line", "good", 8000);
-    let until = G.ctx.currentTime;
-    setInterval(() => {
-      if (!G.clock || !G.hydraFight) return;
-      const L = 4 * G.song().bars, beatAt = (t) => (t - G.clock.first) / G.clock.beatDur, to = G.ctx.currentTime + 0.12;
-      const b0 = beatAt(until), b1 = beatAt(to);
-      for (let lap = Math.floor(b0 / L); lap <= Math.floor(b1 / L); lap++) for (const n of G.song().notes) {
-        const b = lap * L + n.beat, entry = G.KEYMAP_BY_LANE[n.lane];
-        if (b < b0 || b >= b1 || b < 0 || !entry) continue;
-        const lv = G.conductor.level(sectionOfLane(n.lane), b);
-        if (lv < 0.03) continue;
-        G.pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...G.laneSound(entry.ln, n.midi), velocity: (n.vel ?? 0.9) * lv, when: G.clock.first + b * G.clock.beatDur });
-      }
-      until = to;
-      G.updateBackLevels();
-      // the bar lines (half a beat late: a clean accent may land just after the one)
-      const local = Math.floor((beatAt(G.ctx.currentTime) - G.conductor.window) / 4);
-      if (local >= 0 && local !== hydraLastBar) {
-        hydraLastBar = local;
-        const on = Object.fromEntries(HEAD_SECTION.map((sec) => [sec, G.conductor.isOn(sec)]));
-        hydraEvents(G.hydraFight.bar(hydraBarBase + local, on));
-      }
-    }, 25);
+    G.hudUI.say("THE HYDRA — left hand: drums keep the shield up · right hand: J K L ; U I O P parry the head's strikes", "good", 8000);
+    lastTickT = G.ctx.currentTime;
+    setInterval(tick, 25);
+    const draw = () => { if (active) { highway.draw(upcoming(), G.ctx.currentTime, APPROACH); acid.update(G.ctx.currentTime); } requestAnimationFrame(draw); };
+    requestAnimationFrame(draw);
   }
-  function hydraGesture(ev) {
-    hydraOffsets.push(ev.kind === "release" ? 0 : ev.error * G.clock.beatDur);
-    hydraEvents(G.hydraFight.gesture({ ...ev, bar: hydraBarBase + ev.bar }));
+  function recolor() {   // the note lanes take the attacking head's colour
+    const c = HEAD_COLORS[movement]; highway.el.dataset.head = movement;
+    highway.setNoteColor(c);
   }
-  function hydraEvents(evs) {
+  /** the occurrences on the highway now */
+  function upcoming() {
+    if (!G.clock) return [];
+    const now = G.ctx.currentTime, b0 = (now - 0.2 - G.clock.first) / G.clock.beatDur, b1 = (now + APPROACH - G.clock.first) / G.clock.beatDur, out = [];
+    for (let k = Math.floor(b0 / L); k <= Math.floor(b1 / L); k++) for (const it of items) {
+      const t = timeOf(k, it); if (t < startAt || judged.has(k + ":" + it.i)) continue;
+      if (t >= now - 0.2 && t <= now + APPROACH) out.push({ col: it.col, at: t, k, it });
+    }
+    return out;
+  }
+
+  function tick() {
+    if (!active || !G.clock || finale) return;
+    const now = G.ctx.currentTime, win = G.judgeWindow(), bd = G.clock.beatDur;
+    // MISSES: an occurrence whose moment (plus the hitbox) went by unhit
+    const bNow = (now - win - G.clock.first) / bd;
+    for (let k = Math.max(0, Math.floor((bNow - L) / L)); k <= Math.floor(bNow / L); k++) for (const it of items) {
+      const t = timeOf(k, it), id = k + ":" + it.i;
+      if (t < startAt || t + win > now || judged.has(id)) continue;
+      judged.add(id); offsets.push(null);
+      if (it.drum) { events(fight.drum(false)); highway.flash(it.col, false); }
+      else { events(fight.strike(movement, false)); highway.flash(it.col, false); }
+    }
+    // the shield sags with time; the head of this movement rears while a strike is close
+    fight.tick((now - lastTickT) / bd); lastTickT = now;
+    const H = G.stage3d.hydra, soon = upcoming().some((u) => !u.it.drum && u.at - now < 0.7);
+    H.rear(movement, soon);
+    // ACID: on every other beat a living head lobs a glob that lands two beats later
+    const beat = Math.floor((now - G.clock.first) / bd);
+    if (beat >= 0 && beat !== lastBeat) {
+      lastBeat = beat;
+      const alive = fight.alive;
+      if (beat % 2 === 0 && alive.length) {
+        const h = alive[spitTurn++ % alive.length], from = H.mouth(h);
+        if (from) acid.spit(h, from, G.clock.first + (beat + 2) * bd, now);
+      }
+    }
+    G.hudUI.setShield(fight.shield * 100, fight.shield >= SHIELD_HOLDS ? "up" : "broken");
+    acid.setShield(fight.shield);
+  }
+
+  /** a key in round 4 (press = the heard time of the press); true if it was one of ours */
+  function key(e, press) {
+    if (!active || e.repeat) return false;
+    const k = e.key.toLowerCase(), d = DRUMS.findIndex((x) => x.key === k), n = NOTE_KEYS.indexOf(k);
+    if (d < 0 && n < 0) return false;
+    e.preventDefault();
+    const col = d >= 0 ? d : 6 + n, win = G.judgeWindow(), bd = G.clock.beatDur;
+    // the nearest unhit occurrence in this column, inside the hitbox
+    let best = null, bestD = Infinity;
+    const bp = (press - G.clock.first) / bd;
+    for (let kk = Math.floor(bp / L) - 1; kk <= Math.floor(bp / L) + 1; kk++) for (const it of items) {
+      if (it.col !== col || kk < 0) continue;
+      const t = timeOf(kk, it), id = kk + ":" + it.i;
+      if (t < startAt || judged.has(id)) continue;
+      const dd = Math.abs(t - press); if (dd < bestD) { bestD = dd; best = { id, it, off: press - t }; }
+    }
+    if (best && bestD <= win) {
+      judged.add(best.id); offsets.push(best.off);
+      const entry = G.KEYMAP_BY_LANE[best.it.lane];
+      if (entry) G.pool.noteOn({ channel: entry.idx, midi: 60, baseNote: 60, ...G.laneSound(entry.ln, best.it.midi), velocity: best.it.vel, when: G.ctx.currentTime });
+      highway.flash(col, true);
+      events(best.it.drum ? fight.drum(true) : fight.strike(movement, true));
+    } else {   // nothing due here: a drum still sounds (quietly); a note key does nothing
+      if (d >= 0) { const entry = G.KEYMAP_BY_LANE[DRUMS[d].lane]; if (entry) G.pool.noteOn({ channel: entry.idx, midi: 60, baseNote: 60, ...G.laneSound(entry.ln), velocity: 0.35, when: G.ctx.currentTime }); }
+      highway.flash(col, false);
+    }
+    return true;
+  }
+
+  // the BAND: what you don't play (the run's simpler patterns leave some notes out) plays by itself
+  setInterval(() => {
+    if (!active || !G.clock || !G.pool) return;
+    const s = G.song(), back = s.backingNotes || [], to = G.ctx.currentTime + 0.12, bd = G.clock.beatDur;
+    const b0 = (until - G.clock.first) / bd, b1 = (to - G.clock.first) / bd;
+    for (let k = Math.floor(b0 / L); k <= Math.floor(b1 / L); k++) for (const n of back) {
+      const b = k * L + n.beat, entry = G.KEYMAP_BY_LANE[n.lane];
+      if (b < b0 || b >= b1 || b < 0 || !entry) continue;
+      G.pool.noteOn({ channel: entry.idx + 40, midi: 60, baseNote: 60, ...G.laneSound(entry.ln, n.midi), velocity: (n.vel ?? 0.9) * 0.8, when: G.clock.first + b * bd });
+    }
+    until = Math.max(until, to);
+  }, 25);
+
+  function events(evs) {
     const H = G.stage3d.hydra, now = performance.now() / 1000;
     for (const e of evs) {
-      bootlog("hydra", e);
-      const sec = e.head != null ? HEAD_SECTION[e.head] : null;
-      if (e.type === "rear") { H.rear(e.head, true); G.hudUI.say(`⚠ The ${sec.toUpperCase()} head rears! Press ${hydraKeys[sec]}, then O on the next bar line`, "bad", 2600); }
-      else if (e.type === "hit") { H.hit(e.head, now); G.hudUI.say(`💥 Struck the ${sec} head!${e.hp > 0 ? ` (${e.hp} more)` : ""}`, "good", 1800); }
-      else if (e.type === "down") { H.down(e.head); G.hudUI.say(`🐉 The ${sec} head is DOWN — keep ${sec} playing or it grows back`, "good", 3200); if (G.hydraFight.movement > hydraMovement) nextMovement(G.hydraFight.movement); }
-      else if (e.type === "strike") { H.rear(e.head, false); H.bite(e.head, now); G.hurtFlash(); G.hudUI.setLife(G.hydraFight.life, G.hydraFight.life); G.hudUI.say(e.dome ? `The ${sec} head bit — the full band (the dome) took half` : `The ${sec} head bit! (all three sections playing = the dome halves it)`, "bad", 2200); }
-      else if (e.type === "regrow") { H.up(e.head); G.hudUI.say(`The ${sec} head GREW BACK — ${sec} was cut too long`, "bad", 3000); }
-      else if (e.type === "won") hydraWon();
-      else if (e.type === "lost") hydraLost();
+      if (e.type !== "drumHit" && e.type !== "drumMiss" && e.type !== "acidBlocked") bootlog("hydra", e);
+      if (e.type === "wound") H.hit(e.head, now);
+      else if (e.type === "bite") { H.rear(e.head, false); H.bite(e.head, now); G.hurtFlash(); }
+      else if (e.type === "acidBurn") G.hurtFlash();
+      else if (e.type === "down") {
+        H.down(e.head);
+        G.hudUI.say(`🐉 Head ${e.head + 1} is DOWN!`, "good", 3000);
+        if (!fight.won) nextMovement(e.head + 1);
+      } else if (e.type === "won") won();
+      else if (e.type === "lost") lost();
     }
-    G.hudUI.setPart(`Round 4 · The Hydra · heads ${3 - G.hydraFight.downCount}/3 · movement ${hydraMovement + 1}`);
+    G.hudUI.setLife(fight.life, fight.life);
+    const h = fight.heads[movement];
+    G.hudUI.setPart(`Round 4 · The Hydra · head ${movement + 1} of 3 · ${h ? Math.max(0, h.hp) : 0} wounds to go`);
   }
-  /** the band moves on to round m+1's music, starting exactly on the next bar line, at that song's own tempo */
+
+  /** the next head attacks to the next round's music, from exactly the next bar line, at that song's own tempo */
   function nextMovement(m) {
-    hydraMovement = m;
-    const nextBarBeat = (Math.floor((G.ctx.currentTime - G.clock.first) / G.clock.beatDur / 4) + 1) * 4, at = G.clock.first + nextBarBeat * G.clock.beatDur;
+    const bd = G.clock.beatDur, nextBarBeat = (Math.floor((G.ctx.currentTime - G.clock.first) / bd / 4) + 1) * 4, at = G.clock.first + nextBarBeat * bd;
     setTimeout(() => {
       G.clock.stop();
-      hydraBarBase += nextBarBeat / 4; hydraLastBar = null;
-      G.roundIdx = G.HYDRA.rounds[m];
+      movement = m; G.roundIdx = G.HYDRA.rounds[m];
       G.BPM = Math.round((G.song().bpm || 80) * G.RUN.tempo * 10) / 10;
       G.clock = startClock(G.ctx, { bpm: G.BPM, onBeat: metronomeBeat, at });
-      G.conductor = new Conductor({ beatsPerBar: 4 });   // the new movement comes in with the whole band
       G.backUntil = at; G.stage3d.setBeat(G.clock.first, G.clock.beatDur);
-      bootlog("hydra movement", { movement: m + 1, song: G.song().name, bpm: G.BPM });
-      G.hudUI.say(`Movement ${m + 1} — ${G.song().title || G.song().name}`, "good", 2500);
+      setupMovement(); recolor();
+      G.hudUI.say(`Head ${m + 1} attacks — ${G.song().title || G.song().name}`, "bad", 2500);
     }, Math.max(0, (at - G.ctx.currentTime - 0.2) * 1000));
   }
-  function hydraResults(failed) {
-    const stats = gradeRound(hydraOffsets, G.conductor.window * G.clock.beatDur);
+  function results(failed) {
+    active = false; highway.show(false); acid.clear();
+    const stats = gradeRound(offsets, G.judgeWindow());
     G.results.show({
       round: "Round 4", title: failed ? "The hydra won" : "The hydra falls", stats, last: false, failed,
       nextLabel: failed ? "Fight it again ▶" : "Back to the levels ▶",
       run: { name: G.runName(G.RUN), mult: scoreMultiplier(G.RUN).total },
-      onNext: () => { if (failed) { try { sessionStorage.setItem("gr.hydra", JSON.stringify(G.HYDRA)); } catch { /* menu */ } } else { try { sessionStorage.setItem("gr.menuAt", "levels"); } catch { /* fine */ } } location.reload(); },
+      onNext: () => { try { if (failed) sessionStorage.setItem("gr.hydra", JSON.stringify(G.HYDRA)); else sessionStorage.setItem("gr.menuAt", "levels"); } catch { /* menu */ } location.reload(); },
       onMenu: () => { try { sessionStorage.setItem("gr.menuAt", "levels"); } catch { /* fine */ } location.reload(); },
     });
   }
-  function hydraWon() {   // the finale: the whole band at full for two loops, then the G.results
-    hydraFinale = true; G.stage3d.hydra.submerge();
-    const t = (G.ctx.currentTime - G.clock.first) / G.clock.beatDur; for (const sec of HEAD_SECTION) G.conductor.cue(sec, t);
-    G.hudUI.say("🏆 THE HYDRA FALLS — the finale!", "good", 6000);
-    setTimeout(() => hydraResults(false), 2 * 4 * G.song().bars * G.clock.beatDur * 1000);
+  function won() {   // the finale: the heads sink, the band plays one more loop, then the results
+    finale = true; G.stage3d.hydra.submerge(); acid.clear(); highway.show(false);
+    G.hudUI.say("🏆 THE HYDRA FALLS!", "good", 6000);
+    setTimeout(() => results(false), L * G.clock.beatDur * 1000);
   }
-  function hydraLost() { G.life.over = true; G.hudUI.say("The hydra won…", "bad", 4000); setTimeout(() => hydraResults(true), 1400); }
+  function lost() { G.life.over = true; G.hudUI.say("The hydra won…", "bad", 4000); setTimeout(() => results(true), 1400); }
 
-  return { startHydra, hydraGesture, get barBase() { return hydraBarBase; } };
+  return {
+    startHydra, key,
+    get active() { return active; }, get fight() { return fight; }, get movement() { return movement; },
+    upcoming,   // harness: what's on the highway
+  };
 }

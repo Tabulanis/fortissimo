@@ -1,12 +1,14 @@
 <!doctype html><body style="margin:0">
 <iframe id="f" style="width:1100px;height:760px;border:0"></iframe>
 <script type="module">
-// ROUND 4 by a robot (2026-10-07): /?hydra=0,1,2 — the hydra fight over Rome's three rounds. When a head
-// rears, it picks that head's section (1/2/3) and ACCENTS (O) on the strike bar line, ±JITTER ms; it lets
-// the FIRST rear go by on purpose (a bite must land). Reports to the sink: hydra-prog / hydra-result / hydra-fail.
+// ROUND 4 by a robot (2026-10-08 design: drums hold the shield against acid, notes parry the heads' strikes).
+// /?hydra=0,1,2. It plays every highway note with ±JITTER ms — BUT leaves the drums alone for the first DRUMLESS
+// seconds (the shield must sag and the acid burn through), and skips 1 note in SKIP (bites must land).
+// Reports to the sink: hydra-prog / hydra-result / hydra-fail.
 const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body: typeof body === "string" ? body : JSON.stringify(body) });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const JITTER = 0.06;
+const JITTER = 0.05, DRUMLESS = 6, SKIP = 9, SHOT = new URLSearchParams(location.hash.slice(1)).get("shot");   // #shot=SEC: one composed frame (3D + highway) to the sink
+const KEYS = ["q", "w", "e", "a", "s", "d", "j", "k", "l", ";", "u", "i", "o", "p"];
 localStorage.removeItem("gr.run2"); sessionStorage.clear();
 const f = document.getElementById("f");
 f.onload = async () => {
@@ -15,29 +17,30 @@ f.onload = async () => {
   try {
     await wait(4000);
     const press = (k) => { w.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true })); w.dispatchEvent(new w.KeyboardEvent("keyup", { key: k, bubbles: true })); };
-    press("x");   // the audio's gesture: Start, then the count
-    let G; for (let i = 0; i < 60 && !((G = w.__gr.game) && G.hydraFight && G.clock); i++) await wait(250);
-    if (!G.hydraFight) throw new Error("no hydra fight after Start");
-    const seen = new Set(), log = []; let first = true, t0 = performance.now(), nextLog = 0;
-    while (performance.now() - t0 < 300000) {
-      const F = G.hydraFight, r = F.rearing;
-      if (r && !seen.has(r.strikeBar)) {
-        seen.add(r.strikeBar);
-        const sec = ["drums", "bass", "treble"][r.head];
-        if (first) { first = false; log.push(`let bar ${r.strikeBar} (${sec}) go by`); }
-        else {
-          press(String(r.head + 1));
-          const T = G.clock.first + (r.strikeBar - G.hydraBarBase) * 4 * G.clock.beatDur + (Math.random() * 2 - 1) * JITTER, o = G.ctx.getOutputTimestamp();
-          setTimeout(() => press("o"), Math.max(0, o.performanceTime + (T + G.calibration - o.contextTime) * 1000 - w.performance.now()));
-        }
+    press("x");
+    let G; for (let i = 0; i < 80 && !((G = w.__gr.game) && G.hydra && G.hydra.active); i++) await wait(250);
+    if (!G.hydra.active) throw new Error("round 4 never started");
+    const planned = new Set(), t0 = performance.now(); let nextLog = 0, n = 0, burnsSeen = 0, bitesSeen = 0;
+    while (performance.now() - t0 < 420000) {
+      const F = G.hydra.fight, sec = (performance.now() - t0) / 1000;
+      for (const u of G.hydra.upcoming()) {
+        const id = u.k + ":" + u.it.i + ":" + G.hydra.movement;
+        if (planned.has(id) || u.at - G.ctx.currentTime > 0.4) continue;
+        planned.add(id);
+        if (u.it.drum && sec < DRUMLESS) continue;          // the shield sags…
+        if (!u.it.drum && ++n % SKIP === 0) continue;       // …and a strike gets through now and then
+        const o = G.ctx.getOutputTimestamp(), T = u.at + (Math.random() * 2 - 1) * JITTER;
+        setTimeout(() => press(KEYS[u.col]), Math.max(0, o.performanceTime + (T + G.calibration - o.contextTime) * 1000 - w.performance.now()));
       }
-      if (performance.now() - t0 > nextLog) { nextLog += 20000; say("hydra-prog", `${Math.round((performance.now() - t0) / 1000)}s life ${F.life} heads ${F.heads.map((h) => (h.down ? "X" : h.hp)).join("")} movement ${F.movement + 1} song ${G.song().name} bpm ${(60 / G.clock.beatDur).toFixed(1)}`); }
+      if (SHOT && sec > +SHOT && !w.__shot) { w.__shot = 1; const gl = d.querySelector("canvas"), hw = d.getElementById("gr-highway"), c = d.createElement("canvas"); c.width = gl.width; c.height = gl.height; const x = c.getContext("2d"); x.drawImage(gl, 0, 0); const r = hw.getBoundingClientRect(), k = gl.width / gl.clientWidth; x.drawImage(hw, r.left * k, r.top * k, r.width * k, r.height * k); fetch("http://127.0.0.1:8899/png/hydra-play", { method: "POST", body: c.toDataURL("image/png") }); }
+      if (new URLSearchParams(location.hash.slice(1)).has("dist") && Math.floor(sec) !== w.__ds) { w.__ds = Math.floor(sec); const H = w.__gr.stage3d.hydra, cam = w.__gr.stage3d.camera || null; say("hydra-dist", `${w.__ds}s ` + [0, 1, 2].map((i) => { const m = H.mouth(i); const h = H.heads[i]; return `h${i} mouth ${m.toArray().map((v) => v.toFixed(1)).join(",")} rear ${h.rear.toFixed(2)} lunge ${h.lunge.toFixed(2)} alv ${h.alv.toFixed(2)}`; }).join(" | ")); }
+      if (sec * 1000 > nextLog) { nextLog += 15000; say("hydra-prog", `${Math.round(sec)}s life ${F.life} shield ${F.shield.toFixed(2)} heads ${F.heads.map((h) => (h.down ? "X" : h.hp)).join("/")} movement ${G.hydra.movement + 1} bpm ${(60 / G.clock.beatDur).toFixed(1)}`); }
       const res = d.getElementById("gr-results");
-      if (res && res.style.display !== "none") { await wait(300); say("hydra-result", { text: res.innerText.replace(/\s+/g, " ").slice(0, 300), life: F.life, won: F.won, lost: F.lost, log }); return; }
-      await wait(25);
+      if (res && res.style.display !== "none") { await wait(300); say("hydra-result", { text: res.innerText.replace(/\s+/g, " ").slice(0, 300), life: F.life, won: F.won, lost: F.lost }); return; }
+      await wait(20);
     }
-    say("hydra-fail", "timed out: " + JSON.stringify({ life: G.hydraFight.life, heads: G.hydraFight.heads, log }));
+    say("hydra-fail", "timed out: " + JSON.stringify({ life: G.hydra.fight.life, heads: G.hydra.fight.heads }));
   } catch (e) { say("hydra-fail", String(e && e.stack || e)); }
 };
-f.src = "/?hydra=0,1,2";
+f.src = "/?hydra=0,1,2" + (SHOT ? "&shot=999" : "");
 </script>

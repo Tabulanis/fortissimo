@@ -275,7 +275,7 @@ function applyStage() {
   if (!stage3d) return;
   const used = new Set(song().notes.map((n) => LANE_INDEX[n.lane]));   // every drum stands (owner); the guns the song never plays are dimmed
   for (let i = 0; i < 6 + 2 * BARS; i++) stage3d.setDrumVisible(i, i < 6 || used.has(i) || (CREATE && i < 6 + BARS + 8));   // creating: every gun you can write for
-  stage3d.setStation(CONDUCT ? "sea" : isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left; conducting: the podium
+  stage3d.setStation(CONDUCT || HYDRA ? "sea" : isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left; conducting: the podium
   if (audioStarted) updateBackLevels();                      // the sections' background music follows progress
   stageMessage();
   if (audioStarted) joinBacking();   // a finished instrument's left-out notes join in
@@ -801,7 +801,7 @@ const AUTO_BEGIN = new URLSearchParams(location.search).has("autobegin");
 // ROUND 4 feel-test (2026-10-06): ?conduct=1 — the round runs as usual underneath, but you stand at
 // the podium facing the sea and CONDUCT the three section buses: 1/2/3 pick a section, U cue, I cut,
 // O accent, hold P to swell (conductor.js judges on the bar line). Proper round-4 flow comes after.
-const CONDUCT = new URLSearchParams(location.search).has("conduct") || !!HYDRA;   // the hydra round IS conducting
+const CONDUCT = new URLSearchParams(location.search).has("conduct");   // (dev feel-test only since 2026-10-08: round 4 is drums + notes now)
 function toggleFly() {
   const on = !stage3d.fly; stage3d.setFly(on);
   // DEV MODE pauses the game and clears the screen (owner, 2026-10-07: "all on-screen stuff vanish,
@@ -837,7 +837,6 @@ function conductGesture(kind, t = beatsNow()) {
   const ev = kind === "release" ? conductor.release(conductSection, t) : conductor[kind](conductSection, t);
   if (!ev) return;
   bootlog("conduct", ev);
-  if (hydraFight) hydraGesture(ev);
   hudUI.say(`${ev.kind.toUpperCase()} ${ev.section} — ${ev.clean ? "on the bar" : `late ${ev.error > 0 ? "+" : ""}${ev.error.toFixed(2)}`}`, ev.clean ? "good" : "", 900);
 }
 window.addEventListener("keyup", (e) => { if (conductor && e.key.toLowerCase() === "p") conductGesture("release"); });
@@ -974,6 +973,7 @@ function scheduleBack() {
 }
 function updateBackLevels() {
   if (!ctx || !backGain.drums) return;
+  if (HYDRA) { for (const m of ["drums", "bass", "treble"]) backGain[m].gain.setTargetAtTime(backLevel(1), ctx.currentTime, 0.5); return; }   // round 4: the backgrounds at full
   if (conductor && clock) {   // conducting: the band is at full, the gestures shape each section, crisp (0.05 s)
     const t = beatsNow();
     for (const m of ["drums", "bass", "treble"]) backGain[m].gain.setTargetAtTime(conductor.level(m, t), ctx.currentTime, 0.05);
@@ -1079,6 +1079,7 @@ function onKey(e) {
   const press =
     ts.contextTime + (e.timeStamp - ts.performanceTime) / 1000 - calibration;
 
+  if (HYDRA_MODE.active && HYDRA_MODE.key(e, press)) return;   // round 4: both hands, its own keys
   if (e.key === "Tab") { e.preventDefault(); playHint(); return; }   // LISTEN to the whole section
 
   // at the bars: A S D F G H J K = bottom row (bars 1-8), Q W E R T Y U I = top row (9-16); Shift+letter = the shortcuts
@@ -1310,11 +1311,10 @@ const G = {
   get BPM() { return BPM; }, set BPM(v) { BPM = v; },
   get backUntil() { return backUntil; }, set backUntil(v) { backUntil = v; },
   get recorder() { return recorder; }, set recorder(v) { recorder = v; },
-  get hydraFight() { return hydraFight; }, set hydraFight(v) { hydraFight = v; },
+  lessonAt: (i) => LESSONS[i], judgeWindow: () => judgeDiff().window,
 };
 const { makeRecorder, startCreating } = createMode(G);
-const HYDRA_MODE = hydraMode(G), { startHydra, hydraGesture } = HYDRA_MODE;
-let hydraFight = null;
+const HYDRA_MODE = hydraMode(G), { startHydra } = HYDRA_MODE;
 
 // --- freestyle + save -------------------------------------------------------
 function modeStr() {
@@ -1645,7 +1645,7 @@ if (window.__gr) window.__gr.game = {
   // fireGun: harness only
   fireGun: (idx, lane) => fireGun(idx, lane, ctx.getOutputTimestamp().contextTime),
   get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,
-  get hydraFight() { return hydraFight; }, get hydraBarBase() { return HYDRA_MODE.barBase; }, get conductor() { return conductor; },   // harness: round 4
+  get hydra() { return HYDRA_MODE; },   // harness: round 4 (its fight, its highway)
   get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln, midi) => laneSound(ln, midi),
   backInfo: () => ({ bpm: BPM, songBpm: song().bpm, loopSeconds: +(song().bars * 4 * clock.beatDur).toFixed(3),
     stretched: [...backCache].map(([k, b]) => [k, +b.duration.toFixed(3)]) }),

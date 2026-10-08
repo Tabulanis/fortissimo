@@ -1,46 +1,37 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { HydraFight } from "../src/game/hydrafight.js";
+import { HydraFight, SHIELD_HOLDS } from "../src/game/hydrafight.js";
+const types = (e) => e.map((x) => x.type);
 
-const ALL = { drums: true, bass: true, treble: true };
-const types = (evs) => evs.map((e) => e.type);
-
-test("a head rears on an even bar and strikes on the next unless countered", () => {
+test("drums hold the shield up: hits raise it, misses and time drop it", () => {
   const f = new HydraFight();
-  assert.deepEqual(types(f.bar(0, ALL)), ["rear"]);
-  assert.equal(f.rearing.head, 0); assert.equal(f.rearing.strikeBar, 1);
-  const s = f.bar(1, ALL);
-  assert.deepEqual(types(s), ["strike"]); assert.equal(s[0].dome, true); assert.equal(f.life, 94);   // the dome halves it
+  f.drum(false); f.drum(false); assert.ok(f.shield < 1);
+  const was = f.shield; f.drum(true); assert.ok(f.shield > was);
+  const before = f.shield; f.tick(4); assert.ok(f.shield < before);
 });
-test("no dome (a section cut): the full bite", () => {
-  const f = new HydraFight(); f.bar(0, ALL);
-  f.bar(1, { drums: true, bass: false, treble: true }); assert.equal(f.life, 88);
+test("acid sizzles off a shield that's up, burns through one that's down — more the lower it is", () => {
+  const f = new HydraFight();
+  assert.deepEqual(types(f.acidLands(0)), ["acidBlocked"]); assert.equal(f.life, 100);
+  f.shield = SHIELD_HOLDS / 2; const half = f.acidLands(0)[0].dmg;
+  f.shield = 0; const none = f.acidLands(0)[0].dmg;
+  assert.ok(half > 0 && none > half);
 });
-test("a clean accent on its section, landing on the strike bar, hits it and cancels the strike", () => {
-  const f = new HydraFight(); f.bar(0, ALL);
-  assert.deepEqual(f.gesture({ kind: "accent", section: "bass", clean: true, bar: 1 }), []);      // wrong section
-  assert.deepEqual(f.gesture({ kind: "accent", section: "drums", clean: false, bar: 1 }), []);    // late
-  assert.deepEqual(f.gesture({ kind: "accent", section: "drums", clean: true, bar: 2 }), []);     // wrong bar
-  assert.deepEqual(types(f.gesture({ kind: "accent", section: "drums", clean: true, bar: 1 })), ["hit"]);
-  assert.deepEqual(types(f.bar(1, ALL)), []); assert.equal(f.life, 100);
+test("a parried strike wounds its head; enough wounds drop it; all three down wins", () => {
+  const f = new HydraFight({ hp: [2, 1, 1] });
+  assert.deepEqual(types(f.strike(0, true)), ["wound"]);
+  assert.deepEqual(types(f.strike(0, true)), ["wound", "down"]);
+  assert.deepEqual(f.strike(0, true), []);   // a downed head strikes no more
+  f.strike(1, true); assert.deepEqual(types(f.strike(2, true)), ["wound", "down", "won"]); assert.ok(f.won);
+  assert.deepEqual(f.alive, []);
 });
-test("three hits drop a head; the movement moves on; all three down wins", () => {
-  const f = new HydraFight(); let n = 0;
-  const kill = () => { const evs = f.bar(n, ALL); const r = evs.find((e) => e.type === "rear"); n++;
-    const g = f.gesture({ kind: "accent", section: f.heads[r.head].section, clean: true, bar: n }); f.bar(n, ALL); n++; return g; };
-  const all = []; for (let k = 0; k < 9; k++) all.push(...kill());
-  assert.equal(all.filter((e) => e.type === "down").length, 3);
-  assert.ok(f.won); assert.equal(f.movement, 2); assert.equal(f.life, 100);
+test("a missed strike bites; life 0 loses", () => {
+  const f = new HydraFight({ life: 10, bite: 7 });   // (explicit: the default is gentler)
+  assert.deepEqual(types(f.strike(1, false)), ["bite"]); assert.equal(f.life, 3);
+  assert.deepEqual(types(f.strike(1, false)), ["bite", "lost"]); assert.ok(f.over);
 });
-test("a downed head regrows when its section is cut for 4 bars", () => {
-  const f = new HydraFight({ hp: 1 }); f.bar(0, ALL);
-  f.gesture({ kind: "accent", section: "drums", clean: true, bar: 1 }); assert.ok(f.heads[0].down); assert.equal(f.movement, 1);
-  const cut = { drums: false, bass: true, treble: true };
-  let evs = []; for (let b = 1; b <= 4; b++) evs.push(...f.bar(b, cut));
-  assert.ok(evs.some((e) => e.type === "regrow" && e.head === 0)); assert.ok(!f.heads[0].down);
-  assert.equal(f.movement, 1);   // the music never goes back
-});
-test("life 0 loses", () => {
-  const f = new HydraFight({ life: 12 }); f.bar(0, ALL);
-  assert.deepEqual(types(f.bar(1, { drums: false, bass: true, treble: true })), ["strike", "lost"]); assert.ok(f.over);
+test("parries heal a little: about 90% holds steady, 80% sinks", () => {
+  const run = (acc) => { const f = new HydraFight({ hp: [1e6, 1, 1], life: 100 }); f.life = 60;
+    for (let k = 0; k < 1000; k++) f.strike(0, (k % 10) >= (1 - acc) * 10); return f.life; };   // misses first in each ten: it ends on a hit
+  assert.ok(run(0.9) > 60, `90%: ${run(0.9)}`);
+  assert.equal(run(0.8), 0, "80% for 1000 notes: dead");
 });
