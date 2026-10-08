@@ -112,6 +112,24 @@ export function createCove(scene) {
   box("yard", 7, 0.18, 0.18, wood, 0, 11.5, -1, 0, ship);
   box("sail", 6.6, 5.5, 0.06, new THREE.MeshStandardMaterial({ color: 0xd8cbb0, roughness: 1, side: THREE.DoubleSide }), 0, 8.4, -0.8, 0, ship);
   box("gangplank", 0.9, 0.08, 5.5, wood, -3.9, 2.3, 3, Math.PI / 2, ship).rotation.z = 0.5;   // across to the pier
+  // HIS MESHY DOCK (2026-10-08, meshy/dock/newdock.glb → public/models/NewDock.glb): a stone landing with steps at one end,
+  // a plank pier with a crane at the other. Its length runs along its x: turned so the stone sits at the gate and the pier
+  // runs out to the podium, scaled to reach from the wall to just past the podium; its DECK (measured: 1.92 units above the
+  // posts' feet, the pier's centre line at z -0.25) at the old dock's plank height, so the podium and camera stay put.
+  // The box dock + landing stay built but hidden (as the cliffs and the box ship).
+  new GLTFLoader().load("/models/NewDock.glb", (gltf) => {
+    const src = gltf.scene; src.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(src), k = (DOCK.z1 + 0.6 - COVE.wallZ) / (bb.max.x - bb.min.x);
+    const DECK_ABOVE_FEET = 1.92, PIER_Z = -0.25, deckY = DOCK.y + 0.08;
+    const pivot = new THREE.Group(); pivot.name = "newdock";
+    src.scale.setScalar(k); src.rotation.y = -Math.PI / 2;   // its +x (toward the crane) → world +z (out to sea)
+    src.position.set(PIER_Z * k, deckY - (bb.min.y + DECK_ABOVE_FEET) * k, COVE.wallZ - bb.min.x * k);   // x' = -z·k, z' = x·k
+    src.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    pivot.add(src); root.add(pivot);
+    for (const n of ["dock", "wharf"]) { const o = root.getObjectByName(n); if (o) for (const c of o.children) c.visible = false; }
+    register(pivot, "cove-newdock", "dock (his)");
+    bootlog("placed NewDock.glb", { scale: +k.toFixed(2), length: +((bb.max.x - bb.min.x) * k).toFixed(1), deckY });
+  }, undefined, (e) => console.warn("NewDock.glb failed to load", e));
   // HIS MESHY SHIP (2026-10-08, Boats/Ancientship.glb → public/models/AncientShip.glb): replaces the box ship inside the
   // same group (so "cove-ship" in the editor still moves it). The model lies along its x: turned to run along the pier,
   // 16 m long like the box hull, its keel ~1.2 m under the water. The boxes stay built but hidden (as the cliffs do).

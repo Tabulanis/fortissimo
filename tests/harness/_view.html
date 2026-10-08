@@ -1,0 +1,23 @@
+<!doctype html><body style="margin:0;background:#888">
+<script type="module">
+// MODEL VIEWER (2026-10-08): /tests/harness/_view.html#m=NewDock — photographs public/models/<m>.glb from 4 angles
+// (front, side, top, 3/4) on a grey ground with a 1 m grid, and posts each PNG to the sink as view-<m>-<angle>.
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+const m = new URLSearchParams(location.hash.slice(1)).get("m") || "NewDock";
+const r = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true }); r.setSize(900, 600); document.body.appendChild(r.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x9aa4ad);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 2.2)); const sun = new THREE.DirectionalLight(0xffffff, 2); sun.position.set(5, 10, 7); scene.add(sun);
+new GLTFLoader().load(`/models/${m}.glb`, async (g) => {
+  const o = g.scene; scene.add(o); o.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(o), size = bb.getSize(new THREE.Vector3()), c = bb.getCenter(new THREE.Vector3()), R = size.length() * 0.75;
+  const grid = new THREE.GridHelper(Math.ceil(Math.max(size.x, size.z) * 1.6), Math.ceil(Math.max(size.x, size.z) * 1.6), 0x333333, 0x666666); grid.position.set(c.x, bb.min.y, c.z); scene.add(grid);
+  const cam = new THREE.PerspectiveCamera(40, 1.5, 0.01, 1000);
+  const views = { front: [0, 0.15, 1], side: [1, 0.15, 0], top: [0.001, 1, 0.001], q34: [0.8, 0.5, 0.8] };
+  await fetch("http://127.0.0.1:8899/view-info", { method: "POST", body: JSON.stringify({ m, size: size.toArray().map((v) => +v.toFixed(3)), min: bb.min.toArray().map((v) => +v.toFixed(3)), max: bb.max.toArray().map((v) => +v.toFixed(3)) }) });
+  for (const [name, d] of Object.entries(views)) {
+    cam.position.copy(c).add(new THREE.Vector3(...d).normalize().multiplyScalar(R * 1.6)); cam.lookAt(c); r.render(scene, cam);
+    await fetch(`http://127.0.0.1:8899/png/view-${m}-${name}`, { method: "POST", body: r.domElement.toDataURL("image/png") });
+  }
+});
+</script>
