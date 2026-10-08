@@ -30,22 +30,10 @@ export function createCove(scene) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.name = name;
     m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; parent.add(m); return m;
   };
-  // the WHARF (owner, 2026-10-06: "easier to render a dock than a beach"): a wide deck of planks on
-  // posts from the gate out to the water, the dock running on from its middle
-  const wharf = new THREE.Group(); wharf.name = "wharf"; root.add(wharf);
-  // (owner, 2026-10-07: "lose the beach, just make it deeper") — the 24 m wharf is gone; what's left is a LANDING
-  // the width of the gate, holding the two fire basins at the dock's foot; the sea comes right up to it
-  const LAND = { w: 8, z0: COVE.wallZ, z1: DOCK.z0 };
-  box("deck", LAND.w, 0.18, LAND.z1 - LAND.z0 + 0.2, wood, 0, DOCK.y, (LAND.z0 + LAND.z1) / 2, 0, wharf);
-  for (const x of [-LAND.w / 2 + 0.2, -1.5, 1.5, LAND.w / 2 - 0.2]) box("post", 0.26, DOCK.y + 3, 0.26, wood, x, DOCK.y / 2 - 1.2, LAND.z1 - 0.15, 0, wharf);   // long: the water is deep now
+  // (10-08: the box wharf/landing, box dock and box side pier are GONE — his Meshy dock (below) replaces them; he lays it out in the editor)
   // SEA: sea.js — swell, sky-fresnel, moon glint, ripple rings; stage3d ticks it and the hydra ripples it
   const sea = createSea(scene, { x: 0, z: (COVE.wallZ + COVE.seaZ1) / 2 + 10, width: COVE.halfWidth * 2 + 40, depth: COVE.seaZ1 - COVE.wallZ + 20, y: -0.15 });   // from the wall out
   root.userData.sea = sea;
-  // the PIER the ship ties up to: along the right, out past the dock
-  const pier = new THREE.Group(); pier.name = "pier-right"; root.add(pier);
-  box("deck", 3.0, 0.16, 30, wood, 9.5, DOCK.y, COVE.beachZ1 + 14, 0, pier);
-  for (let z = COVE.beachZ1 + 1; z < COVE.beachZ1 + 29; z += 3) for (const s of [-1, 1]) box("post", 0.22, DOCK.y + 1.2, 0.22, wood, 9.5 + s * 1.35, DOCK.y / 2 - 0.3, z, 0, pier);
-  for (const z of [COVE.beachZ1 + 6, COVE.beachZ1 + 16, COVE.beachZ1 + 26]) box("bollard", 0.3, 0.7, 0.3, wood, 9.5 + 1.2, DOCK.y + 0.4, z, 0, pier);
   // LIGHT for this side: every light in the game faces the sunset behind us, so the cove
   // gets a cool MOON over the sea (no shadows: cost) and a warm lantern over the booth
   const moon = new THREE.DirectionalLight(0x9fb4e0, 1.6); moon.position.set(-20, 30, 80); moon.target.position.set(0, 0, 20); root.add(moon, moon.target);
@@ -89,11 +77,6 @@ export function createCove(scene) {
   placeModel("/models/Cliffs.glb", cliffSpots, 9);
   // the RUINS: a fort on a crag, the headland opposite the ship (your right from the podium), over the hydra
   placeModel("/models/Ruins.glb", [{ x: -22, y: -1.0, z: 50, yaw: Math.PI / 2, id: "ruins", label: "ruins" }], 16);
-  // DOCK: planks on posts, out over the water
-  const dock = new THREE.Group(); dock.name = "dock"; root.add(dock);
-  box("planks", DOCK.width, 0.16, DOCK.z1 - DOCK.z0, wood, 0, DOCK.y, (DOCK.z0 + DOCK.z1) / 2, 0, dock);
-  for (let z = DOCK.z0 + 1; z < DOCK.z1; z += 3) for (const s of [-1, 1]) box("post", 0.22, DOCK.y + 1.2, 0.22, wood, s * (DOCK.width / 2 - 0.15), DOCK.y / 2 - 0.3, z, 0, dock);
-  for (const s of [-1, 1]) box("rail", 0.08, 0.9, DOCK.z1 - DOCK.z0 - 2, wood, s * (DOCK.width / 2 - 0.1), DOCK.y + 0.55, (DOCK.z0 + DOCK.z1) / 2, 0, dock);
   // the BOOTH at the end of the dock: a table with three fader slots (placeholder for the DJ rig)
   const booth = new THREE.Group(); booth.name = "booth"; booth.position.copy(BOOTH_POS); root.add(booth);
   box("table", 2.0, 0.08, 0.7, wood, 0, DOCK.y + 0.95, 0.5, 0, booth);
@@ -116,7 +99,6 @@ export function createCove(scene) {
   // a plank pier with a crane at the other. Its length runs along its x: turned so the stone sits at the gate and the pier
   // runs out to the podium, scaled to reach from the wall to just past the podium; its DECK (measured: 1.92 units above the
   // posts' feet, the pier's centre line at z -0.25) at the old dock's plank height, so the podium and camera stay put.
-  // The box dock + landing stay built but hidden (as the cliffs and the box ship).
   new GLTFLoader().load("/models/NewDock.glb", (gltf) => {
     const src = gltf.scene; src.updateMatrixWorld(true);
     const bb = new THREE.Box3().setFromObject(src), k = (DOCK.z1 + 0.6 - COVE.wallZ) / (bb.max.x - bb.min.x);
@@ -126,7 +108,6 @@ export function createCove(scene) {
     src.position.set(PIER_Z * k, deckY - (bb.min.y + DECK_ABOVE_FEET) * k, COVE.wallZ - bb.min.x * k);   // x' = -z·k, z' = x·k
     src.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     pivot.add(src); root.add(pivot);
-    for (const n of ["dock", "wharf"]) { const o = root.getObjectByName(n); if (o) for (const c of o.children) c.visible = false; }
     register(pivot, "cove-newdock", "dock (his)");
     bootlog("placed NewDock.glb", { scale: +k.toFixed(2), length: +((bb.max.x - bb.min.x) * k).toFixed(1), deckY });
   }, undefined, (e) => console.warn("NewDock.glb failed to load", e));
@@ -145,7 +126,7 @@ export function createCove(scene) {
   }, undefined, (e) => console.warn("AncientShip.glb failed to load", e));
   // the dev editor may move / size / hide these (pieces whose parts sit at world coords — wharf, dock,
   // pier, cliffs — turn about the cove's origin, so for those MOVE is the useful tool)
-  for (const [name, label] of [["ship", "ship"], ["booth", "podium"], ["dock", "dock"], ["wharf", "wharf"], ["pier-right", "pier"]]) {
+  for (const [name, label] of [["ship", "ship"], ["booth", "podium"]]) {
     const o = root.getObjectByName(name); if (o) register(o, `cove-${name}`, label);
   }
   return root;

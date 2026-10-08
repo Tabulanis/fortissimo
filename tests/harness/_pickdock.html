@@ -1,0 +1,19 @@
+<!doctype html><body style="margin:0">
+<iframe id="f" style="width:1280px;height:720px;border:0"></iframe>
+<script type="module">
+// dev-mode editor: a click on his dock (centre-bottom of the view from the gate) must select "dock (his)" (10-08)
+const say = (b) => fetch("http://127.0.0.1:8899/pickdock", { method: "POST", body: JSON.stringify(b) });
+const f = document.getElementById("f");
+f.onload = () => setTimeout(() => {
+  const w = f.contentWindow, d = w.document, cv = d.querySelector("canvas"), E = w.__gr.stage3d.editor;
+  cv.setPointerCapture = () => {}; cv.releasePointerCapture = () => {};
+  const r = cv.getBoundingClientRect(), out = { editorOn: E && E.on, picks: [] };
+  for (const [fx, fy] of [[0.5, 0.8], [0.5, 0.65], [0.47, 0.9]]) {
+    const o = { clientX: r.left + fx * r.width, clientY: r.top + fy * r.height, button: 0, pointerId: 1, bubbles: true };
+    cv.dispatchEvent(new w.PointerEvent("pointerdown", o)); cv.dispatchEvent(new w.PointerEvent("pointerup", o));
+    out.picks.push(E.selected ? E.selected.userData.editLabel : null);
+  }
+  say(out);
+}, 9000);
+f.src = "/?fly=1&cam=0,5,11,3.1416,-0.45";
+</script>

@@ -134,7 +134,11 @@ export function createEditor({ scene, camera, dom, props = null, log = () => {} 
     const pool = allEditables().filter((o) => o.visible || o === sel);
     const hits = ray.intersectObjects(pool, true);
     log("pick", { editables: pool.length, hits: hits.length, first: hits[0] ? (hits[0].object.name || hits[0].object.type) : null, at: [+ndc.x.toFixed(2), +ndc.y.toFixed(2)] });
-    select(hits.length ? editableOf(hits[0].object) : null);
+    // only what's SEEN: a hidden part inside a visible group still catches rays (three doesn't check visibility),
+    // and on 10-08 the old dock's hidden planks sat exactly under his new deck and stole every click
+    const seen = (o) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
+    const hit = hits.find((h) => seen(h.object));
+    select(hit ? editableOf(hit.object) : null);
   });
 
   window.__grEdit = { allEditables, tc,   // harness handle (dev only)
