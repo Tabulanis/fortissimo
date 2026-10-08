@@ -48,7 +48,7 @@ const CSS = `
 const ms = (s) => `±${Math.round(s * 1000)} ms`;
 const hitboxWord = (s) => (s <= 0.05 ? "tight" : s <= 0.09 ? "fair" : s <= 0.15 ? "generous" : "huge");
 
-export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "title", onStart, onCreate, hydras = [], onHydra }) {
+export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "title", onStart, onCreate, hydras = [], onHydra, onOptions }) {
   const style = document.createElement("style");
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -63,10 +63,12 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
 
   function title() {
     card.innerHTML = `<h1>Fortissimo</h1><div class="sub">play the song, one piece at a time</div>
-      <button class="big" data-a="play">Play</button>
-      ${onCreate ? `<button class="big" data-a="create">Create ✎</button>` : ""}`;
+      <button class="big" data-a="play">Start ▶</button>
+      ${onCreate ? `<button class="big" data-a="create">Create ✎</button>` : ""}
+      ${onOptions ? `<button class="big" data-a="options">Options ⚙</button>` : ""}`;
     card.querySelector("[data-a=play]").onclick = levelsScreen;
-    if (onCreate) card.querySelector("[data-a=create]").onclick = () => onCreate(card, title);   // the song-maker (maker-ui.js) draws in this card
+    if (onCreate) card.querySelector("[data-a=create]").onclick = () => onCreate(card, title);
+    if (onOptions) card.querySelector("[data-a=options]").onclick = onOptions;   // (10-08: "in the main it should have start and options")   // the song-maker (maker-ui.js) draws in this card
   }
 
   function levelsScreen() {

@@ -3,7 +3,7 @@
 // a hand-picked graphics setting that runs slow gets a warning (10-08). ?quality=medium&fakefps=15, Start, wait, read the HUD.
 const f = document.getElementById("f"); localStorage.removeItem("gr.level");
 f.onload = async () => { const w = f.contentWindow, d = w.document; await new Promise((r) => setTimeout(r, 4000));
-  [...d.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("Play")).click(); await new Promise((r) => setTimeout(r, 400));
+  [...d.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("Start")).click(); await new Promise((r) => setTimeout(r, 400));
   [...d.querySelectorAll("#gr-menu .level")][0].click(); await new Promise((r) => setTimeout(r, 400));
   [...d.querySelectorAll("button")].find((b) => b.textContent.includes("Start")).click();
   await new Promise((r) => setTimeout(r, 20000));

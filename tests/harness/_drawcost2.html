@@ -1,0 +1,15 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+// which PASS costs what (10-08): one frame's draw calls + triangles — as is, without the sun's shadow map, without the mirror water, without both
+const P = new URLSearchParams(location.hash.slice(1)), f = document.getElementById("f");
+f.onload = () => setTimeout(async () => { const w = f.contentWindow, S = w.__gr.stage3d, R = S.debugPasses.renderer, out = {};
+  const frame = () => new Promise((res) => { R.info.autoReset = false; R.info.reset(); w.requestAnimationFrame(() => w.requestAnimationFrame(() => { res({ calls: R.info.render.calls, tris: R.info.render.triangles }); R.info.autoReset = true; })); });
+  const water = S.scene.getObjectByName("fountain-water");
+  out.asIs = await frame();
+  R.shadowMap.autoUpdate = false; out.noShadows = await frame(); R.shadowMap.autoUpdate = true;
+  if (water) water.visible = false; out.noMirror = await frame();
+  R.shadowMap.autoUpdate = false; out.neither = await frame();
+  fetch("http://127.0.0.1:8899/drawcost2", { method: "POST", body: JSON.stringify({ cam: P.get("cam"), ...out }) });
+}, 10000);
+f.src = `/?quality=${P.get("q") || "medium"}&fly=1&cam=${P.get("cam")}`;
+</script>

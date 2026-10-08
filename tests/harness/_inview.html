@@ -1,0 +1,20 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+// what the CAMERA draws (10-08): visible meshes inside the view frustum, by top-level group → by child name (top 12)
+const f = document.getElementById("f");
+f.onload = () => setTimeout(() => { const w = f.contentWindow, S = w.__gr.stage3d, cam = S.camera, THREE_F = cam.constructor;
+  cam.updateMatrixWorld(); const m = cam.projectionMatrix.clone().multiply(cam.matrixWorldInverse);
+  const fr = new (Object.getPrototypeOf(S.scene).constructor === Object ? Object : w.__frustum || Object)();
+  // a frustum without importing three here: test each mesh's bounding-sphere centre in clip space (rough)
+  const by = {};
+  S.scene.traverse((o) => { if (!o.isMesh) return; let v = true, top = o; for (let p = o; p; p = p.parent) { if (!p.visible) v = false; if (p.parent === S.scene) top = p; } if (!v || o.layers.mask === 2) return;
+    if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere(); const c = o.geometry.boundingSphere.center.clone().applyMatrix4(o.matrixWorld).applyMatrix4(m);
+    const r = o.geometry.boundingSphere.radius * o.matrixWorld.getMaxScaleOnAxis();
+    if (o.frustumCulled !== false && (c.z > 1.2 || Math.abs(c.x) > 1.3 + r * 0.2 || Math.abs(c.y) > 1.3 + r * 0.2)) return;
+    const k = top.name || top.type, sub = (o.parent && o.parent !== top ? (o.parent.name || o.parent.type) + "/" : "") + (o.name || o.geometry.type);
+    by[k] = by[k] || { n: 0, sub: {} }; by[k].n++; by[k].sub[sub] = (by[k].sub[sub] || 0) + 1; });
+  const out = Object.fromEntries(Object.entries(by).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => [k, { n: v.n, top: Object.entries(v.sub).sort((a, b) => b[1] - a[1]).slice(0, 5) }]));
+  fetch("http://127.0.0.1:8899/inview", { method: "POST", body: JSON.stringify(out) });
+}, 10000);
+f.src = "/?quality=medium&fly=1&cam=0,1.7,0.6,0,-0.08";
+</script>

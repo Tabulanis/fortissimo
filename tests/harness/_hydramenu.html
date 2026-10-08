@@ -12,7 +12,7 @@ f.onload = async () => {
   try {
     await wait(3500);
     if (stage === 1) {
-      [...d.querySelectorAll("#gr-menu button")].find((b) => b.textContent.trim() === "Play").click(); await wait(300);
+      [...d.querySelectorAll("#gr-menu button")].find((b) => b.textContent.trim().startsWith("Start")).click(); await wait(300);
       const rows = [...d.querySelectorAll("#gr-menu .level")].map((b) => b.innerText.replace(/\s+/g, " ") + (b.disabled ? " [locked]" : ""));
       say("hm-list", rows);
       d.querySelector("#gr-menu .level.hydra").click();

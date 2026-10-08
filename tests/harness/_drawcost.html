@@ -1,0 +1,19 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+// WHAT A FRAME COSTS (10-08, phone optimisation): draw calls + triangles for one whole frame (every pass), at a camera pose,
+// plus what's double-sided and how big each top-level group is. #q=medium&cam=x,y,z,yaw,pitch
+const P = new URLSearchParams(location.hash.slice(1)), f = document.getElementById("f");
+f.onload = () => setTimeout(() => { const w = f.contentWindow, S = w.__gr.stage3d, R = S.debugPasses.renderer;
+  R.info.autoReset = false; R.info.reset();
+  w.requestAnimationFrame(() => w.requestAnimationFrame(() => {
+    const frame = { calls: R.info.render.calls, tris: R.info.render.triangles };
+    R.info.autoReset = true;
+    const groups = {}, dbl = {};
+    for (const top of S.scene.children) { let m = 0, t = 0; top.traverse((o) => { if (o.isMesh && o.visible) { m++; const g = o.geometry; t += g.index ? g.index.count / 3 : (g.attributes.position ? g.attributes.position.count / 3 : 0);
+      for (const mat of [].concat(o.material)) if (mat && mat.side === 2) dbl[top.name || top.type] = (dbl[top.name || top.type] || 0) + 1; } });
+      if (m) { const k = top.name || top.type; groups[k] = groups[k] ? { meshes: groups[k].meshes + m, tris: groups[k].tris + Math.round(t) } : { meshes: m, tris: Math.round(t) }; } }
+    fetch("http://127.0.0.1:8899/drawcost", { method: "POST", body: JSON.stringify({ q: P.get("q"), cam: P.get("cam"), frame, groups, doubleSided: dbl }) });
+  }));
+}, 10000);
+f.src = `/?quality=${P.get("q") || "medium"}&fly=1&cam=${P.get("cam")}`;
+</script>

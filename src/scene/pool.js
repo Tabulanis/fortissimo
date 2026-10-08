@@ -154,6 +154,9 @@ export function createPool(scene, { bottomMap, layer = 0, resolution = 0.5, chea
         clipBias: 0.003,
       });
       water.layers.set(layer);
+      // a slower REFLECTION (owner, 2026-10-08: "reduce the temporal rate of reflection"): the mirror re-renders the whole
+      // scene; doing it every 3rd frame (the last one is kept between) costs a third, and slow water hides the lag
+      { const draw = water.onBeforeRender; let n = 0; water.onBeforeRender = function (...a) { if (n++ % 3 === 0) draw.apply(this, a); }; }
       water.camera.layers.enableAll();          // the mirror sees everything, fire included
       U = water.material.uniforms;
       U.uBottom.value = bottomMap;

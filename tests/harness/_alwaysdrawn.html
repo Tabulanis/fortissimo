@@ -1,0 +1,13 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+// meshes the renderer can't skip (frustumCulled = false) and that cast shadows, by parent — 10-08 optimisation
+const f = document.getElementById("f");
+f.onload = () => setTimeout(() => { const w = f.contentWindow, S = w.__gr.stage3d, out = { alwaysDrawn: {}, casters: 0, castersAlways: 0 };
+  S.scene.traverse((o) => { if (!o.isMesh && !o.isPoints && !o.isSprite) return; let v = true; for (let p = o; p; p = p.parent) if (!p.visible) v = false; if (!v) return;
+    const key = (o.parent && (o.parent.name || o.parent.type)) + "/" + (o.name || o.type);
+    if (o.castShadow) out.casters++;
+    if (o.frustumCulled === false) { out.alwaysDrawn[key] = (out.alwaysDrawn[key] || 0) + 1; if (o.castShadow) out.castersAlways++; } });
+  fetch("http://127.0.0.1:8899/always", { method: "POST", body: JSON.stringify(out) });
+}, 10000);
+f.src = "/?quality=medium&fly=1";
+</script>

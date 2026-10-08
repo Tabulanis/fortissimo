@@ -272,6 +272,10 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   let AFTERGLOW = 2.6;   // full sunlight; clouds over the sun dim it (below) — the editor's Lighting: sun
   if (!LOW) {
     afterglow.castShadow = true;
+    // STATIC SUN SHADOWS (10-08, measured: the sun's shadow pass was 2244 of 3658 draw calls a frame — the whole level, every
+    // frame, though the scenery never moves): drawn ONCE, and again only when something changes (the layout loads, a model
+    // arrives, the editor moves something, the sun moves). The drums, hands and sticks keep live shadows from the lantern.
+    afterglow.shadow.autoUpdate = false; afterglow.shadow.needsUpdate = true;
     const sc = afterglow.shadow.camera, R = 58;
     sc.left = -R; sc.right = R; sc.top = R; sc.bottom = -R; sc.near = 1; sc.far = 260;   // the whole courtyard and the cove
     afterglow.shadow.mapSize.set(MOBILE ? 2048 : 4096, MOBILE ? 2048 : 4096);
@@ -319,7 +323,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const lantern = new THREE.SpotLight(0xffb36a, 26, 9, Math.PI / 4.2, 0.65, 1.4);
   lantern.position.set(0.35, 2.7, 1.1);
   lantern.target.position.set(0, 0.9, -0.5);
-  lantern.castShadow = true;
+  lantern.castShadow = !MOBILE;   // (10-08, measured: its shadow pass is ~612 draw calls a frame — phones skip it; elsewhere only at the drums, setStation)
   lantern.shadow.mapSize.set(MOBILE ? 1024 : 2048, MOBILE ? 1024 : 2048);
   lantern.shadow.camera.near = 0.3;
   lantern.shadow.camera.far = 9;
@@ -474,7 +478,10 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   bootlog("courtyard: start");
   const courtyard = createCourtyard(scene);
   const editsLoaded = loadEdits();
-  editsLoaded.then(() => { const L = getSetting("lighting"); if (L) lighting.set(L); });   // his saved lighting (the editor's Lighting section) editsLoaded.then((e) => bootlog("level edits", { n: Object.keys(e).length }));   // the saved layout, applied as each piece registers
+  editsLoaded.then(() => { const L = getSetting("lighting"); if (L) lighting.set(L); refreshSunShadow(); });
+  // the sun's shadow map is redrawn when asked (static shadows, above) — and a few times while the models stream in
+  function refreshSunShadow() { afterglow.shadow.needsUpdate = true; }
+  for (const ms of [1500, 4000, 8000, 15000]) setTimeout(refreshSunShadow, ms);   // his saved lighting (the editor's Lighting section) editsLoaded.then((e) => bootlog("level edits", { n: Object.keys(e).length }));   // the saved layout, applied as each piece registers
   const cove = createCove(scene), sea = cove.userData.sea;
   setLevelScene(scene);   // the level's own geometry becomes editable (editables.js levelPieceOf); saved piece edits apply now   // round 4's cove behind the sea gate (blockout); the sea rolls and ripples (sea.js)
   // THE HYDRA (hydraBoss.js): three necks out of the sea in front of the dock, the rigged heads
@@ -506,7 +513,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // the reflecting pool (drawn with the fx layer: after the scene, so the
   // AO's extra scene render doesn't re-render its mirror a second time)
   bootlog("pool: start");
-  const waterPool = createPool(scene, { bottomMap: courtyard.userData.flagsMap, layer: FX_LAYER, resolution: MOBILE ? 0.25 : 0.5, cheap: LOW });
+  const waterPool = createPool(scene, { bottomMap: courtyard.userData.flagsMap, layer: FX_LAYER, resolution: 0.5, cheap: LOW || MOBILE });   // (10-08: phones get the plain shiny water — the mirror redrew the scene: 452 draw calls)
   // the water goes INSIDE the fountain (owner, 2026-10-07). The basin, measured from Fountain.glb: a rounded
   // rectangle 84% x 78% of the model's footprint, its water a third of the way up (the rim is at 38%)
   courtyard.userData.fountain.then(({ pivot, size }) => waterPool.fitInto(pivot, { hx: size.w / 2 * 0.84, hz: size.d / 2 * 0.78, y: size.h * 0.33, corner: size.d * 0.08 }));
@@ -681,6 +688,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       Object.assign(this.values, v); const L = this.values;
       AFTERGLOW = L.sun; sunAt(L.sunHeight); afterglow.shadow.radius = L.shadowBlur; skyFill.intensity = L.sky;
       scene.environmentIntensity = L.reflections; renderer.toneMappingExposure = L.exposure; braziers.lightScale = L.fires;
+      refreshSunShadow();
     },
   };
   // scenery ADDED in the dev editor (props.js): rebuilt from the saved layout on every load
@@ -2139,7 +2147,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     fly.on = !!on; fly.keys.clear();
     if (fly.on) { fly.pos.copy(camera.position); _eul.setFromQuaternion(camera.quaternion, "YXZ"); fly.yaw = _eul.y; fly.pitch = _eul.x; }
     if (fly.on && !editor) import("../dev/editor.js").then(({ createEditor }) => {
-      editor = createEditor({ scene, camera, dom: renderer.domElement, props, lighting, log: (step, data) => bootlog("editor " + step, data) });
+      editor = createEditor({ scene, camera, dom: renderer.domElement, props, lighting, shadowsChanged: () => refreshSunShadow(), log: (step, data) => bootlog("editor " + step, data) });
       editor.setOn(fly.on);
     });
     else if (editor) editor.setOn(fly.on);
@@ -2710,6 +2718,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       if (!STATIONS[name]) return;
       if (name === "sea") usePlaySpot();   // round 4 stands on his altar, wherever it is now
       station = name;
+      if (!MOBILE && !LOW) lantern.castShadow = name === "drums";   // the lantern lights the drums only: its shadows are wasted elsewhere
       restDir.copy(REST_DIR).applyAxisAngle(UP, STATIONS[name].yaw);
       hands.forEach((hand, h) => {
         hand.rest.copy(HAND_RESTS[name][h]);

@@ -10,7 +10,7 @@ import * as THREE from "three";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import { allEditables, editableOf, capture, reset, saveEdits, editCount, levelPieceOf, LEVEL_ROOTS, setSetting } from "../scene/editables.js";
 
-export function createEditor({ scene, camera, dom, props = null, lighting = null, log = () => {} }) {
+export function createEditor({ scene, camera, dom, props = null, lighting = null, shadowsChanged = () => {}, log = () => {} }) {
   const tc = new TransformControls(camera, dom);
   const helper = tc.getHelper(); scene.add(helper);
   tc.setSize(0.9);
@@ -75,7 +75,7 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
     N("ry").value = THREE.MathUtils.radToDeg(new THREE.Euler().setFromQuaternion(sel.quaternion, "YXZ").y).toFixed(0);
     N("s").value = Math.abs(sel.scale.x).toFixed(2);   // (a mirrored object has a negative x size: the box shows the size)
   };
-  const changed = () => { if (sel) capture(sel); dirty = true; status(); showNums(); };
+  const changed = () => { if (sel) capture(sel); dirty = true; status(); showNums(); shadowsChanged(); };   // (static sun shadows: redraw them)
   const select = (o) => { sel = o; if (o) tc.attach(o); else tc.detach(); showNums(); showLightProps(); log("select", { id: o ? o.userData.editId : null }); };
   // THIS LIGHT (10-08): a selected placed light shows its own settings
   function showLightProps() {
@@ -165,7 +165,7 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
   dom.addEventListener("pointermove", (e) => { if (sizeDrag) sizeDrag.y = e.clientY; });
   dom.addEventListener("pointerup", () => { sizeDrag = null; });
   tc.addEventListener("dragging-changed", (e) => { if (e.value && sel) undo.push(snapshot(sel)); });
-  tc.addEventListener("objectChange", () => {
+  tc.addEventListener("objectChange", () => { shadowsChanged();   // dragging: the sun shadows follow
     if (sizeDrag && sel) sel.scale.copy(sizeDrag.s0).multiplyScalar(Math.max(0.02, Math.pow(2, (sizeDrag.y0 - sizeDrag.y) / 140)));
     if (sel && tc.mode === "scale") { const k = (v) => (Math.sign(v) || 1) * Math.max(0.02, Math.abs(v)); sel.scale.set(k(sel.scale.x), k(sel.scale.y), k(sel.scale.z)); }   // a floor on SIZE, not on sign (mirrors stay mirrored)
     changed();

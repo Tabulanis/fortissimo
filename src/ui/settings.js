@@ -128,6 +128,7 @@ export function createSettings({ onChange, onRestart, onEditor } = {}) {
   });
   return {
     get isOpen() { return root.style.display === "grid"; },
+    open,   // the main menu's Options button
     /** show what Auto picked: "Auto — now Medium" */
     setAutoNote(text) { const o = root.querySelector('[data-k=quality] option[value=auto]'); if (o) o.textContent = text; },
     set(k, v) { s[k] = v; save(s); const el = root.querySelector(`[data-k=${k}]`); if (el) { if (el.type === "checkbox") el.checked = !!v; else el.value = v; } },
