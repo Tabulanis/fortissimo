@@ -34,7 +34,7 @@ const APPROACH = 1.7;   // seconds a note is on the highway before its beat
 export function hydraMode(G) {
   let fight = null, acid = null, highway = null, kit = null, active = false;
   let movement = 0, items = [], L = 16, judged = new Set(), offsets = [], startAt = 0, until = 0;
-  let lastBeat = null, spitTurn = 0, lastTickT = 0, finale = false;
+  let lastTickT = 0, finale = false;
   const metronomeBeat = (time) => G.pool.noteOn({ channel: 0, midi: 72, baseNote: 60, buffer: G.drums.click, velocity: 0.3, when: time, destination: G.mixer.metronome, settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
   const isDrum = (lane) => DRUMS.some((d) => d.lanes.includes(lane));
 
@@ -74,10 +74,12 @@ export function hydraMode(G) {
 
   function setupMovement() {
     const s = G.song(); L = 4 * s.bars; items = itemsOf(s); judged = new Set(); startAt = G.clock.first; until = G.clock.first;
-    lastBeat = null;
+
     for (let i = 0; i < 3; i++) G.stage3d.hydra.standBack(i, i !== movement);   // the attacker owns the stage
     bootlog("hydra movement", { movement: movement + 1, song: s.name, bpm: G.BPM, drums: items.filter((x) => x.drum).length, notes: items.filter((x) => !x.drum).length, hp: fight.heads[movement].hp });
   }
+  /** which head spits a drum lane's acid: the heads NOT attacking take the drums in turn (the attacker, if it's the last one) */
+  function spitterOf(col) { const others = fight.alive.filter((h) => h !== movement), from = others.length ? others : [movement]; return from[col % from.length]; }
   const timeOf = (k, it) => G.clock.first + (k * L + it.beat) * G.clock.beatDur;
 
   function startHydra() {
@@ -103,7 +105,8 @@ export function hydraMode(G) {
     lastTickT = G.ctx.currentTime;
     setInterval(tick, 25);
     const draw = () => {
-      if (active) { const m = G.stage3d.hydra.mouth(movement); if (m) kit.setGunSource(m);   // the strikes come out of the attacker's mouth
+      if (active) { const H = G.stage3d.hydra, m = H.mouth(movement); if (m) kit.setGunSource(m);   // the strikes come out of the attacker's mouth
+        kit.setDrumSources((col) => H.mouth(spitterOf(col)));                                        // the acid out of the others' mouths
         highway.draw(upcoming(), G.ctx.currentTime, APPROACH); acid.update(G.ctx.currentTime); updateBolts(); }
       requestAnimationFrame(draw); };
     requestAnimationFrame(draw);
@@ -132,23 +135,17 @@ export function hydraMode(G) {
       const t = timeOf(k, it), id = k + ":" + it.i;
       if (t < startAt || t + win > now || judged.has(id)) continue;
       judged.add(id); offsets.push(null);
-      if (it.drum) { events(fight.drum(false)); highway.flash(it.col, false); }
+      if (it.drum) {   // the glob got through: the shield drops, and it burns as hard as the shield is down
+        events(fight.drum(false)); events(fight.acidLands(spitterOf(it.col))); highway.flash(it.col, false);
+        acid.burst(kit.targetPos(it.col), true);
+      }
       else { events(fight.strike(movement, false)); highway.flash(it.col, false); }
     }
     // the shield sags with time; the head of this movement rears while a strike is close
     fight.tick((now - lastTickT) / bd); lastTickT = now;
     const H = G.stage3d.hydra, soon = upcoming().some((u) => !u.it.drum && u.at - now < 0.7);
     H.rear(movement, soon);
-    // ACID: on every other beat a living head lobs a glob that lands two beats later
-    const beat = Math.floor((now - G.clock.first) / bd);
-    if (beat >= 0 && beat !== lastBeat) {
-      lastBeat = beat;
-      const alive = fight.alive;
-      if (beat % 2 === 0 && alive.length) {
-        const h = alive[spitTurn++ % alive.length], from = H.mouth(h);
-        if (from) acid.spit(h, from, G.clock.first + (beat + 2) * bd, now);
-      }
-    }
+    // (10-09: the separate acid shower is gone — THE DRUM NOTES ARE THE ACID now: each one a glob spat down its drum's lane)
     G.hudUI.setShield(fight.shield * 100, fight.shield >= SHIELD_HOLDS ? "up" : "broken");
     acid.setShield(fight.shield);
   }
@@ -185,6 +182,7 @@ export function hydraMode(G) {
       if (entry) G.pool.noteOn({ channel: entry.idx, midi: 60, baseNote: 60, ...G.laneSound(entry.ln, best.it.midi), velocity: best.it.vel, when: G.ctx.currentTime });
       highway.flash(col, true);
       if (!best.it.drum) fireGun(col - ND);   // the gun on the altar fires at the attacking head
+      else acid.burst(kit.targetPos(col), false);   // the drum blocked the glob: it splashes off
       events(best.it.drum ? fight.drum(true) : fight.strike(movement, true));
     } else {   // nothing due here: a drum still sounds (quietly); a note key does nothing
       if (d >= 0) { const entry = G.KEYMAP_BY_LANE[DRUMS[d].lanes[0]]; if (entry) G.pool.noteOn({ channel: entry.idx, midi: 60, baseNote: 60, ...G.laneSound(entry.ln), velocity: 0.35, when: G.ctx.currentTime }); }

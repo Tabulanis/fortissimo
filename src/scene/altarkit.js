@@ -49,13 +49,29 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7 }) {
     muzzles.push(pos.clone().add(new THREE.Vector3(0, 0.25, 0.25)));
     targets.push({ pos, obj: null, mat: b.buttonMat, base: 0, gun: true, spawn: null });
   });
-  // LANES: a faint glowing line from each target's spawn to it (the guns' redrawn when the attacking head moves)
-  const laneMat = (c) => new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
+  // LANES (10-09: "lanes like the rest of the game"): a glowing STRIP from its source to the target, markers flowing down it toward
+  // the target; facing the eye, rebuilt each frame (the sources are the heads' mouths, and they move)
+  const LANE_FRAG = `uniform vec3 uColor; uniform float uTime; varying vec2 vUv;
+    void main() { float flow = step(0.55, fract(vUv.y * 14.0 - uTime * 2.2));          // markers running toward the target (uv.y 1 = target)
+      float edge = 1.0 - abs(vUv.x - 0.5) * 2.0, fade = smoothstep(0.0, 0.25, vUv.y);  // soft edges; fades out toward the source
+      gl_FragColor = vec4(uColor * (0.55 + 0.9 * flow), (0.22 + 0.4 * flow) * edge * fade); }`;
+  const LANE_VERT = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
   targets.forEach((t, i) => {
-    const geo = new THREE.BufferGeometry().setFromPoints([t.spawn || t.pos, t.pos]);
-    t.line = new THREE.Line(geo, laneMat(i < drums.length ? drums[i].color : "#ff9a5a")); t.line.visible = !!t.spawn; root.add(t.line);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(12), 3));
+    geo.setAttribute("uv", new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), 2));
+    geo.setIndex([0, 1, 2, 2, 1, 3]);
+    const mat = new THREE.ShaderMaterial({ vertexShader: LANE_VERT, fragmentShader: LANE_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending, uniforms: { uColor: { value: new THREE.Color(i < drums.length ? drums[i].color : "#ff8a4a") }, uTime: { value: 0 } } });
+    t.line = new THREE.Mesh(geo, mat); t.line.frustumCulled = false; t.line.visible = false; root.add(t.line);
   });
-  const setLine = (t) => { const a = t.line.geometry.attributes.position; a.setXYZ(0, t.spawn.x, t.spawn.y, t.spawn.z); a.setXYZ(1, t.pos.x, t.pos.y, t.pos.z); a.needsUpdate = true; t.line.visible = true; };
+  const _d = new THREE.Vector3(), _v = new THREE.Vector3(), _w = new THREE.Vector3();
+  const setLine = (t) => {   // a strip 6 cm wide, from the source (uv.y 0) to the target (uv.y 1), turned to face the eye
+    _d.subVectors(t.pos, t.spawn); _v.subVectors(eye, t.pos); _w.crossVectors(_d, _v).normalize().multiplyScalar(0.03);
+    const a = t.line.geometry.attributes.position, S = t.spawn, P = t.pos;
+    a.setXYZ(0, S.x - _w.x, S.y - _w.y, S.z - _w.z); a.setXYZ(1, S.x + _w.x, S.y + _w.y, S.z + _w.z);
+    a.setXYZ(2, P.x - _w.x, P.y - _w.y, P.z - _w.z); a.setXYZ(3, P.x + _w.x, P.y + _w.y, P.z + _w.z); a.needsUpdate = true; t.line.visible = true;
+  };
   // CUES: a pool of glowing balls
   const orbGeo = new THREE.SphereGeometry(0.06, 12, 8), orbs = [];
   const orbFor = (k, color) => {
@@ -68,6 +84,9 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7 }) {
     root, station: st.group,
     /** the attacking head's mouth: the guns' cues fly from here */
     setGunSource(v) { for (const t of targets) if (t.gun) { t.spawn = t.spawn || new THREE.Vector3(); t.spawn.copy(v); setLine(t); } },
+    /** the acid's sources: sourceOf(col) → the spitting head's mouth for that drum */
+    setDrumSources(sourceOf) { targets.forEach((t, i) => { if (t.gun) return; const v = sourceOf(i); if (!v) return; t.spawn = t.spawn || new THREE.Vector3(); t.spawn.copy(v); setLine(t); }); },
+    targetPos: (col) => (targets[col] ? targets[col].pos.clone() : eye.clone()),
     muzzle: (g) => muzzles[g],
     /** draw the cues in flight (items: { col, at }) and the targets' glow */
     update(items, now) {
@@ -76,10 +95,13 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7 }) {
         const t = targets[it.col]; if (!t || !t.spawn) continue;
         const u = 1 - (it.at - now) / approach; if (u < 0 || u > 1.05) continue;
         _p.lerpVectors(t.spawn, t.pos, Math.min(1, u));
-        const o = orbFor(k++, it.col < drums.length ? drums[it.col].color : "#ffb070"); o.position.copy(_p); o.visible = true; o.scale.setScalar(0.7 + 0.6 * u);
+        const acid = it.col < drums.length, o = orbFor(k++, acid ? "#9cff3a" : "#ffb070");   // drums: a glob of ACID; guns: the head's strike
+        o.position.copy(_p); if (acid) o.position.y += Math.sin(Math.min(1, u) * Math.PI) * 0.6;    // the acid lobs
+        o.visible = true; o.scale.setScalar((acid ? 1.05 : 0.7) * (0.7 + 0.6 * u) * (acid ? 1 + 0.15 * Math.sin(now * 25 + k) : 1));
       }
       for (; k < orbs.length; k++) if (orbs[k]) orbs[k].visible = false;
       const tn = performance.now();
+      for (const t of targets) if (t.line) t.line.material.uniforms.uTime.value = tn / 1000;
       targets.forEach((t, i) => {   // a press pops the target and lights it (green-white good, red miss)
         const f = flashes.get(i), on = f && f.until > tn, s = on ? 1 + 0.12 * ((f.until - tn) / 140) : 1;
         if (t.obj) t.obj.scale.setScalar(s);
