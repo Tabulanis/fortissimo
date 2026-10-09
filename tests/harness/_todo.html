@@ -1,0 +1,17 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1100px;height:700px;border:0"></iframe>
+<script type="module">
+// THE BIG TO-DO (10-09): start round 3, trigger the to-do (as if its boss fell), photograph it at 1.5 s / 3.5 s / 8 s, then check
+// the hydra fight started — device.log carries "big to-do", "hydra movement"
+const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+localStorage.setItem("gr.level", "2"); localStorage.removeItem("gr.run2"); sessionStorage.setItem("gr.autostart", "{}");   // straight into round 3
+const snap = (n) => fetch(`http://127.0.0.1:8899/png/todo-${n}`, { method: "POST", body: f.contentWindow.document.querySelector("canvas").toDataURL("image/png") });
+f.onload = async () => { const w = f.contentWindow, d = w.document; await wait(4000);
+  w.dispatchEvent(new w.KeyboardEvent("keydown", { key: "x", bubbles: true }));
+  for (let i = 0; i < 60 && !(w.__gr.game && w.__gr.game.clock); i++) await wait(250);
+  await wait(3000); w.__gr.game.bigToDo(); const t0 = performance.now();
+  for (const [n, at] of [["a", 1.5], ["b", 3.6], ["c", 8.5]]) { await wait(Math.max(0, at * 1000 - (performance.now() - t0))); snap(n); }
+  await wait(9000);
+  fetch("http://127.0.0.1:8899/todo", { method: "POST", body: JSON.stringify({ hydraActive: !!(w.__gr.game.hydra && w.__gr.game.hydra.active) }) });
+};
+f.src = "/?autobegin=1&shot=999";
+</script>

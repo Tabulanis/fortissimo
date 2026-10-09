@@ -253,8 +253,16 @@ export function hydraMode(G) {
   }
   function lost() { G.life.over = true; G.hudUI.say("The hydra won…", "bad", 4000); setTimeout(() => results(true), 1400); }
 
+  /** THE BIG TO-DO's end (10-09): round 3's clock stops, the first movement's starts, the fight begins — no page reload */
+  function startInPage() {
+    if (G.clock) G.clock.stop();
+    G.BPM = Math.round((G.song().bpm || 80) * G.RUN.tempo * 10) / 10;
+    G.clock = startClock(G.ctx, { bpm: G.BPM, onBeat: metronomeBeat });
+    G.stage3d.setBeat(G.clock.first, G.clock.beatDur);
+    startHydra();
+  }
   return {
-    startHydra, key, pad,
+    startHydra, startInPage, key, pad,
     get active() { return active; }, get fight() { return fight; }, get movement() { return movement; },
     upcoming,   // harness: what's on the highway
   };

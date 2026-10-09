@@ -135,7 +135,7 @@ let BANKS = null, recorder = null;
 // ROUND 4, THE HYDRA (2026-10-07): a level's round 4 — you conduct the music of its rounds 1-3 (one
 // movement each) and fight the hydra (hydrafight.js). Entered from round 3's results or the level list:
 // sessionStorage gr.hydra = { rounds: [i, j, k], title }; ?hydra=0,1,2 for harnesses.
-const HYDRA = (() => { try { const h = JSON.parse(sessionStorage.getItem("gr.hydra") || "null"); sessionStorage.removeItem("gr.hydra"); if (h) return h; } catch { /* below */ }
+let HYDRA = (() => {   // (10-09: let — round 3's boss can turn the page into round 4 in place: bigToDo) try { const h = JSON.parse(sessionStorage.getItem("gr.hydra") || "null"); sessionStorage.removeItem("gr.hydra"); if (h) return h; } catch { /* below */ }
   const q = new URLSearchParams(location.search).get("hydra"); return q ? { rounds: q.split(",").map(Number), title: "The Hydra" } : null; })();
 /** the levels in the song list: Rome = the songs no made level owns (the first three), then each made level's three rounds */
 function levelGroups(list) {
@@ -522,8 +522,38 @@ applyStage();
 
 // end of a round: the grade, then the next round in the same arena (fresh song,
 // fresh loops); after the last round, free play
+// THE BIG TO-DO (owner, 2026-10-09: "drums, then guns, then boss, then hydra after a big to-do"): when round 3 of a level is won
+// there is no results screen — THE HYDRA RISES, a horn, the view turns to the sea gate and it lifts, the three songs load meanwhile,
+// then the flight through the gate, down the dock and up the altar, and the fight — all in this page (a reload would need a key press)
+async function bigToDo(g) {
+  bootlog("big to-do", { level: g.title, rounds: g.rounds });
+  const t0 = performance.now();
+  life.over = true; ghostsOn = false;   // round 3 is over: its strikes and its band stop
+  for (const m of ["drums", "bass", "treble"]) if (backGain[m]) backGain[m].gain.setTargetAtTime(0, ctx.currentTime, 0.6);
+  showStamp("THE HYDRA RISES", window.innerWidth / 2, window.innerHeight * 0.32, { size: 54, color: "#9cff3a", ms: 3200 });
+  hudUI.setPart("");
+  horn();
+  stage3d.setStation("gate"); setTimeout(() => stage3d.openSeaGate(2.6), 900);
+  const keep = roundIdx;
+  for (const i of [...g.rounds].reverse()) { roundIdx = i; BPM = Math.round((song().bpm || 80) * RUN.tempo * 10) / 10; await loadRoundSamples(); }
+  roundIdx = keep;
+  await new Promise((r) => setTimeout(r, Math.max(0, 4200 - (performance.now() - t0))));
+  HYDRA = { rounds: g.rounds, title: g.title }; roundIdx = g.rounds[0]; defend = null; siege = null; life.over = false;
+  stage3d.flyIn(7, () => HYDRA_MODE.startInPage());
+}
+/** a war horn: three detuned saw voices on a fifth, swelling and fading (no sample needed) */
+function horn() {
+  const t = ctx.currentTime, out = ctx.createGain(), lp = ctx.createBiquadFilter();
+  lp.type = "lowpass"; lp.frequency.setValueAtTime(300, t); lp.frequency.linearRampToValueAtTime(1400, t + 0.6); lp.frequency.linearRampToValueAtTime(500, t + 2.6);
+  out.gain.setValueAtTime(0, t); out.gain.linearRampToValueAtTime(0.35, t + 0.4); out.gain.setValueAtTime(0.35, t + 1.8); out.gain.linearRampToValueAtTime(0, t + 2.8);
+  lp.connect(out); out.connect(mixer.master);
+  for (const [f, d] of [[110, -6], [110, 5], [164.8, 0], [220, 3]]) { const o = ctx.createOscillator(); o.type = "sawtooth"; o.frequency.value = f; o.detune.value = d; o.connect(lp); o.start(t); o.stop(t + 3); }
+}
+
 function endRound() {
   const stats = gradeRound(roundOffsets, judgeDiff().window);
+  { const g = levelGroups(LESSONS).find((x) => x.rounds[2] === roundIdx);   // round 3 of a level: straight into the big to-do
+    if (g) { try { if (unlockedLevel() < roundIdx + 1) localStorage.setItem(UNLOCKED_KEY, roundIdx + 1); } catch { /* fine */ } bootlog("round 3 done", stats); bigToDo(g); return; } }
   // finishing a level unlocks the next
   try { if (unlockedLevel() < roundIdx + 1) localStorage.setItem(UNLOCKED_KEY, roundIdx + 1); } catch { /* not remembered */ }
   const toMenu = (where, level) => {
@@ -1667,6 +1697,7 @@ if (window.__gr) window.__gr.game = {
   fireGun: (idx, lane) => fireGun(idx, lane, ctx.getOutputTimestamp().contextTime),
   get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,
   get hydra() { return HYDRA_MODE; },   // harness: round 4 (its fight, its highway)
+  bigToDo: () => { const g = levelGroups(LESSONS).find((x) => x.rounds.includes(roundIdx)); if (g) bigToDo(g); },   // harness: the to-do without playing round 3
   get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln, midi) => laneSound(ln, midi),
   backInfo: () => ({ bpm: BPM, songBpm: song().bpm, loopSeconds: +(song().bars * 4 * clock.beatDur).toFixed(3),
     stretched: [...backCache].map(([k, b]) => [k, +b.duration.toFixed(3)]) }),

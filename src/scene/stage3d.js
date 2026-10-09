@@ -372,6 +372,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const PITCH0 = new THREE.Euler().setFromQuaternion(baseQuat, "YXZ").x;   // the drums' downward look
   const STATIONS = {
     drums:  { yaw: 0,            pos: new THREE.Vector3(0, 2.1, TOUCH ? 1.05 : 0.75) },
+    gate:   { yaw: Math.PI,      pos: new THREE.Vector3(0, 2.1, TOUCH ? 1.05 : 0.75), pitch: 0.04 },   // THE BIG TO-DO (10-09): turned round to the sea gate
     bass:   { yaw: -Math.PI / 2, pos: new THREE.Vector3(TOUCH ? -0.05 : -0.35, TOUCH ? 1.8 : 2.1, 0.6) },   // phones: right up at the rack, a little lower — the guns fill the screen
     treble: { yaw: Math.PI / 2,  pos: new THREE.Vector3(TOUCH ? 0.05 : 0.35, TOUCH ? 1.8 : 2.1, 0.6) },
     sea:    { yaw: Math.PI,      pos: new THREE.Vector3(0, 2.1, BOOTH_POS.z - 0.75), pitch: -0.06 },   // round 4: at the podium on the dock, facing the sea, gaze level (the hydra is tall)
@@ -1109,6 +1110,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // where the hands rest at each station: just outside the kit / the bar row
   const HAND_RESTS = {
     drums:  [new THREE.Vector3(-0.66, 0.98, -0.1), new THREE.Vector3(0.66, 0.98, -0.1)],
+    gate:   [new THREE.Vector3(0.66, 0.98, 1.6), new THREE.Vector3(-0.66, 0.98, 1.6)],
     bass:   [new THREE.Vector3(0.4, 0.98, BAR_MID_Z - 0.75), new THREE.Vector3(0.4, 0.98, BAR_MID_Z + 0.75)],
     treble: [new THREE.Vector3(-0.4, 0.98, BAR_MID_Z + 0.75), new THREE.Vector3(-0.4, 0.98, BAR_MID_Z - 0.75)],
     sea:    [new THREE.Vector3(0.66, 0.98, BOOTH_POS.z + 0.35), new THREE.Vector3(-0.66, 0.98, BOOTH_POS.z + 0.35)],   // over the booth's faders
@@ -2785,7 +2787,14 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         hand.rest.copy(HAND_RESTS[name][h]);
         if (!hand.active && !vrOn()) { hand.group.position.copy(hand.rest); hand.group.quaternion.setFromUnitVectors(UP, restDir); }
       });
-    }, get scene() { return scene; }, get camera() { return camera; }, flyIn: (s, f) => flyIn(s, f), get flying() { return !!cine; }, boothPos: BOOTH_POS, playSpot: () => playSpot(), lighting, get station() { return station; }, melodyStations, kit: KIT, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
+    }, get scene() { return scene; }, get camera() { return camera; }, flyIn: (s, f) => flyIn(s, f), get flying() { return !!cine; },
+    /** THE BIG TO-DO (10-09): the sea gate (his "gate-sea") lifts out of the way over `seconds` */
+    openSeaGate(seconds = 2.5) {
+      let g = null; scene.traverse((o) => { if (o.userData && o.userData.editId === "gate-sea") g = o; });
+      if (!g) return; const y0 = g.position.y, t0 = performance.now();
+      const step = () => { const u = Math.min(1, (performance.now() - t0) / (seconds * 1000)); g.position.y = y0 + 6.5 * u * u * (3 - 2 * u); if (u < 1) requestAnimationFrame(step); };
+      requestAnimationFrame(step);
+    }, boothPos: BOOTH_POS, playSpot: () => playSpot(), lighting, get station() { return station; }, melodyStations, kit: KIT, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */
