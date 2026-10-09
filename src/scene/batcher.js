@@ -9,7 +9,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
-const CELL = 12, MAX_VERTS = 5000;   // big models are one draw call already, and keep their own culling
+const CELL = 24, MAX_VERTS = 5000;   // big models are one draw call already, and keep their own culling
 
 export function createBatcher(scene, { roots, skip = () => false, maxZ = Infinity }) {
   const group = new THREE.Group(); group.name = "batched"; scene.add(group);
@@ -18,6 +18,15 @@ export function createBatcher(scene, { roots, skip = () => false, maxZ = Infinit
   const shown = (o) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
   const _p = new THREE.Vector3();
 
+  function why(o) {   // debug: the first rule that keeps o out (null = eligible)
+    const m = o.material;
+    if (!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh || !o.geometry || !o.geometry.attributes.position) return "kind";
+    if (!m || Array.isArray(m)) return "materials"; if (m.transparent) return "transparent"; if (m.isShaderMaterial) return "shader"; if (!o.layers.isEnabled(0)) return "layer";
+    if (m.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile) return "onBeforeCompile";
+    if (o.geometry.attributes.position.count > MAX_VERTS) return "big"; if (o.onBeforeRender !== THREE.Object3D.prototype.onBeforeRender) return "onBeforeRender";
+    for (let a = o; a; a = a.parent) if (skip(a)) return "skip"; if (!shown(o)) return "hidden"; if (o.getWorldPosition(_p).z > maxZ) return "cove";
+    return hidden.includes(o) ? "glued" : "eligible";
+  }
   function eligible() {
     const out = [];
     for (const r of roots()) {
@@ -56,9 +65,9 @@ export function createBatcher(scene, { roots, skip = () => false, maxZ = Infinit
     for (const o of list) {
       const g = o.geometry, attrs = Object.keys(g.attributes).sort().join(",");   // ALL of it (10-09: dropping uv1/tangent changed how walls looked)
       const c = o.getWorldPosition(_p);
-      const key = `${o.material.uuid}|${attrs}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}|${Math.floor(c.x / CELL)},${Math.floor(c.z / CELL)}`;
+      const key = `${o.material.uuid}|${attrs}|${o.castShadow ? 1 : 0}|${Math.floor(c.x / CELL)},${Math.floor(c.z / CELL)}`;
       if (!buckets.has(key)) buckets.set(key, { mat: o.material, attrs: attrs.split(","), cast: o.castShadow, recv: o.receiveShadow, list: [] });
-      buckets.get(key).list.push(o);
+      const bk = buckets.get(key); bk.list.push(o); bk.recv = bk.recv || o.receiveShadow;   // (a basin's bowl, floor and rim differed only in this: each was alone)
     }
     for (const b of buckets.values()) {
       if (b.list.length < 2) continue;   // alone: nothing to gain
@@ -84,5 +93,5 @@ export function createBatcher(scene, { roots, skip = () => false, maxZ = Infinit
     on = true;
     return true;
   }
-  return { build, dissolve, get on() { return on; }, stats, group };
+  return { build, dissolve, why, get on() { return on; }, stats, group };
 }

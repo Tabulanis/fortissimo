@@ -28,6 +28,7 @@ import { createDefense } from "./defense.js";
 import { createTroops } from "./troops.js";
 import { createPool, poolContains, POOL } from "./pool.js";
 import { createBatcher } from "./batcher.js";
+import { installPerf } from "../dev/perf.js";
 import { bootlog } from "../bootlog.js";
 
 const APPROACH_S = 4.0;   // seconds of visible flight (rocket arrows: a bit slower, owner) — must match main.js
@@ -398,11 +399,13 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // of the camera (re-picked whenever the camera has moved 2 m), plus the enemies (animated or instanced: they walk right up)
   const OCC_LAYER = 3, OCC_RANGE = new URLSearchParams(location.search).has("occfull") ? 1e9 : 4;   // ?occfull: the old whole-scene pass, to compare   // the dome is 3.4 m round (0,0,0.3), the stations' cameras stand near its middle
   const _occAt = new THREE.Vector3(1e9, 0, 0), _occB = new THREE.Box3();
-  let glowers = null;   // everything on the glow channel (built once, after the scene is up)
+  let glowFrame = 0;
+  let glowers = null; const _gFr = new THREE.Frustum(), _gM = new THREE.Matrix4();   // everything on the glow channel (built once, after the scene is up)
   const shown = (o) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
   function glowShowing() {
     if (!glowers) { glowers = []; scene.traverse((o) => { if (o.layers.isEnabled(SHIELD_LAYER) && (o.isMesh || o.isSprite || o.isLine || o.isPoints)) glowers.push(o); }); }
-    for (const o of glowers) if (shown(o)) return true;
+    _gFr.setFromProjectionMatrix(_gM.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+    for (const o of glowers) if (shown(o) && (!o.frustumCulled || !o.geometry || _gFr.intersectsObject(o))) return true;   // and ON SCREEN (the treble crystals kept it on everywhere)
     return false;
   }
   function tagOccluders(force) {
@@ -420,6 +423,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   }
   let shieldGlow = null, shieldCamera = null, shieldOccCamera = null, shieldMix = null, shieldOnly = false;
   let composer = null, gtao = null, bloom = null, lens = null, smaa = null;
+  const PERF = new URLSearchParams(location.search).has("perf"); let perf = null;
   if (!LOW && !PHONE) {   // (10-09) PHONES: no effects chain — the scene drawn once, straight to the screen (bloom etc. were full-screen passes)
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
@@ -2703,6 +2707,12 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     fxCamera.projectionMatrix.copy(camera.projectionMatrix);
     fxCamera.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
     if (!fxSorted) sortFx();
+    if (PERF) {   // ?perf — milliseconds per pass (src/dev/perf.js), installed on the first frame, when every pass exists
+      if (!perf) perf = installPerf({ renderer, bootlog, wrap: [["sun shadow", renderer.shadowMap, "render"]],
+        passes: [...(composer ? composer.passes.map((p, i) => [(p === fxPass ? "fx" : p.constructor.name.replace("Pass", "")) + (p === shieldMix ? " mix" : ""), p]) : [["scene", renderer]]),
+          ...(shieldGlow ? [["shield glow", shieldGlow], ...shieldGlow.passes.map((p, i) => ["  glow " + i + " " + p.constructor.name.replace("Pass", ""), p])] : [])] });
+      perf.tick();
+    }
     // the composer's passes don't render to a headset: draw straight to it
     if (vrOn() || !composer) renderer.render(scene, camera);
     else {
@@ -2715,7 +2725,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         tagOccluders();
         for (const c of [shieldOccCamera]) { c.position.copy(camera.position); c.quaternion.copy(camera.quaternion); c.projectionMatrix.copy(camera.projectionMatrix); c.projectionMatrixInverse.copy(camera.projectionMatrixInverse); }
         shieldGlow.renderToScreen = shieldOnly;   // harness: show the channel alone
-        shieldGlow.render();
+        // every OTHER frame (10-09 timer: its two scene walks cost ~3 ms CPU, more than the main picture): the glow is a soft
+        // halo, the one from the frame before is kept between — no one can see a 16 ms-old blur
+        if (shieldOnly || (glowFrame++ & 1) === 0) shieldGlow.render();
       }
       // the AO blacks out the SEA (found 2026-10-07: its own depth/normal pass doesn't see the sea's waves and
       // returns full occlusion there) — so it is off whenever the view faces the cove (+z): the sea station,
@@ -2880,6 +2892,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     debugGunInfo: () => ({ red: melodyStations.bass.bars.map((b) => +(b._red || 0).toFixed(2)) }),
     debugShieldGlowAmount: (v) => { if (shieldMix) shieldMix.uniforms.amount.value = v; },   // harness
     debugShieldOnly: (on) => { shieldOnly = !!on; },
+    get debugBatcher() { return batcher; },
+    debugGlowers: () => { const on = glowShowing(); return [on, ...(glowers || []).filter((o) => shown(o) && (!o.frustumCulled || !o.geometry || _gFr.intersectsObject(o))).map((o) => (o.parent && o.parent.name ? o.parent.name + "/" : "") + (o.name || o.type) + "@" + o.getWorldPosition(new THREE.Vector3()).toArray().map((v) => v.toFixed(1)).join(","))]; },   // harness: what keeps the glow pass on
     debugShieldInfo: () => {
       const meshes = []; scene.traverse((o) => { if (o.isMesh && o.material && o.material.uniforms && o.material.uniforms.uTexB) meshes.push({ mask: o.layers.mask, vis: o.visible, strength: +o.material.uniforms.uStrength.value.toFixed(2) }); });
       return { meshes, camMask: shieldCamera && shieldCamera.layers.mask, camPos: shieldCamera && shieldCamera.position.toArray().map((v) => +v.toFixed(2)), mainPos: camera.position.toArray().map((v) => +v.toFixed(2)) };

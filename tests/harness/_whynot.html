@@ -1,0 +1,12 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+// why a group's visible meshes were NOT glued (10-09): one line per kind
+const P = new URLSearchParams(location.hash.slice(1)), f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => { const w = f.contentWindow; await wait(17000); const out = {};
+  try { const sc = w.__gr.stage3d.scene, g = sc.getObjectByName(P.get("g") || "braziers"); out.dupes = []; sc.traverse((o) => { if (o.name === g.name) out.dupes.push(o.parent && o.parent.name); });
+    g.traverse((o) => { if (!o.isMesh || !o.visible) return; const m = o.material, p = o.getWorldPosition(new o.position.constructor());
+      const k = [o.geometry.type, o.geometry.attributes.position.count, m.type, m.transparent ? "T" : "", o.layers.mask, w.__gr.stage3d.debugBatcher.why(o), Object.keys(o.geometry.attributes).join("+")].join(" ");
+      out[k] = (out[k] || 0) + 1; }); } catch (e) { out.err = String(e); }
+  fetch("http://127.0.0.1:8899/whynot", { method: "POST", body: JSON.stringify(out) }); };
+f.src = "/?quality=medium";
+</script>

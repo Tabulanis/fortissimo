@@ -1,0 +1,9 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+// what keeps the shield-glow passes running at each station (10-09)
+const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => { const w = f.contentWindow; await wait(9000); const out = {};
+  try { const S = w.__gr.stage3d; for (const st of ["drums", "bass", "treble"]) { S.setStation(st); await wait(1200); out[st] = S.debugGlowers(); } } catch (e) { out.err = String(e); }
+  fetch("http://127.0.0.1:8899/glowers", { method: "POST", body: JSON.stringify(out) }); };
+f.src = "/?quality=medium";
+</script>
