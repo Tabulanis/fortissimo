@@ -433,6 +433,17 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     });
   }
   let shieldGlow = null, shieldCamera = null, shieldOccCamera = null, shieldMix = null, shieldOnly = false;
+  // ROUND BLOOM (owner, 10-09: "highlights make little squares — round that out"): a glint on the pool is ONE pixel many times brighter
+  // than white; the bloom's low-resolution blur turns it into a visible block. Capped going in (the "firefly clamp" real engines use),
+  // no single pixel can outshine its neighbours enough to draw a square — the glow stays a soft round falloff.
+  function roundBloom(pass, max) {
+    const m = pass.materialHighPassFilter, line = "gl_FragColor = mix( outputColor, texel, alpha );";
+    if (m && m.fragmentShader.includes(line)) {
+      m.fragmentShader = m.fragmentShader.replace(line, line + `\n\t\t\tfloat pk = max(max(gl_FragColor.r, gl_FragColor.g), gl_FragColor.b); gl_FragColor.rgb *= min(1.0, ${max.toFixed(2)} / max(pk, 1e-4));`);
+      m.needsUpdate = true;
+    } else bootlog("round bloom", { error: "bright-pass shader changed — not patched" });
+    return pass;
+  }
   let composer = null, gtao = null, bloom = null, lens = null, smaa = null;
   const PERF = new URLSearchParams(location.search).has("perf"); let perf = null;
   if (!LOW && !PHONE) {   // (10-09) PHONES: no effects chain — the scene drawn once, straight to the screen (bloom etc. were full-screen passes)
@@ -465,7 +476,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   gtao.enabled = !MOBILE && !new URLSearchParams(location.search).has("noao");   // ?noao: dev, the AO off (to tell what it does)
   AO_ON = gtao.enabled;
   // BLOOM: only what's brighter than white glows (fire, sparks, hit flashes)
-  bloom = new UnrealBloomPass(new THREE.Vector2(canvas.clientWidth || 1280, canvas.clientHeight || 720), 0.55, 0.6, 0.85);
+  bloom = new UnrealBloomPass(new THREE.Vector2(canvas.clientWidth || 1280, canvas.clientHeight || 720), 0.42, 0.6, 0.85);   // (10-09 "a little much": 0.55 → 0.42)
+  roundBloom(bloom, 2.5);
   composer.addPass(bloom);
   {
     shieldCamera = camera.clone();
@@ -483,7 +495,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     const sp = new RenderPass(scene, shieldCamera);
     sp.clear = false;   // over the black foreground, depth-tested against it
     shieldGlow.addPass(sp);
-    shieldGlow.addPass(new UnrealBloomPass(new THREE.Vector2(canvas.clientWidth || 1280, canvas.clientHeight || 720), 1.0, 0.7, 0.15));
+    shieldGlow.addPass(roundBloom(new UnrealBloomPass(new THREE.Vector2(canvas.clientWidth || 1280, canvas.clientHeight || 720), 1.0, 0.7, 0.15), 2.5));
     composer.addPass(new ShaderPass({
       uniforms: { tDiffuse: { value: null }, tGlow: { value: null }, tint: { value: new THREE.Color(0.22, 0.5, 1.0) }, amount: { value: 0.22 } },   // a deep blue halo, not a fog
       vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
