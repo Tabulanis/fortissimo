@@ -16,8 +16,8 @@ import { startClock } from "../audio/clock.js";
 import { gradeRound } from "../game/grade.js";
 import { scoreMultiplier } from "../game/run.js";
 import { bootlog } from "../bootlog.js";
-import { createHighway } from "../ui/highway.js";
 import { createAcid } from "../scene/acid.js";
+import { createAltarKit } from "../scene/altarkit.js";
 const { VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
 
 // FIVE AND FIVE (owner, 2026-10-09: "5 drums, 5 cannon/mortar type; drums = left bumper and the D-pad, guns = B X Y A and
@@ -32,7 +32,7 @@ const HEAD_COLORS = ["#ff7a5a", "#e8c84a", "#5ad1ff"];
 const APPROACH = 1.7;   // seconds a note is on the highway before its beat
 
 export function hydraMode(G) {
-  let fight = null, acid = null, highway = null, active = false;
+  let fight = null, acid = null, highway = null, kit = null, active = false;
   let movement = 0, items = [], L = 16, judged = new Set(), offsets = [], startAt = 0, until = 0;
   let lastBeat = null, spitTurn = 0, lastTickT = 0, finale = false;
   const metronomeBeat = (time) => G.pool.noteOn({ channel: 0, midi: 72, baseNote: 60, buffer: G.drums.click, velocity: 0.3, when: time, destination: G.mixer.metronome, settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
@@ -55,24 +55,13 @@ export function hydraMode(G) {
   const hpOf = (song) => Math.max(8, Math.round(1.5 * (song.playNotes || song.notes).filter((n) => !isDrum(n.lane)).length));
 
   // THE GUNS (10-09): five bronze guns along the altar's sea edge, low to high left to right; a hit fires a bolt at the attacker
-  let guns = [], bolts = [];
-  function buildGuns() {
-    const T = THREE, scene = G.stage3d.scene, p = G.stage3d.playSpot();
-    const bronze = new T.MeshStandardMaterial({ color: 0x8a6a3a, metalness: 0.85, roughness: 0.35 }), wood = new T.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.8 });
-    const boltMat = new T.MeshBasicMaterial({ color: 0xffd27a });
-    guns = GUNS.map((g, i) => {
-      const grp = new T.Group(); grp.position.set(p.x + (i - 2) * 0.85, p.y, p.z + 2.1); grp.scale.setScalar(0.6);   // (10-09: smaller, at the rim — full size hid the middle head)
-      const base = new T.Mesh(new T.BoxGeometry(0.45, 0.32, 0.5), wood); base.position.y = 0.16; grp.add(base);
-      const barrel = new T.Mesh(new T.CylinderGeometry(0.07, 0.1, 0.9, 14), bronze); barrel.rotation.x = Math.PI / 2 - 0.45; barrel.position.set(0, 0.45, 0.15); grp.add(barrel);
-      scene.add(grp); return { grp, muzzle: new T.Vector3(p.x + (i - 2) * 0.85, p.y + 0.4, p.z + 2.4), boltMat };
-    });
-  }
+  let bolts = [];
+  const boltMat = new THREE.MeshBasicMaterial({ color: 0xffd27a });
   function fireGun(g) {
-    const gun = guns[g], H = G.stage3d.hydra; if (!gun) return;
-    const T = THREE, to = H.mouth(movement) || gun.muzzle.clone().add(new T.Vector3(0, 3, 10));
-    const m = new T.Mesh(new T.SphereGeometry(0.12, 10, 8), gun.boltMat); m.position.copy(gun.muzzle); G.stage3d.scene.add(m);
-    bolts.push({ m, from: gun.muzzle.clone(), to: to.clone(), t0: performance.now() / 1000 });
-    gun.grp.position.z -= 0.08; setTimeout(() => { gun.grp.position.z += 0.08; }, 90);   // recoil
+    const from = kit && kit.muzzle(g), H = G.stage3d.hydra; if (!from) return;
+    const to = H.mouth(movement) || from.clone().add(new THREE.Vector3(0, 3, 10));
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), boltMat); m.position.copy(from); G.stage3d.scene.add(m);
+    bolts.push({ m, from: from.clone(), to: to.clone(), t0: performance.now() / 1000 });
   }
   function updateBolts() {
     const now = performance.now() / 1000;
@@ -99,16 +88,24 @@ export function hydraMode(G) {
     const H = G.stage3d.hydra; H.rise();
     acid = createAcid(G.stage3d.scene, { center: G.stage3d.playSpot(), radius: 6 });   // over his altar (the play spot)   // wide: the acid bursts on it well out in front of you
     acid.onLand = (head) => { const ev = fight.acidLands(head); events(ev); return ev.some((e) => e.type === "acidBlocked"); };
-    highway = createHighway({ drums: DRUMS.map((d) => ({ key: d.key, label: `${d.key.toUpperCase()} ${d.glyph}` })),
-      notes: GUNS.map((g) => ({ key: g.key, head: 0, label: `${g.key.toUpperCase()} ${g.glyph}` })), headColors: HEAD_COLORS });
-    buildGuns();
+    // THE KIT ON THE ALTAR (10-09: "the drums on the screen, much like the other lanes"): 3-D drums + guns with cue lanes, in place of
+    // the flat highway — `highway` below is a thin stand-in so the round's code stays as it was (draw / flash)
+    const DRUM_HEX = ["#3adcff", "#ff4fa0", "#a8ff3a", "#9a5cff", "#ffd23a"];   // hat snare crash kick tom — the courtyard kit's colours
+    kit = createAltarKit(G.stage3d.scene, { spot: G.stage3d.playSpot(), approach: APPROACH,
+      drums: DRUMS.map((d, i) => ({ label: `${d.key.toUpperCase()} ${d.glyph}`, color: DRUM_HEX[i] })),
+      guns: GUNS.map((g) => ({ label: `${g.key.toUpperCase()} ${g.glyph}` })) });
+    highway = { draw: (items, now) => kit.update(items, now), flash: (c, good) => kit.press(c, good), show: (on) => { kit.root.visible = on; },
+      setNoteColor() {}, el: { dataset: {} } };
     highway.show(true); active = true; movement = 0;
     setupMovement(); recolor();
     G.hudUI.setLife(100, 100);
     G.hudUI.say("THE HYDRA — left hand: drums keep the shield up (Q W E A S · LB + D-pad) · right hand: the guns fire on the notes (J K L I O · X A Y B RB)", "good", 8000);
     lastTickT = G.ctx.currentTime;
     setInterval(tick, 25);
-    const draw = () => { if (active) { highway.draw(upcoming(), G.ctx.currentTime, APPROACH); acid.update(G.ctx.currentTime); updateBolts(); } requestAnimationFrame(draw); };
+    const draw = () => {
+      if (active) { const m = G.stage3d.hydra.mouth(movement); if (m) kit.setGunSource(m);   // the strikes come out of the attacker's mouth
+        highway.draw(upcoming(), G.ctx.currentTime, APPROACH); acid.update(G.ctx.currentTime); updateBolts(); }
+      requestAnimationFrame(draw); };
     requestAnimationFrame(draw);
   }
   function recolor() {   // the note lanes take the attacking head's colour
