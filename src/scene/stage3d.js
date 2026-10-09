@@ -2927,7 +2927,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       drumMeshes[i] = holder;
       drumMat[i] = mat;
     }
-  }, undefined, (err) => console.warn("drum model failed to load; keeping stand-ins", err));
+  }, undefined, (err) => { console.warn("drum model failed to load; keeping stand-ins", err); bootlog("drum model failed", { error: String(err && err.message || err), stack: String(err && err.stack || "").slice(0, 400) }); });
 
   bootlog("stage3d: end of build");
   return { resize, update, hit, press, strike, setDrumVisible, debugDrums,
