@@ -112,7 +112,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const TOUCH = !!opts.touch;
   layoutDrums(KIT.drums, layout, TOUCH ? 0.46 : 0.6);
   let skyMatRef = null;   // the sky dome's material (clouds animate on it)
-  const TIER = ["high", "medium", "low", "lowest", "potato"].includes(opts.tier) ? opts.tier : "high";
+  const TIER = ["high", "medium", "low", "lowest", "potato", "bare"].includes(opts.tier) ? opts.tier : "high";
   // no multisampling below medium: it multiplies every pixel's cost on a weak GPU
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: TIER === "high" || TIER === "medium",
     preserveDrawingBuffer: new URLSearchParams(location.search).has("shot") });   // ?shot: the dev photo hook in main.js reads the canvas
@@ -130,8 +130,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   //           (owner, 2026-10-03: the tablet "can barely play it")
   const PHONE = !!opts.phone;                          // THE PHONE VERSION (main.js): always the phone path, any tier
   const MOBILE = TIER !== "high" || PHONE;            // medium and below — and every phone
-  const LOW = TIER === "low" || TIER === "lowest" || TIER === "potato";
-  const POTATO = TIER === "potato";
+  const BARE = TIER === "bare";                      // (10-09) below potato: everything potato does, and no textures at all
+  const LOW = TIER === "low" || TIER === "lowest" || TIER === "potato" || BARE;
+  const POTATO = TIER === "potato" || BARE;
   // SMALL TEXTURES (owner, 2026-10-03: "cut the size for textures in lowest mode to 512"):
   // lowest and potato load public/small/ instead — every texture and model image at most
   // 512 px (tools/make-small-assets.py makes them). Every loader here uses the default manager.
@@ -538,10 +539,41 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   editsLoaded.then(() => { const L = getSetting("lighting"); if (L) lighting.set(L); refreshSunShadow(); });
   // the sun's shadow map is redrawn when asked (static shadows, above) — and a few times while the models stream in
   function refreshSunShadow() { afterglow.shadow.needsUpdate = true; }
-  for (const ms of [1500, 4000, 8000, 15000]) setTimeout(() => { rebatch(); refreshSunShadow(); if (ms >= 4000) warmShaders(ms); }, ms);
+  for (const ms of [1500, 4000, 8000, 15000]) setTimeout(() => { try { bareify(); } catch (e) { bootlog("bare", { error: String(e) }); } rebatch(); refreshSunShadow(); if (ms >= 4000) warmShaders(ms); }, ms);
   // SHADER WARM-UP (10-09, the big engines do it behind the loading screen): compile every material in the scene now — hidden
   // ones too (the shield, sparks, lightning, acid) — so the first time each effect shows it doesn't stall the song to compile.
   // Repeated as the models stream in; anything already compiled costs nothing.
+  // BARE (his ask 10-09: "for really weak tablets… all the way down to no textures, super simplified"): every lit material becomes a
+  // plain MeshLambert in its texture's AVERAGE colour (the texture drawn into one pixel) — no texture reads, the cheapest lighting
+  // three.js has. Shared: one replacement per original material. Runs with the load timers, so models that stream in are caught too.
+  const bareOf = new Map();
+  function avgColour(tex) {
+    try { const img = tex && tex.image; if (!img || !img.width) return null;
+      const c = document.createElement("canvas"); c.width = c.height = 1; const g = c.getContext("2d"); g.drawImage(img, 0, 0, 1, 1);
+      const d = g.getImageData(0, 0, 1, 1).data; return new THREE.Color().setRGB(d[0] / 255, d[1] / 255, d[2] / 255, THREE.SRGBColorSpace);
+    } catch { return null; }
+  }
+  function bareify() {
+    if (!BARE) return;
+    let n = 0;
+    scene.traverse((o) => {
+      if (!o.isMesh || !o.material || Array.isArray(o.material)) return;
+      const m = o.material;
+      if (!(m.isMeshStandardMaterial || m.isMeshPhongMaterial || m.isMeshLambertMaterial) || m.userData.bare) return;
+      if (!bareOf.has(m)) {
+        const col = m.color ? m.color.clone() : new THREE.Color(1, 1, 1), avg = avgColour(m.map); if (avg) col.multiply(avg);
+        const b = new THREE.MeshLambertMaterial({ color: col, emissive: m.emissive ? m.emissive.clone() : 0x000000, emissiveIntensity: m.emissiveIntensity ?? 1,
+          side: m.side, transparent: m.transparent, opacity: m.opacity, alphaTest: m.alphaTest, vertexColors: m.vertexColors, fog: m.fog });
+        // LIVE links to the original: the game flashes buttons and drumheads by changing THEIR material (emissive, opacity), and colours
+        // set at runtime when there's no texture — so those are shared, not copied
+        b.emissive = m.emissive || b.emissive; if (!m.map && m.color) b.color = m.color;
+        for (const k of ["emissiveIntensity", "opacity", "visible"]) Object.defineProperty(b, k, { get: () => m[k], set: (v) => { m[k] = v; }, configurable: true });
+        b.userData.bare = true; b.name = (m.name || "") + " (bare)"; bareOf.set(m, b);
+      }
+      o.material = bareOf.get(m); n++;
+    });
+    if (n) bootlog("bare", { swapped: n, materials: bareOf.size });
+  }
   function warmShaders(at) {
     if (!renderer.compileAsync) return;
     const t = performance.now(), before = renderer.info.programs ? renderer.info.programs.length : 0;

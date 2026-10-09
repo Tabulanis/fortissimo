@@ -95,6 +95,7 @@ export function createSettings({ onChange, onRestart, onEditor } = {}) {
           <option value="low">Low — no effects (most phones and tablets)</option>
           <option value="lowest">Lowest — no effects, lower resolution, small textures</option>
           <option value="potato">Potato — half resolution, bare minimum (weak tablets)</option>
+          <option value="bare">Bare — no textures, flat colours (the weakest tablets)</option>
         </select></div>
       <h3>Make</h3>
       <div class="row"><button data-act="editor" class="wide">🛠 Level editor</button></div>

@@ -79,7 +79,7 @@ const DRUM_COLOR = {
 // game starts from a guess (touch screen -> medium) and MEASURES the frame rate
 // after loading: too slow and it steps down a level and reloads, remembering the
 // level for this device. ?quality=... in the URL forces one (mobile = medium).
-const TIERS = ["high", "medium", "low", "lowest", "potato"];
+const TIERS = ["high", "medium", "low", "lowest", "potato", "bare"];   // bare (10-09): no textures, flat colours, simplest light, no shadows
 const urlQ = new URLSearchParams(location.search).get("quality");
 const IS_TOUCH = window.matchMedia("(pointer: coarse)").matches || urlQ === "mobile";   // touch layout, separate from graphics
 // THE PHONE VERSION (owner, 2026-10-09: "different versions for phone — it auto-detects and does the phone thing"): a phone ALWAYS runs
