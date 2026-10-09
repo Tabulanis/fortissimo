@@ -1,0 +1,26 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1280px;height:720px;border:0"></iframe>
+<script type="module">
+// HOW MUCH is hidden behind walls (10-09, before building per-station visibility): every mesh the camera would draw gets its own flat
+// colour, the view is rendered once, and the colours that reach the screen are counted. drawn - seen = what occlusion culling could save.
+const P = new URLSearchParams(location.hash.slice(1)), f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => { const w = f.contentWindow; await wait(17000); const out = {};
+  try { const S = w.__gr.stage3d, R = S.debugPasses.renderer, sc = S.scene, T = await import("three");
+    for (const st of ["drums", "bass", "treble"]) {
+      S.setStation(st); await wait(1500);
+      const cam = S.camera, fr = new T.Frustum().setFromProjectionMatrix(new T.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+      const list = [], saved = [];
+      sc.traverseVisible((o) => { if (!o.isMesh || !o.layers.test(cam.layers)) return; if (o.frustumCulled && !fr.intersectsObject(o)) return;
+        const id = list.length + 1; list.push(o); saved.push(o.material);
+        o.material = new T.MeshBasicMaterial({ color: new T.Color(((id >> 16) & 255) / 255, ((id >> 8) & 255) / 255, (id & 255) / 255), side: (Array.isArray(saved[id - 1]) ? 0 : saved[id - 1].side), toneMapped: false }); });
+      const rt = new T.WebGLRenderTarget(640, 360); R.setRenderTarget(rt); const bg = sc.background, fog = sc.fog; sc.background = null; sc.fog = null;
+      const om = R.outputColorSpace; R.render(sc, cam); R.setRenderTarget(null); sc.background = bg; sc.fog = fog;
+      const px = new Uint8Array(640 * 360 * 4); R.readRenderTargetPixels(rt, 0, 0, 640, 360, px);
+      const seen = new Set(); for (let i = 0; i < px.length; i += 4) { const id = (px[i] << 16) | (px[i + 1] << 8) | px[i + 2]; if (id) seen.add(id); }
+      list.forEach((o, i) => { o.material.dispose(); o.material = saved[i]; });
+      const hid = {}; list.forEach((o, i) => { if (!seen.has(i + 1)) { let t = o; while (t.parent && t.parent !== sc) t = t.parent; hid[t.name || t.type] = (hid[t.name || t.type] || 0) + 1; } });
+      out[st] = { drawn: list.length, seen: seen.size, hiddenBy: hid };
+    }
+  } catch (e) { out.err = String(e) + e.stack; }
+  fetch("http://127.0.0.1:8899/occlpot", { method: "POST", body: JSON.stringify(out) }); };
+f.src = "/?quality=medium";
+</script>

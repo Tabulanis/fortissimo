@@ -13,6 +13,7 @@
             band at the hinge so the skin stretches instead of tearing
    One loaded geometry; each head is its own SkinnedMesh + Skeleton (clone), so the three
    heads move on their own. API per head: setSway(t), bite(now), jaw(open 0..1), group. */
+import { gltfLoader } from "./gltf.js";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { bootlog } from "../bootlog.js";
@@ -31,7 +32,7 @@ export const RIG = {
 let loaded = null;   // { geometry, material, bounds }
 export function loadHydraHead(url = "/models/HydraHead.glb") {
   if (loaded) return Promise.resolve(loaded);
-  return new Promise((resolve, reject) => new GLTFLoader().load(url, (g) => {
+  return new Promise((resolve, reject) => gltfLoader().load(url, (g) => {
     let mesh = null; g.scene.traverse((o) => { if (o.isMesh && !mesh) mesh = o; });
     mesh.updateWorldMatrix(true, false);
     const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);   // bake the file's node transform

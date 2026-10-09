@@ -12,6 +12,7 @@
  * createTroops(scene, { court(side) -> {fwd, right}, center, layer })
  *   -> { spawn(enemy), kill(enemy, by), bossHit(enemy), update(dt), debug() }
  */
+import { gltfLoader } from "./gltf.js";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { attachAxe, setAxeGrip } from "./axe.js";
@@ -108,13 +109,13 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
       walk: src === mino ? "Walking" : Math.random() < 0.5 ? "Walking" : "Spear_Walk", clips: src.clips, kind: src === mino ? "minotaur" : "soldier" };
   };
   const attachModel = (r) => { r.models = r.models || {}; r.models.soldier = makeModel(sent); r.model = r.model || r.models.soldier; };
-  if (models) new GLTFLoader().load("/models/Sentinel.glb", (gltf) => {
+  if (models) gltfLoader().load("/models/Sentinel.glb", (gltf) => {
     sent.template = gltf.scene;
     gltf.scene.traverse((o) => { if (o.isMesh && o.material) { o.material.emissive = new THREE.Color(0x3a2418); o.material.emissiveIntensity = 0.55; } });   // a little self-light: they read in the dusk shade
     for (const c of gltf.animations) sent.clips[c.name] = c;
     for (const r of rigs) attachModel(r);
   }, undefined, (err) => console.warn("Sentinel model failed to load — the box soldiers stand in", err));
-  if (models) new GLTFLoader().load("/models/MinotaurRig.glb", (gltf) => {
+  if (models) gltfLoader().load("/models/MinotaurRig.glb", (gltf) => {
     mino.template = gltf.scene;
     gltf.scene.traverse((o) => { if (o.isMesh && o.material) { o.material.emissive = new THREE.Color(0x3a2418); o.material.emissiveIntensity = 0.45; } });
     for (const c of gltf.animations) mino.clips[c.name] = c;
@@ -167,7 +168,7 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
   // it lumbers, Attack at the wall, Double_Combo_Attack when it thrashes, Hit_Reaction when the
   // lightning lands; no death clip, so it topples. The box rig stays as the fallback.
   const cyc = { root: null, mixer: null, clips: {}, action: null, name: null, once: null, hitMat: [], topple: 0 };
-  new GLTFLoader().load("/models/Cyclops.glb", (gltf) => {
+  gltfLoader().load("/models/Cyclops.glb", (gltf) => {
     cyc.root = gltf.scene; cyc.root.visible = false; scene.add(cyc.root);
     cyc.root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; if (o.material) { o.material.emissive = new THREE.Color(0, 0, 0); cyc.hitMat.push(o.material); } } });
     cyc.mixer = new THREE.AnimationMixer(cyc.root);

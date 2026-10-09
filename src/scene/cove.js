@@ -8,6 +8,7 @@
    the back wall is at z = +8.6; the cove runs +z from there. Named groups so pieces can
    be swapped one at a time: "beach", "sea", "cliff-left", "cliff-right", "dock", "ship",
    "booth". BOOTH_POS is where the player stands for round 4. */
+import { gltfLoader } from "./gltf.js";
 import * as THREE from "three";
 import { bootlog } from "../bootlog.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -56,7 +57,7 @@ export function createCove(scene) {
   // HIS MESHY CLIFFS + RUINS (2026-10-07) replace the placeholder box cliffs, which stay built but hidden
   for (const n of ["cliff-left", "cliff-right"]) { const o = root.getObjectByName(n); if (o) o.visible = false; }
   root.traverse((o) => { if (o.name === "spur") o.visible = false; });
-  const placeModel = (url, spots, height) => new GLTFLoader().load(url, (gltf) => {
+  const placeModel = (url, spots, height) => gltfLoader().load(url, (gltf) => {
     const src = gltf.scene; src.updateMatrixWorld(true);
     const bb = new THREE.Box3().setFromObject(src), size = bb.getSize(new THREE.Vector3()), k = height / size.y;
     spots.forEach(({ x, y = 0, z, yaw = 0, s = 1, id, label }) => {
@@ -103,7 +104,7 @@ export function createCove(scene) {
     src.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     return bb;
   };
-  new GLTFLoader().load("/models/NewDock.glb", (gltf) => {
+  gltfLoader().load("/models/NewDock.glb", (gltf) => {
     const src = gltf.scene; src.updateMatrixWorld(true);
     const len = new THREE.Box3().setFromObject(src).getSize(new THREE.Vector3()).x, k = 23 / len;   // = props FIT NewDock { width: 23 }
     const bb = propLayout(src, k), cz = (bb.min.z + bb.max.z) / 2;
@@ -117,7 +118,7 @@ export function createCove(scene) {
   // HIS ALTAR (2026-10-08, meshy/alter/alter.glb → public/models/Altar.glb): "put that at the end of the dock — I'll move it —
   // that will be the end hydra play area". A stepped stone altar rising out of the water past the dock's end, its stairs facing
   // the dock. ROUND 4 IS PLAYED ON ITS TOP, wherever he moves it: stage3d.playSpot() reads root.userData.altar.
-  new GLTFLoader().load("/models/Altar.glb", (gltf) => {
+  gltfLoader().load("/models/Altar.glb", (gltf) => {
     const src = gltf.scene; src.updateMatrixWorld(true);
     const size = new THREE.Box3().setFromObject(src).getSize(new THREE.Vector3()), k = 7 / size.x;   // = props FIT Altar { width: 7 }
     propLayout(src, k);
@@ -129,7 +130,7 @@ export function createCove(scene) {
     root.userData.altar = pivot;
     bootlog("placed Altar.glb", { scale: +k.toFixed(2), top: +(pivot.position.y + size.y * k).toFixed(2) });
   }, undefined, (e) => console.warn("Altar.glb failed to load", e));
-  new GLTFLoader().load("/models/AncientShip.glb", (gltf) => {
+  gltfLoader().load("/models/AncientShip.glb", (gltf) => {
     const src = gltf.scene; src.updateMatrixWorld(true);
     const k = 16 / new THREE.Box3().setFromObject(src).getSize(new THREE.Vector3()).x;   // = props FIT AncientShip { width: 16 }
     propLayout(src, k);

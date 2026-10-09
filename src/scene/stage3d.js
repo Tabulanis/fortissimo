@@ -5,6 +5,8 @@
    notes), arcing in so they are always seen side-on. All effect lighting
    is fake: additive sprite flames and glows, no PointLights. */
 
+import { gltfLoader, initModelLoader } from "./gltf.js";
+import KTX_LIST from "./ktx-list.json";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { createCourtyard, ARCHER_ROOF_Y, ARCHER_ROOF_X, ARCHER_ROOF_Z, FAR_WALL } from "./courtyard.js";
@@ -133,7 +135,15 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // SMALL TEXTURES (owner, 2026-10-03: "cut the size for textures in lowest mode to 512"):
   // lowest and potato load public/small/ instead — every texture and model image at most
   // 512 px (tools/make-small-assets.py makes them). Every loader here uses the default manager.
-  THREE.DefaultLoadingManager.setURLModifier((url) => (TIER === "lowest" || POTATO) && /^\/(textures|models)\//.test(url) ? "/small" + url : url);
+  // GPU-COMPRESSED MODELS (10-09 speed pass): medium and every phone load public/ktx/models/ — KTX2 textures that stay compressed on the
+  // chip (tools/make-ktx-assets.sh; only the models in its list, so a new one with no copy yet loads its original). High keeps the originals.
+  const KTX_SET = new Set(KTX_LIST), KTX = MOBILE && !(TIER === "lowest" || POTATO) && !new URLSearchParams(location.search).has("noktx");
+  initModelLoader(renderer);
+  THREE.DefaultLoadingManager.setURLModifier((url) => {
+    if ((TIER === "lowest" || POTATO) && /^\/(textures|models)\//.test(url)) return "/small" + url;
+    const m = KTX && /^\/models\/([^/?]+\.glb)$/.exec(url);
+    return m && KTX_SET.has(m[1]) ? "/ktx" + url : url;
+  });
   {
     const gl = renderer.getContext();
     const dbg = gl.getExtension("WEBGL_debug_renderer_info");
@@ -2838,7 +2848,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // aiming at the same points. The coloured cylinders stand in until it loads;
   // then they hide and drumMat/drumMeshes point at the model's clones, so the
   // press flash, fades and spirit pulses work on the real drum.
-  new GLTFLoader().load("/models/Bdrum.glb", (gltf) => {
+  gltfLoader().load("/models/Bdrum.glb", (gltf) => {
     const src = gltf.scene;
     src.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(src);

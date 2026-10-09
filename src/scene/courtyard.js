@@ -11,6 +11,7 @@
      colonnades       columns at x = ±6.8, every 3.2 m from z = +1 to -42
      colonnade roofs  y = 7.4  (archers stand on the inner edge, x = ±6.3)
      far building     wall at z = -46, 5.6 m tall, open arch in the middle */
+import { gltfLoader } from "./gltf.js";
 import * as THREE from "three";
 import { bootlog } from "../bootlog.js";
 import { POOL } from "./pool.js";
@@ -234,7 +235,7 @@ export function createCourtyard(scene) {
 
   bootlog("courtyard: geometry done");
   // --- columns: the owner's Pillar.glb, scaled to 6.3 m, every court
-  new GLTFLoader().load("/models/Pillar.glb", (gltf) => {
+  gltfLoader().load("/models/Pillar.glb", (gltf) => {
     const src = gltf.scene;
     src.updateMatrixWorld(true);
     const bb = new THREE.Box3().setFromObject(src);
@@ -256,7 +257,7 @@ export function createCourtyard(scene) {
   // --- the owner's Meshy pieces (2026-10-06), lean copies made by tools/slim-glb.py.
   // placeGlb: load once, drop a clone at each spot — fit = { width | height } in metres,
   // bottom on the floor at y, centred on x/z, turned by yaw (glTF front = +z).
-  const placeGlb = (url, spots, fit) => new GLTFLoader().load(url, (gltf) => {
+  const placeGlb = (url, spots, fit) => gltfLoader().load(url, (gltf) => {
     const src = gltf.scene;
     src.updateMatrixWorld(true);
     const bb = new THREE.Box3().setFromObject(src), size = bb.getSize(new THREE.Vector3());

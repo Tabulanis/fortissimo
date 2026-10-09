@@ -1,0 +1,12 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+// did the GPU-compressed models load? textures in the scene: compressed vs plain, and the estimated GPU memory of the plain ones (10-09)
+const P = new URLSearchParams(location.hash.slice(1)), f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => { const w = f.contentWindow; await wait(17000); const out = { compressed: 0, plain: 0, plainMB: 0, compMB: 0, formats: {} }, seen = new Set();
+  try { w.__gr.stage3d.scene.traverse((o) => { for (const m of [].concat(o.material || [])) for (const k in m) { const t = m[k]; if (!t || !t.isTexture || seen.has(t)) continue; seen.add(t);
+    if (t.isCompressedTexture) { out.compressed++; out.formats[t.format] = (out.formats[t.format] || 0) + 1; const mp = t.mipmaps && t.mipmaps.reduce((a, b) => a + b.data.byteLength, 0); out.compMB += (mp || 0) / 1048576; }
+    else if (t.image && t.image.width) { out.plain++; out.plainMB += t.image.width * t.image.height * 4 * 1.33 / 1048576; } } });
+    out.plainMB = +out.plainMB.toFixed(1); out.compMB = +out.compMB.toFixed(1); out.info = w.__gr.stage3d.debugPasses.renderer.info.memory; } catch (e) { out.err = String(e); }
+  fetch("http://127.0.0.1:8899/ktxcheck", { method: "POST", body: JSON.stringify(out) }); };
+f.src = "/?quality=medium" + (P.get("x") ? "&" + P.get("x") : "");
+</script>

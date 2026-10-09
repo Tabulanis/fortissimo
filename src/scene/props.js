@@ -4,6 +4,7 @@
    id "add#N". Added props live in the same layout file as the edits (public/levels/edits.json) with
    an extra field: { add: "Cliffs", p, q, s }, and are rebuilt on every load by spawnSaved().
      createProps(scene, { braziers }) -> { spawn(kind, at, id?), spawnSaved(edits), remove(obj), kinds() } */
+import { gltfLoader } from "./gltf.js";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { register, unregister, isRegistered } from "./editables.js";
@@ -18,7 +19,7 @@ export function createProps(scene, { braziers }) {
   const root = new THREE.Group(); root.name = "props"; scene.add(root);
   const cache = new Map();   // model name -> Promise<{ src, bb }>
   const load = (name) => {
-    if (!cache.has(name)) cache.set(name, new Promise((res, rej) => new GLTFLoader().load(`/models/${name}.glb`, (g) => {
+    if (!cache.has(name)) cache.set(name, new Promise((res, rej) => gltfLoader().load(`/models/${name}.glb`, (g) => {
       const src = g.scene; src.updateMatrixWorld(true);
       res({ src, bb: new THREE.Box3().setFromObject(src) });
     }, undefined, rej)));
