@@ -28,9 +28,30 @@
         z-index: 10;
       }
       #hud { position: fixed; left: 0; bottom: 4px; padding: 2px 8px; font: 11px monospace; color: #8f8; opacity: 0.55; z-index: 20; pointer-events: none; }
+      /* THE LOADING SCREEN (src/ui/loading.js drives it): on screen before any script runs, fades out when the stage is ready */
+      #gr-loading { position: fixed; inset: 0; z-index: 90; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+        background: radial-gradient(ellipse at 50% 40%, #3a1410 0%, #120709 60%, #000 100%); color: #f4e9dc; font-family: system-ui, sans-serif;
+        transition: opacity 0.6s ease; }
+      #gr-loading.out { opacity: 0; pointer-events: none; }
+      #gr-loading img { width: min(26vh, 140px); height: auto; border-radius: 22%; box-shadow: 0 12px 40px rgba(0,0,0,0.6); }
+      #gr-loading h1 { margin: 6px 0 0; font-size: clamp(30px, 6vh, 48px); letter-spacing: 3px; color: #ffd27a; font-weight: 800; }
+      #gr-loading .tag { margin: 0; opacity: 0.6; font-size: clamp(13px, 2.2vh, 16px); }
+      #gr-loading .bar { width: min(60vw, 360px); height: 8px; margin-top: 18px; border-radius: 4px; background: rgba(255,210,122,0.15); overflow: hidden; }
+      #gr-loading .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffb050, #ffd27a); transition: width 0.3s ease; }
+      #gr-loading .status { min-height: 2.6em; font-size: 13px; opacity: 0.7; text-align: center; }
+      #gr-loading .status button { font: inherit; margin-top: 8px; padding: 8px 18px; border-radius: 8px; color: #fff; background: rgba(255,160,80,0.3); border: 1px solid rgba(255,190,120,0.5); }
+      #gr-loading .ver { position: absolute; right: 12px; bottom: 10px; font-size: 11px; opacity: 0.4; }
     </style>
   </head>
   <body>
+    <div id="gr-loading">
+      <img src="/app/icon-512.png" alt="" />
+      <h1>FORTISSIMO</h1>
+      <p class="tag">You are the instrument.</p>
+      <div class="bar"><i></i></div>
+      <div class="status">Loading</div>
+      <div class="ver"></div>
+    </div>
     <canvas id="stage"></canvas>
     <canvas id="chart"></canvas>
     <div id="hud"></div>

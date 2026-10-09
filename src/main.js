@@ -27,6 +27,7 @@ import { normalize, judgeFor, simplifyNotes, scoreMultiplier, levelOf, LEVELS } 
 import { fillKit, kitPlan } from "./game/kit.js";
 const runName = (r) => { const lv = levelOf(r); return lv ? `Level ${lv}` : "Custom"; };
 import { createMenu } from "./ui/menu.js";
+import { createLoading } from "./ui/loading.js";
 import { pickSounds } from "./ui/maker-ui.js";
 import { createMode } from "./modes/create.js";
 import { hydraMode } from "./modes/hydra.js";
@@ -116,6 +117,8 @@ if (import.meta.env.DEV) { const sec = +new URLSearchParams(location.search).get
     frames = 0;
   }, 5000); }
 if (IS_TOUCH) document.documentElement.classList.add("touch");   // touch layout (no keyboard hints)
+const loading = createLoading();   // the loading screen (index.html) — lifted once the stage is built and the files have landed
+{ const v = document.querySelector("#gr-loading .ver"); if (v) v.textContent = `v${typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev"}`; }
 window.__gr = import.meta.env.DEV ? {} : null;   // debug handle for the browser harness (stage3d joins it when built) — never in a release
 
 // --- the song: parts unlock two drums at a time; the ghost bell locks them ---
@@ -1627,6 +1630,7 @@ function buildStage() {
   stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR, { tier: TIER, kit: plan, touch: IS_TOUCH, phone: PHONE });
   bootlog("device", { phone: PHONE, touch: IS_TOUCH, tier: TIER });
   bootlog("stage3d built", { round: roundIdx + 1, kit: plan });
+  loading.stageBuilt();
   if (new URLSearchParams(location.search).has("fly")) setTimeout(() => {   // dev: start in the free camera; &cam=x,y,z,yaw,pitch puts it somewhere exact
     toggleFly();
     const cam = new URLSearchParams(location.search).get("cam");
