@@ -1,0 +1,11 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+// the glue comes apart in the editor and back after (10-09): glued pieces / hidden originals, play → fly → play
+const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => { const w = f.contentWindow; await wait(9000); const out = {};
+  try { const S = w.__gr.stage3d, sc = S.scene, count = () => { let glued = 0, hid = 0; sc.traverse((o) => { if (o.userData.batched) glued++; }); sc.getObjectByName("courtyard").traverse((o) => { if (o.isMesh && !o.visible) hid++; }); return { glued, hid }; };
+    out.play = count(); S.setFly(true); await wait(300); out.fly = count(); S.setFly(false); await wait(300); out.back = count();
+  } catch (e) { out.err = String(e); }
+  fetch("http://127.0.0.1:8899/batchfly", { method: "POST", body: JSON.stringify(out) }); };
+f.src = "/?quality=medium";
+</script>

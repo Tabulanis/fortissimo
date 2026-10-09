@@ -82,6 +82,11 @@ const DRUM_COLOR = {
 const TIERS = ["high", "medium", "low", "lowest", "potato"];
 const urlQ = new URLSearchParams(location.search).get("quality");
 const IS_TOUCH = window.matchMedia("(pointer: coarse)").matches || urlQ === "mobile";   // touch layout, separate from graphics
+// THE PHONE VERSION (owner, 2026-10-09: "different versions for phone — it auto-detects and does the phone thing"): a phone ALWAYS runs
+// the phone path (no full-screen effects, plain fountain, phone sea, small shadow maps…) whatever the graphics setting says; the
+// setting only adjusts quality inside it. ?device=phone forces it (tests).
+const PHONE = new URLSearchParams(location.search).get("device") === "phone"
+  || (IS_TOUCH && (Math.min(screen.width, screen.height) < 600 || /Android|iPhone|iPod|Mobile/i.test(navigator.userAgent)));
 const AUTO_GFX = !urlQ && (SET.quality || "auto") === "auto";
 let savedTier = null;
 try { savedTier = localStorage.getItem("gr.autoTier"); } catch { /* storage blocked: guess each time */ }
@@ -98,7 +103,7 @@ stage.addEventListener("webglcontextlost", () => bootlog("WEBGL CONTEXT LOST"));
   const snap = () => { const c = stage.tagName === "CANVAS" ? stage : stage.querySelector("canvas");   // #stage is the canvas itself
     if (!c) { bootlog("shot", { error: "no canvas" }); return; }
     let png = ""; try { png = c.toDataURL("image/png"); } catch (e) { bootlog("shot", { error: String(e) }); return; }
-    fetch(`http://127.0.0.1:8899/png/game-${face || "drums"}`, { method: "POST", body: png })
+    fetch(`http://127.0.0.1:8899/png/game-${face || "drums"}${new URLSearchParams(location.search).get("tag") ? "-" + new URLSearchParams(location.search).get("tag") : ""}`, { method: "POST", body: png })
       .then((r) => bootlog("shot", { face, bytes: png.length, sink: r.status }), (e) => bootlog("shot", { face, bytes: png.length, error: String(e) })); };
   if (sec > 0) setTimeout(() => { if (face && stage3d) { stage3d.setStation(face); setTimeout(snap, 1500); } else snap(); }, sec * 1000); }
 // once running: a heartbeat with the frame rate, so a later crash shows when
@@ -1619,7 +1624,8 @@ const startBtn = makeStartButton();
 function buildStage() {
   const s = SONGS[roundIdx] || SONGS[0];
   const plan = CREATE ? kitPlan(KIT_GROUPS) : kitPlan(kitFor(s).present);   // creating: every slot built (the song is empty)
-  stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR, { tier: TIER, kit: plan, touch: IS_TOUCH });
+  stage3d = createStage3D(stage, LAYOUT, DRUM_COLOR, { tier: TIER, kit: plan, touch: IS_TOUCH, phone: PHONE });
+  bootlog("device", { phone: PHONE, touch: IS_TOUCH, tier: TIER });
   bootlog("stage3d built", { round: roundIdx + 1, kit: plan });
   if (new URLSearchParams(location.search).has("fly")) setTimeout(() => {   // dev: start in the free camera; &cam=x,y,z,yaw,pitch puts it somewhere exact
     toggleFly();

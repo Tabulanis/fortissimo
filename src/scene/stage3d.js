@@ -27,6 +27,7 @@ import { createStation, BAR_MID_Z, BARS, PER_ROW } from "./stations.js";
 import { createDefense } from "./defense.js";
 import { createTroops } from "./troops.js";
 import { createPool, poolContains, POOL } from "./pool.js";
+import { createBatcher } from "./batcher.js";
 import { bootlog } from "../bootlog.js";
 
 const APPROACH_S = 4.0;   // seconds of visible flight (rocket arrows: a bit slower, owner) — must match main.js
@@ -124,7 +125,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   //   lowest  low + 0.7x render resolution, textures at most 512 px
   //   potato  lowest + half resolution, a cheap shield, a small fire, no decoy arrows
   //           (owner, 2026-10-03: the tablet "can barely play it")
-  const MOBILE = TIER !== "high";                     // medium and below
+  const PHONE = !!opts.phone;                          // THE PHONE VERSION (main.js): always the phone path, any tier
+  const MOBILE = TIER !== "high" || PHONE;            // medium and below — and every phone
   const LOW = TIER === "low" || TIER === "lowest" || TIER === "potato";
   const POTATO = TIER === "potato";
   // SMALL TEXTURES (owner, 2026-10-03: "cut the size for textures in lowest mode to 512"):
@@ -293,7 +295,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     afterglow.shadow.autoUpdate = false; afterglow.shadow.needsUpdate = true;
     const sc = afterglow.shadow.camera, R = 58;
     sc.left = -R; sc.right = R; sc.top = R; sc.bottom = -R; sc.near = 1; sc.far = 260;   // the whole courtyard and the cove
-    afterglow.shadow.mapSize.set(MOBILE ? 2048 : 4096, MOBILE ? 2048 : 4096);
+    afterglow.shadow.mapSize.set(PHONE ? 1024 : MOBILE ? 2048 : 4096, PHONE ? 1024 : MOBILE ? 2048 : 4096);
     afterglow.shadow.bias = -0.0004; afterglow.shadow.normalBias = 0.04;
     afterglow.shadow.radius = 5;   // soft edges: a low sun through dusty air (owner 10-08: "blurry shadows a bit")
   }
@@ -391,9 +393,34 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // hard, tinted a cool blue and added over the finished picture — a magic halo
   // on the shield only, nothing else blooms more than before
   const SHIELD_LAYER = 2;
+  // THE SHIELD GLOW'S BLOCKERS (10-09 speed pass): the glow is hidden behind solid things in front of it, and only things near
+  // you can stand in front of a shield, a gun's orb or a crystal — so that black pass draws only solid meshes within OCC_RANGE
+  // of the camera (re-picked whenever the camera has moved 2 m), plus the enemies (animated or instanced: they walk right up)
+  const OCC_LAYER = 3, OCC_RANGE = new URLSearchParams(location.search).has("occfull") ? 1e9 : 4;   // ?occfull: the old whole-scene pass, to compare   // the dome is 3.4 m round (0,0,0.3), the stations' cameras stand near its middle
+  const _occAt = new THREE.Vector3(1e9, 0, 0), _occB = new THREE.Box3();
+  let glowers = null;   // everything on the glow channel (built once, after the scene is up)
+  const shown = (o) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
+  function glowShowing() {
+    if (!glowers) { glowers = []; scene.traverse((o) => { if (o.layers.isEnabled(SHIELD_LAYER) && (o.isMesh || o.isSprite || o.isLine || o.isPoints)) glowers.push(o); }); }
+    for (const o of glowers) if (shown(o)) return true;
+    return false;
+  }
+  function tagOccluders(force) {
+    if (!force && camera.position.distanceToSquared(_occAt) < 4) return;
+    _occAt.copy(camera.position); scene.updateMatrixWorld();   // (the first pick ran before anything was placed: all at the origin, all 'near')
+    scene.traverse((o) => {
+      if (!o.isMesh) return;
+      if (o.isSkinnedMesh || o.isInstancedMesh) { o.layers.enable(OCC_LAYER); return; }
+      if (!o.layers.isEnabled(0) || !o.geometry) { o.layers.disable(OCC_LAYER); return; }
+      if (o.material && o.material.side === THREE.BackSide) { o.layers.disable(OCC_LAYER); return; }   // a sky dome: behind everything
+      if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();   // a box, not a sphere: a 38 m wall's sphere reaches you from 27 m off
+      _occB.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld);
+      if (_occB.distanceToPoint(_occAt) < OCC_RANGE) o.layers.enable(OCC_LAYER); else o.layers.disable(OCC_LAYER);
+    });
+  }
   let shieldGlow = null, shieldCamera = null, shieldOccCamera = null, shieldMix = null, shieldOnly = false;
   let composer = null, gtao = null, bloom = null, lens = null, smaa = null;
-  if (!LOW) {
+  if (!LOW && !PHONE) {   // (10-09) PHONES: no effects chain — the scene drawn once, straight to the screen (bloom etc. were full-screen passes)
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   // glowing effects (sprites, additive cards) live on layer 1 and render in
@@ -434,7 +461,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     // real scene as flat black, depth and all — whatever stands in front of the dome
     // (drums, guns, sticks) hides it here too, so the glow only rises from shield you see
     shieldOccCamera = camera.clone();
-    shieldOccCamera.layers.set(0);
+    shieldOccCamera.layers.set(OCC_LAYER);   // (10-09 speed pass) only what's NEAR — it was the whole scene again, a third of every frame
     const occ = new RenderPass(scene, shieldOccCamera, new THREE.MeshBasicMaterial({ color: 0x000000 }));
     occ.clearColor = new THREE.Color(0x000000); occ.clearAlpha = 1;
     shieldGlow.addPass(occ);
@@ -497,7 +524,16 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   editsLoaded.then(() => { const L = getSetting("lighting"); if (L) lighting.set(L); refreshSunShadow(); });
   // the sun's shadow map is redrawn when asked (static shadows, above) — and a few times while the models stream in
   function refreshSunShadow() { afterglow.shadow.needsUpdate = true; }
-  for (const ms of [1500, 4000, 8000, 15000]) setTimeout(refreshSunShadow, ms);   // his saved lighting (the editor's Lighting section) editsLoaded.then((e) => bootlog("level edits", { n: Object.keys(e).length }));   // the saved layout, applied as each piece registers
+  for (const ms of [1500, 4000, 8000, 15000]) setTimeout(() => { rebatch(); refreshSunShadow(); }, ms);
+  editsLoaded.then((e) => bootlog("level edits", { n: Object.keys(e).length }));   // the saved layout, applied as each piece registers
+  // THE GLUE (batcher.js, 10-09 speed pass): while you play, the town's small still pieces are drawn a material at a time;
+  // in the editor they come apart. Re-glued as the models stream in (the timers above) and when you leave the editor.
+  let batcher = null;
+  function rebatch() {
+    if (!batcher || fly.on || new URLSearchParams(location.search).has("nobatch")) return;
+    const t = performance.now();
+    if (batcher.build()) bootlog("batched", { ...batcher.stats, ms: Math.round(performance.now() - t) });
+  }
   const cove = createCove(scene), sea = cove.userData.sea;
   // (10-08, MEASURED on his phone with ?seatest: the full sea shader won't LINK there; dropping ANY ONE of the per-vertex parts —
   // cloth, chop height, ripple rings — links it. Phones drop the vertex chop HEIGHT: a few cm of bump; the chop you see is per pixel)
@@ -564,6 +600,31 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     camera.lookAt(_cineLook);
     if (u >= 1) { st.yaw = STATIONS.sea.yaw; st.pitch = STATIONS.sea.pitch; const f = cine.onDone; cine = null; if (f) f(); }
   }
+  // ZONES (owner, 2026-10-09: "don't draw things we can't see"): in rounds 1-3 (the courtyard stations) the whole COVE behind the sea
+  // wall is out of sight — measured: at the bass guns it was still being drawn, past the walls — so it isn't drawn at all; the
+  // to-do's "gate" view, the altar and the editor show everything. (At the altar the courtyard is behind you: the camera already
+  // skips it.) Hidden things cast no shadow, so the static sun shadows are redrawn on each change.
+  const COURT_STATIONS = new Set(["drums", "bass", "treble"]);
+  let zoneHidden = null; const zoneHid = new Set();
+  const NOZONE = new URLSearchParams(location.search).has("nozone");
+  function applyZone() {
+    if (NOZONE) return;   // ?nozone — measuring what the zone rule saves
+    const hideCove = COURT_STATIONS.has(station) && !fly.on;
+    if (hideCove === zoneHidden) return;
+    zoneHidden = hideCove;
+    const inCove = (o) => { o.updateMatrixWorld(); return o.getWorldPosition(_zp).z > COVE.wallZ; };
+    if (hideCove) {   // hide what's in the cove and visible now — and remember exactly those (what HE hid stays hidden)
+      const take = (o) => { if (o.visible) { o.visible = false; zoneHid.add(o); } };
+      for (const o of scene.children) {
+        if (["cove", "sea", "hydra", "acid", "altar-kit"].includes(o.name)) take(o);
+        else if (o.name === "props" || o.name === "braziers") { for (const c of o.children) if (inCove(c)) take(c); }
+        else if (o.name.startsWith("station-") && inCove(o)) take(o);   // round 4's gun station on the altar
+      }
+    } else { for (const o of zoneHid) o.visible = true; zoneHid.clear(); }
+    if (typeof refreshSunShadow === "function") refreshSunShadow();
+    bootlog("zone", { hideCove });
+  }
+  const _zp = new THREE.Vector3();
   const hydra = createHydra(scene, { origin: new THREE.Vector3(0, -4.6, DOCK.z1 + 7.5), target: BOOTH_POS.clone().setY(2.2), sea });   // close (owner): bases under the water, necks stretched, never reaching further
   if (new URLSearchParams(location.search).has("hydra")) hydra.rise();
   { const b = new URLSearchParams(location.search).get("bite");   // dev: &bite=1 bites every 3 s, heads in turn; &bite=hold freezes the middle head at full lunge
@@ -740,6 +801,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // the FIRE BASINS that light the town (braziers.js): real lights only on the nearest few
   const braziers = createBraziers(scene, { fireSim, fireTexture, flameTexture, layer: FX_LAYER,
     lights: LOW ? 0 : MOBILE ? 2 : 4, particles: !LOW, rate: MOBILE ? 0.5 : 1 });
+  batcher = createBatcher(scene, { roots: () => [courtyard, scene.getObjectByName("braziers")], maxZ: COVE.wallZ,
+    skip: (o) => o.userData && o.userData.editId === "gate-sea" });   // the sea gate rises at the big to-do
   // THE LIGHTING KNOBS (owner, 2026-10-08: "may as well put lighting settings in the editor") — the dev editor's Lighting
   // section drives these live; saved in the layout file as "_lighting" and applied when the layout loads
   const LIGHT_DEFAULTS = { sun: 2.6, sunHeight: 9.5, shadowBlur: 5, sky: 0.26, reflections: 0.25, exposure: 1.15, fires: 1 };
@@ -2207,6 +2270,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   let editor = null;
   function setFly(on) {
     fly.on = !!on; fly.keys.clear();
+    if (batcher) { if (fly.on) { batcher.dissolve(); refreshSunShadow(); } else { rebatch(); refreshSunShadow(); } }   // the editor sees every piece
+    applyZone();   // the editor sees everything; back in play, the zone rule again
     if (fly.on) { fly.pos.copy(camera.position); _eul.setFromQuaternion(camera.quaternion, "YXZ"); fly.yaw = _eul.y; fly.pitch = _eul.x; }
     if (fly.on && !editor) import("../dev/editor.js").then(({ createEditor }) => {
       editor = createEditor({ scene, camera, dom: renderer.domElement, props, lighting, shadowsChanged: () => refreshSunShadow(), log: (step, data) => bootlog("editor " + step, data) });
@@ -2642,9 +2707,12 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     if (vrOn() || !composer) renderer.render(scene, camera);
     else {
       lens.uniforms.time.value = performance.now() % 1000;
-      if (shieldGlow) {   // the shield's own glow first, from the same view
+      if (shieldGlow && !glowShowing()) shieldMix.enabled = false;   // (10-09) nothing glowing in sight: no glow passes at all
+      else if (shieldGlow) {   // the shield's own glow first, from the same view
+        shieldMix.enabled = true;
         shieldCamera.position.copy(camera.position); shieldCamera.quaternion.copy(camera.quaternion);
         shieldCamera.projectionMatrix.copy(camera.projectionMatrix); shieldCamera.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
+        tagOccluders();
         for (const c of [shieldOccCamera]) { c.position.copy(camera.position); c.quaternion.copy(camera.quaternion); c.projectionMatrix.copy(camera.projectionMatrix); c.projectionMatrixInverse.copy(camera.projectionMatrixInverse); }
         shieldGlow.renderToScreen = shieldOnly;   // harness: show the channel alone
         shieldGlow.render();
@@ -2780,6 +2848,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     setStation(name) {
       if (!STATIONS[name]) return;
       if (name === "sea") usePlaySpot();   // round 4 stands on his altar, wherever it is now
+      applyZone();
       station = name;
       if (!MOBILE && !LOW) lantern.castShadow = name === "drums";   // the lantern lights the drums only: its shadows are wasted elsewhere
       restDir.copy(REST_DIR).applyAxisAngle(UP, STATIONS[name].yaw);

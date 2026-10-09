@@ -1,0 +1,23 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+// WHICH PASS makes the draw calls (10-09 speed pass): wraps renderer.render and the shadow-map render for two frames at a station
+const P = new URLSearchParams(location.hash.slice(1)), f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => { const w = f.contentWindow; await wait(9000); try {
+  const S = w.__gr.stage3d, R = S.debugPasses.renderer; S.setStation(P.get("st") || "drums"); await wait(1500);
+  const by = {}, add = (k, n) => { by[k] = (by[k] || 0) + n; };
+  R.info.autoReset = false; R.info.reset();
+  const sm = R.shadowMap, smr = sm.render.bind(sm);
+  sm.render = (lights, scene, cam) => { const a = R.info.render.calls; smr(lights, scene, cam); add("shadow:" + lights.map((l) => l.type + (l.name ? "/" + l.name : "")).join(","), R.info.render.calls - a); };
+  const rr = R.render.bind(R);
+  let depth = 0, inner = [0];   // nested renders (a mirror inside the main pass) are counted on their own and taken out of the outer one
+  R.render = (sc, cam) => { const k = "render:" + (sc.name || sc.type) + "/" + (cam.name || cam.type) + "/L" + cam.layers.mask + (sc.overrideMaterial ? "/override:" + sc.overrideMaterial.type : "") + (R.getRenderTarget() ? "/rt" + R.getRenderTarget().width : "") + "/d" + depth;
+    const a = R.info.render.calls; inner.push(0); depth++; rr(sc, cam); depth--; const mine = R.info.render.calls - a, nested = inner.pop(); inner[inner.length - 1] += mine; add(k, mine - nested); };
+  const objs = {}, rbd = R.renderBufferDirect.bind(R);   // per object, the main pass only (camera layer mask 1)
+  R.renderBufferDirect = (cam, sc, geo, mat, o, grp) => { if (cam.layers.mask === 1 && !sc.overrideMaterial) { let top = o; while (top.parent && top.parent.parent) top = top.parent;
+    const k = (top.name || top.type) + "|" + (o.name || o.type) + "|" + (mat.transparent ? "T" : "") + (mat.side === 2 ? "D" : ""); objs[k] = (objs[k] || 0) + 1; } return rbd(cam, sc, geo, mat, o, grp); };
+  await new Promise((res) => w.requestAnimationFrame(() => w.requestAnimationFrame(() => w.requestAnimationFrame(res))));
+  R.render = rr; sm.render = smr; R.renderBufferDirect = rbd; R.info.autoReset = true;
+  fetch("http://127.0.0.1:8899/passmap", { method: "POST", body: JSON.stringify({ st: P.get("st"), frames: 2, by, objs: Object.entries(objs).sort((a, b) => b[1] - a[1]).slice(0, 30) }) });
+} catch (e) { fetch("http://127.0.0.1:8899/passmap", { method: "POST", body: "ERR " + e }); } };
+f.src = `/?quality=${P.get("q") || "medium"}`;
+</script>

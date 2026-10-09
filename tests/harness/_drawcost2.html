@@ -11,5 +11,5 @@ f.onload = () => setTimeout(async () => { const w = f.contentWindow, S = w.__gr.
   R.shadowMap.autoUpdate = false; out.neither = await frame();
   fetch("http://127.0.0.1:8899/drawcost2", { method: "POST", body: JSON.stringify({ cam: P.get("cam"), ...out }) });
 }, 10000);
-f.src = `/?quality=${P.get("q") || "medium"}&fly=1&cam=${P.get("cam")}`;
+f.src = `/?quality=${P.get("q") || "medium"}&fly=1&cam=${P.get("cam")}${P.get("dev") ? "&device=" + P.get("dev") : ""}`;
 </script>

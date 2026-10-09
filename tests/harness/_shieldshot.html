@@ -1,0 +1,10 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1280px;height:720px;border:0"></iframe>
+<script type="module">
+// the shield up, photographed (10-09: its glow's blocker pass now draws only what's near) — #x=occfull&tag=old for the old way
+const P = new URLSearchParams(location.hash.slice(1)), f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => { const w = f.contentWindow; await wait(10000);
+  const S = w.__gr.stage3d, up = { progress: 1, up: true }; S.setShield({ drums: up, bass: up, treble: up }); if (P.has("only")) S.debugShieldOnly(true); await wait(2500);
+  const png = await new Promise((r) => w.requestAnimationFrame(() => r(w.document.querySelector("canvas").toDataURL("image/png"))));
+  fetch("http://127.0.0.1:8899/png/shield-" + (P.get("tag") || "new"), { method: "POST", body: png }); };
+f.src = "/?quality=" + (P.get("q") || "medium") + (P.get("x") ? "&" + P.get("x") : "");
+</script>

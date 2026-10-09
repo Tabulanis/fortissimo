@@ -52,7 +52,10 @@ export function createBraziers(scene, { fireSim, fireTexture, flameTexture, laye
     const flame = new THREE.Sprite(new THREE.SpriteMaterial({ map: fireTexture, color: 0xff8a30, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.85, fog: false }));
     flame.scale.set(1.2, 2.4, 1); flame.position.y = 2.5; flame.layers.set(layer); g.add(flame);
     // the light on the ground: a warm additive disc, flat on the paving
-    const glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ map: flameTexture, color: 0xff7a2a, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.55, fog: false }));
+    // (owner, 10-09: "make it additive so it doesn't look like fog") — LIGHT-STYLE: floor × (1 + colour × strength). Adding orange
+    // put a haze over dark stone too; multiplying brightens the paving by its own colour and leaves its cracks dark, like real light
+    const glow = new THREE.Mesh(glowGeo, new THREE.MeshBasicMaterial({ map: flameTexture, color: 0xff7a2a, depthWrite: false, transparent: true, opacity: 0.55, fog: false,
+      toneMapped: false, premultipliedAlpha: true, blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.DstColorFactor, blendDst: THREE.OneFactor }));
     glow.rotation.x = -Math.PI / 2; glow.position.y = 0.03; glow.scale.set(6.5, 6.5, 1); glow.layers.set(layer); g.add(glow);
     group.add(g);
     g.userData.model = "brazier";   // the editor can Duplicate it
@@ -78,7 +81,7 @@ export function createBraziers(scene, { fireSim, fireTexture, flameTexture, laye
         b.g.localToWorld(b.fire.set(0, 1.42, 0));                  // follows the basin if the editor moved it
         const f = 0.82 + 0.18 * Math.sin(t * 9.1 + b.seed) * Math.sin(t * 5.3 + b.seed * 1.7);
         b.flame.material.opacity = 0.75 * f; b.flame.scale.set(1.4 + 0.2 * f, 2.3 + 0.5 * f, 1);
-        b.glow.material.opacity = 0.16 + 0.06 * f;   // (10-08: the painted pool of light read fake — the real fire lights do the floor)
+        b.glow.material.opacity = (0.55 + 0.2 * f) * api.lightScale;   // light-style (10-09): a share of the floor's own colour, so it can go higher   // (10-08: the painted pool of light read fake — the real fire lights do the floor)
         b.dist = _d.copy(b.fire).distanceTo(camera.position);
         if (particles && fireSim && b.dist < 34) {
           const r = rate * (b.dist < 14 ? 1 : 0.45);   // far basins burn thinner: the sprite carries them

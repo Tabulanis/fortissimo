@@ -1,0 +1,17 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+// WHO makes the draw calls (10-09 speed pass): at a station, every visible mesh inside the camera's view, counted by its top-level group
+const P = new URLSearchParams(location.hash.slice(1)), f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => { const w = f.contentWindow; await wait(9000); try {
+  const S = w.__gr.stage3d, T = await import("three"); S.setStation(P.get("st") || "drums"); await wait(1500);
+  const cam = S.camera, SC = S.scene, fr = new T.Frustum().setFromProjectionMatrix(new T.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse));
+  const by = {}; let n = 0;
+  const L = +(P.get("layer") || -1); SC.traverseVisible((o) => { if (!o.isMesh && !o.isSprite && !o.isPoints) return; if (L >= 0 && !o.layers.isEnabled(L)) return;
+    if (o.frustumCulled && o.geometry && !(o.geometry.boundingSphere || o.geometry.computeBoundingSphere(), fr.intersectsObject(o))) return;
+    let top = o; while (top.parent && top.parent !== SC) top = top.parent;
+    const k = (top.name || top.type) + "/" + (o.parent && o.parent !== top ? o.parent.name || o.parent.type : "") + "/" + (o.name || o.type); const mats = Array.isArray(o.material) ? o.material.length : 1;
+    by[k] = (by[k] || 0) + mats; n += mats; if (L >= 0 && n < 12) { o.geometry.computeBoundingSphere(); const sp = o.geometry.boundingSphere.clone().applyMatrix4(o.matrixWorld); by["~" + n + " " + o.geometry.type] = [sp.center.toArray().map((v) => +v.toFixed(1)), +sp.radius.toFixed(1), cam.position.toArray().map((v) => +v.toFixed(1))]; } });
+  fetch("http://127.0.0.1:8899/callmap", { method: "POST", body: JSON.stringify({ n, by: Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 25) }) }); } catch (e) { fetch("http://127.0.0.1:8899/callmap", { method: "POST", body: "ERR " + e }); }
+};
+f.src = `/?quality=${P.get("q") || "medium"}`;
+</script>

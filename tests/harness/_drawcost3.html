@@ -1,0 +1,13 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+// what a frame costs AT THE PLAY SPOTS (10-09, the speed pass): not in the editor — the game's own station camera.
+// #q=medium&dev=phone — reports draw calls + triangles facing the drums, the bass guns, the treble guns
+const P = new URLSearchParams(location.hash.slice(1)), f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => { const w = f.contentWindow; await wait(9000);
+  const S = w.__gr.stage3d, R = S.debugPasses.renderer, out = { q: P.get("q"), dev: P.get("dev") };
+  const frame = () => new Promise((res) => { R.info.autoReset = false; R.info.reset(); w.requestAnimationFrame(() => w.requestAnimationFrame(() => { res({ calls: R.info.render.calls, tris: R.info.render.triangles }); R.info.autoReset = true; })); });
+  for (const st of ["drums", "bass", "treble"]) { S.setStation(st); await wait(1500); out[st] = await frame(); }
+  fetch("http://127.0.0.1:8899/drawcost3", { method: "POST", body: JSON.stringify(out) });
+};
+f.src = `/?quality=${P.get("q") || "medium"}${P.get("x") ? "&" + P.get("x") : ""}${P.get("dev") ? "&device=" + P.get("dev") : ""}`;
+</script>
