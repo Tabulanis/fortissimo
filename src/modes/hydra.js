@@ -94,7 +94,7 @@ export function hydraMode(G) {
     kit = createAltarKit(G.stage3d.scene, { spot: G.stage3d.playSpot(), approach: APPROACH,
       drums: DRUMS.map((d, i) => ({ label: `${d.key.toUpperCase()} ${d.glyph}`, color: DRUM_HEX[i] })),
       guns: GUNS.map((g) => ({ label: `${g.key.toUpperCase()} ${g.glyph}` })) });
-    highway = { draw: (items, now) => kit.update(items, now), flash: (c, good) => kit.press(c, good), show: (on) => { kit.root.visible = on; },
+    highway = { draw: (items, now) => kit.update(items, now), flash: (c, good) => kit.press(c, good), show: (on) => { kit.root.visible = on; kit.station.visible = on; },
       setNoteColor() {}, el: { dataset: {} } };
     highway.show(true); active = true; movement = 0;
     setupMovement(); recolor();

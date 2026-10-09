@@ -7,6 +7,7 @@
        -> { update(items, now), press(col, good), setGunSource(vec3), muzzle(g), remove() }
      items: [{ col, at }] — col 0..4 drums, 5..9 guns; at = the note's time on the same clock as `now` */
 import * as THREE from "three";
+import { createStation } from "./stations.js";
 
 const label = (text) => {   // the courtyard drums' letter style: light, a dark outline
   const c = document.createElement("canvas"); c.width = 256; c.height = 128;
@@ -34,21 +35,19 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7 }) {
     root.add(g); g.lookAt(eye);
     targets.push({ pos: g.position.clone(), obj: g, mat: headMat, base: 0.0, glow: d.color, spawn: g.position.clone().add(new THREE.Vector3(-x * 1.5, 1.6, 9)) });
   });
-  // GUNS: bronze, right of centre, aimed out to sea; the label on a little plate under each barrel
-  const bronze = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, metalness: 0.85, roughness: 0.35, emissive: 0x000000 });
-  const wood = new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.8 });
-  const gunPos = [[0.35, 1.08, 1.0], [0.68, 1.14, 1.05], [1.01, 1.08, 1.0], [0.52, 1.36, 1.3], [0.86, 1.36, 1.3]];
+  // GUNS (owner, 2026-10-09: "set up the guns and mortars the same way they are in the rest of the game — just 5"): a real gun
+  // STATION from stations.js (rounds 1-3's mortars, red strike buttons, key labels) built with five mortars, then set on the
+  // altar to your right, facing you. A station is built for a player at the origin facing +x with its row along +z (his right);
+  // turned -90° about y and stood where you stand, that is your right side facing the sea.
+  const st = createStation(scene, "bass", { lamp: false, slots: { bottom: [0, 1, 2, 3, 4], top: [] } });
+  st.group.position.set(spot.x, spot.y, spot.z - 0.5); st.group.rotation.y = -Math.PI / 2; st.group.updateMatrixWorld(true);
   const muzzles = [];
   guns.forEach((gn, i) => {
-    const [x, y, z] = gunPos[i], g = new THREE.Group(); g.position.set(spot.x - x, spot.y + y, spot.z + z);
-    const base = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.22), wood); g.add(base);
-    const mat = bronze.clone();
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.36, 14), mat); barrel.rotation.x = Math.PI / 2 - 0.5; barrel.position.set(0, 0.08, 0.06); g.add(barrel);
-    const lab = new THREE.Mesh(new THREE.PlaneGeometry(0.24, 0.12), new THREE.MeshBasicMaterial({ map: label(gn.label), transparent: true, depthWrite: false }));
-    lab.position.set(0, -0.02, -0.13); g.add(lab);
-    root.add(g); lab.lookAt(eye);
-    muzzles.push(g.position.clone().add(new THREE.Vector3(0, 0.22, 0.2)));
-    targets.push({ pos: g.position.clone().add(new THREE.Vector3(0, 0.05, 0)), obj: g, mat, base: 0, gun: true, spawn: null });
+    const b = st.bars[i]; if (!b || !b.top) return;
+    if (b.label && b.label.material) { b.label.material.map = label(gn.label); b.label.material.needsUpdate = true; }
+    const pos = st.group.localToWorld(b.top.clone());
+    muzzles.push(pos.clone().add(new THREE.Vector3(0, 0.25, 0.25)));
+    targets.push({ pos, obj: null, mat: b.buttonMat, base: 0, gun: true, spawn: null });
   });
   // LANES: a faint glowing line from each target's spawn to it (the guns' redrawn when the attacking head moves)
   const laneMat = (c) => new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -66,7 +65,7 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7 }) {
   const flashes = new Map();
   const _p = new THREE.Vector3();
   return {
-    root,
+    root, station: st.group,
     /** the attacking head's mouth: the guns' cues fly from here */
     setGunSource(v) { for (const t of targets) if (t.gun) { t.spawn = t.spawn || new THREE.Vector3(); t.spawn.copy(v); setLine(t); } },
     muzzle: (g) => muzzles[g],
@@ -83,11 +82,11 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7 }) {
       const tn = performance.now();
       targets.forEach((t, i) => {   // a press pops the target and lights it (green-white good, red miss)
         const f = flashes.get(i), on = f && f.until > tn, s = on ? 1 + 0.12 * ((f.until - tn) / 140) : 1;
-        t.obj.scale.setScalar(s);
+        if (t.obj) t.obj.scale.setScalar(s);
         if (t.mat.emissive) { t.mat.emissive.set(on ? (f.good ? (t.glow || 0xffffff) : 0xff3020) : (t.glow || 0x000000)); t.mat.emissiveIntensity = on ? 0.6 : t.base; }
       });
     },
     press(col, good) { flashes.set(col, { until: performance.now() + 140, good }); },
-    remove() { scene.remove(root); },
+    remove() { scene.remove(root); scene.remove(st.group); },
   };
 }
