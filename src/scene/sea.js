@@ -21,6 +21,8 @@ const SWELL = [
   { dx: -0.5, dz: -0.86, len: 3.5, amp: 0.10, speed: 1.4 },
   { dx: 0.8, dz: -0.6, len: 2.2, amp: 0.055, speed: 1.1 },
   { dx: -0.25, dz: -0.97, len: 1.4, amp: 0.03, speed: 0.9 },
+  // a SIDE swell (owner, 2026-10-09: "a bit of side wave in the mix, it's a bit uniform"): across the main one, so crests cross
+  { dx: 0.93, dz: -0.36, len: 6.8, amp: 0.13, speed: 1.6 },
 ];
 const NSWELL = SWELL.length, STEEP = 0.8;   // STEEP: how hard the crests pinch (0 = plain sines, 1 = just short of looping over)
 
@@ -144,7 +146,10 @@ export function createSea(scene, { x = 0, z = 60, width = 110, depth = 110, y = 
         vec2 d = normalize(uSwell[i].xy);
         float k = 6.2831853 / uSwell[i].z;
         float ph = dot(d, wp.xz) * k - uTime * uSwellSpeed[i] * k;
-        float a = uSwell[i].w, q = ${STEEP.toFixed(2)} / (k * a * ${NSWELL}.0);
+        // SETS (10-09): each swell's height swells and fades along its own crest line, slowly drifting — no two crests alike
+        vec2 along = vec2(-d.y, d.x);
+        float set = 0.62 + 0.38 * sin(dot(along, wp.xz) * 0.11 + float(i) * 2.3 + uTime * 0.05) * sin(dot(d, wp.xz) * 0.035 - uTime * 0.07 + float(i));
+        float a = uSwell[i].w * set, q = ${STEEP.toFixed(2)} / (k * uSwell[i].w * ${NSWELL}.0);
         h += a * sin(ph);
         slide += q * a * d * cos(ph);
         dhx += a * k * d.x * cos(ph); dhz += a * k * d.y * cos(ph);
