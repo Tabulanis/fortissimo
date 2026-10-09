@@ -528,7 +528,15 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   editsLoaded.then(() => { const L = getSetting("lighting"); if (L) lighting.set(L); refreshSunShadow(); });
   // the sun's shadow map is redrawn when asked (static shadows, above) — and a few times while the models stream in
   function refreshSunShadow() { afterglow.shadow.needsUpdate = true; }
-  for (const ms of [1500, 4000, 8000, 15000]) setTimeout(() => { rebatch(); refreshSunShadow(); }, ms);
+  for (const ms of [1500, 4000, 8000, 15000]) setTimeout(() => { rebatch(); refreshSunShadow(); if (ms >= 4000) warmShaders(ms); }, ms);
+  // SHADER WARM-UP (10-09, the big engines do it behind the loading screen): compile every material in the scene now — hidden
+  // ones too (the shield, sparks, lightning, acid) — so the first time each effect shows it doesn't stall the song to compile.
+  // Repeated as the models stream in; anything already compiled costs nothing.
+  function warmShaders(at) {
+    if (!renderer.compileAsync) return;
+    const t = performance.now(), before = renderer.info.programs ? renderer.info.programs.length : 0;
+    renderer.compileAsync(scene, camera).then(() => bootlog("warm shaders", { at, ms: Math.round(performance.now() - t), programs: renderer.info.programs ? renderer.info.programs.length : null, before }), (e) => bootlog("warm shaders", { at, error: String(e) }));
+  }
   editsLoaded.then((e) => bootlog("level edits", { n: Object.keys(e).length }));   // the saved layout, applied as each piece registers
   // THE GLUE (batcher.js, 10-09 speed pass): while you play, the town's small still pieces are drawn a material at a time;
   // in the editor they come apart. Re-glued as the models stream in (the timers above) and when you leave the editor.
@@ -1904,6 +1912,25 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     return out;
   }
 
+  // DYNAMIC RESOLUTION (10-09, stolen from the big engines): when the frame runs slow the game draws fewer pixels and stretches
+  // them (down to 60% of the tier's own sharpness), and climbs back when the frame keeps up again. ?resscale=0.7 pins it (testing).
+  const BASE_PR = renderer.getPixelRatio(), RES_PIN = +new URLSearchParams(location.search).get("resscale") || 0;
+  let resScale = RES_PIN || 1, resMs = 0, resN = 0, resGood = 0, resLast = performance.now();
+  function setResScale(v) {
+    resScale = v; const pr = BASE_PR * v;
+    renderer.setPixelRatio(pr); if (composer) composer.setPixelRatio(pr); if (shieldGlow) shieldGlow.setPixelRatio(pr);
+    resize(); bootlog("resscale", { scale: +v.toFixed(2), pr: +pr.toFixed(2) });
+  }
+  if (RES_PIN) setTimeout(() => setResScale(RES_PIN), 0);
+  function dynRes() {
+    const now = performance.now(), dt = now - resLast; resLast = now;
+    if (RES_PIN || renderer.xr.isPresenting || dt > 100) return;   // pinned, in a headset, or the tab was away
+    resMs += dt; if (++resN < 90) return;
+    const avg = resMs / resN; resMs = 0; resN = 0;
+    if (avg > 22 && resScale > 0.6) { resGood = 0; setResScale(Math.max(0.6, resScale * 0.85)); }        // under ~45 fps: fewer pixels
+    else if (avg < 18 && resScale < 1) { if (++resGood >= 3) { resGood = 0; setResScale(Math.min(1, resScale / 0.85)); } }   // keeping up: back toward sharp
+    else resGood = 0;
+  }
   function resize() {
     if (renderer.xr.isPresenting) return;   // the headset owns the size in VR
     const w = canvas.clientWidth || 1;
@@ -2707,6 +2734,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     fxCamera.projectionMatrix.copy(camera.projectionMatrix);
     fxCamera.projectionMatrixInverse.copy(camera.projectionMatrixInverse);
     if (!fxSorted) sortFx();
+    dynRes();
     if (PERF) {   // ?perf — milliseconds per pass (src/dev/perf.js), installed on the first frame, when every pass exists
       if (!perf) perf = installPerf({ renderer, bootlog, wrap: [["sun shadow", renderer.shadowMap, "render"]],
         passes: [...(composer ? composer.passes.map((p, i) => [(p === fxPass ? "fx" : p.constructor.name.replace("Pass", "")) + (p === shieldMix ? " mix" : ""), p]) : [["scene", renderer]]),

@@ -1,0 +1,12 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:600px;border:0"></iframe>
+<script type="module">
+// does the shader warm-up cover the hidden effects? programs before / after raising the shield and turning to each station (10-09)
+const P = new URLSearchParams(location.hash.slice(1)), f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => { const w = f.contentWindow; await wait(17000); const out = {};
+  try { const S = w.__gr.stage3d, R = S.debugPasses.renderer, seen = new Set(R.info.programs.map((p) => p.cacheKey)), n = () => [R.info.programs.length, ...R.info.programs.filter((p) => !seen.has(p.cacheKey)).map((p) => { seen.add(p.cacheKey); return p.name + ":" + p.cacheKey.slice(0, 160); })]; out.before = R.info.programs.length;
+    const up = { progress: 1, up: true }; S.setShield({ drums: up, bass: up, treble: up }); await wait(1500); out.shield = n();
+    for (const st of ["bass", "treble", "sea"]) { S.setStation(st); await wait(2500); out[st] = n(); }
+  } catch (e) { out.err = String(e); }
+  fetch("http://127.0.0.1:8899/warm", { method: "POST", body: JSON.stringify(out) }); };
+f.src = "/?quality=medium" + (P.get("x") ? "&" + P.get("x") : "");
+</script>
