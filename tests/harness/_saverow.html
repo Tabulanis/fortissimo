@@ -1,0 +1,13 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1000px;height:760px;border:0"></iframe>
+<script type="module">
+// the Save row in Options (10-09): the buttons are there, copy-save gives a real save, reset asks twice
+const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+f.onload = async () => { const w = f.contentWindow, d = w.document; await wait(6000); const out = {};
+  try { out.buttons = [...d.querySelectorAll("#gr-set [data-act]")].map((b) => b.dataset.act + ":" + b.textContent.trim());
+    out.version = (d.querySelector("#gr-set .ver") || {}).textContent; out.loadingGone = !d.getElementById("gr-loading");
+    w.localStorage.setItem("gr.unlocked", "2"); const S = await import("/src/game/save.js"); const j = JSON.parse(S.exportSave()); out.save = { game: j.game, v: j.saveVersion, keys: Object.keys(j.data).length, unlocked: j.data["gr.unlocked"] };
+    S.resetProgress(); out.afterReset = w.localStorage.getItem("gr.unlocked"); out.settingsKept = !!w.localStorage.getItem("gr.saveVersion");
+  } catch (e) { out.err = String(e); }
+  fetch("http://127.0.0.1:8899/saverow", { method: "POST", body: JSON.stringify(out) }); };
+f.src = "/?settings&quality=low";
+</script>

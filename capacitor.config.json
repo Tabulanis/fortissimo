@@ -1,0 +1,8 @@
+{
+  "appId": "com.tabulanis.fortissimo",
+  "appName": "Fortissimo",
+  "webDir": "dist",
+  "android": { "allowMixedContent": false, "backgroundColor": "#000000" },
+  "server": { "androidScheme": "https" },
+  "plugins": { "SplashScreen": { "launchShowDuration": 0 } }
+}

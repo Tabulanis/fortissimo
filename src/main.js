@@ -42,6 +42,8 @@ import { createMixer } from "./audio/mixer.js";
 import { loadSettings, createSettings } from "./ui/settings.js";
 import { createPads } from "./input/pads.js";
 import { bootlog } from "./bootlog.js";
+import { migrate as migrateSave } from "./game/save.js";
+migrateSave();   // an older save brought up to date before anything reads it
 import { makeMelodyVoices } from "./audio/melody.js";
 import { instrumentNotes, BASS_OCTAVE, TREBLE_OCTAVE } from "./game/scales.js";
 bootlog("page", { ua: navigator.userAgent, screen: `${screen.width}x${screen.height}`, dpr: window.devicePixelRatio,

@@ -3,6 +3,8 @@
    `loadSettings()` at start and gets live changes through `onChange`. */
 
 const KEY = "gr.settings";
+import { exportSave, resetProgress } from "../game/save.js";
+import { logLines } from "../bootlog.js";
 export const DEFAULTS = {
   autoCorrect: true,
   master: 0.9,
@@ -99,6 +101,8 @@ export function createSettings({ onChange, onRestart, onEditor } = {}) {
         </select></div>
       ${import.meta.env.DEV ? `<h3>Make</h3>
       <div class="row"><button data-act="editor" class="wide">🛠 Level editor</button></div>` : ""}
+      <h3>Save</h3>
+      <div class="row"><button data-act="copysave">Copy my save</button><button data-act="copylog">Copy the log</button><button data-act="reset">Reset progress</button></div>
       <div class="row ver">Fortissimo v${typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev"}</div>
       <div class="foot"><button data-act="restart">Restart song</button><button data-act="close2">Done ✓</button></div>
     </div>`;
@@ -123,6 +127,14 @@ export function createSettings({ onChange, onRestart, onEditor } = {}) {
   root.querySelector("[data-act=close]").addEventListener("click", close);
   root.querySelector("[data-act=close2]").addEventListener("click", close);
   root.querySelector("[data-act=restart]").addEventListener("click", () => onRestart && onRestart());
+  // SAVE (10-09): copy the save / the log to the clipboard (to send us, or to move to another device); reset progress asks twice
+  const copy = async (b, text) => { try { await navigator.clipboard.writeText(text); b.textContent = "Copied ✓"; } catch { b.textContent = "Couldn't copy"; } setTimeout(() => { b.textContent = b.dataset.label; }, 1800); };
+  for (const [act, fn] of [["copysave", exportSave], ["copylog", () => logLines().join("\n")]]) {
+    const b = root.querySelector(`[data-act=${act}]`); b.dataset.label = b.textContent; b.addEventListener("click", () => copy(b, fn()));
+  }
+  { const b = root.querySelector("[data-act=reset]"); let armed = false;
+    b.addEventListener("click", () => { if (!armed) { armed = true; b.textContent = "Tap again to reset"; setTimeout(() => { armed = false; b.textContent = "Reset progress"; }, 3000); return; }
+      resetProgress(); b.textContent = "Progress reset"; setTimeout(() => location.reload(), 600); }); }
   // the LEVEL EDITOR from here too (10-08: a tablet / phone has no tilde key)
   { const b = root.querySelector("[data-act=editor]"); if (b) b.addEventListener("click", () => { close(); onEditor && onEditor(); }); }
   root.addEventListener("click", (e) => { if (e.target === root) close(); });
