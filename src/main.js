@@ -940,7 +940,8 @@ function makeStartButton() {
     };
     armed = true;
     if (AUTO_BEGIN) beginSong();
-    else if (autoFromMenu || CREATE || HYDRA) beginCount();
+    else if (HYDRA) { hudUI.say("", ""); stage3d.flyIn(7, () => beginCount()); }   // the final battle: fly to the altar, then the count
+    else if (autoFromMenu || CREATE) beginCount();
     else hudUI.say(IS_TOUCH ? "Tap to begin" : padConnected ? "Press a button to begin" : "Press any key to begin", "good");
   });
   document.body.appendChild(btn);
@@ -1173,6 +1174,13 @@ function onKey(e) {
 // --- drum pads and game controllers -------------------------------------------
 const pads = createPads({
   melodyMode: () => isMelody(),
+  rawMode: () => !!HYDRA,   // round 4: the controller's own two-hand layout (modes/hydra.js pad())
+  onRaw: (i, ts) => {
+    if (autoFromMenu && !ctx) { startBtn.click(); return; }
+    if (armed && !clock) { beginCount(); return; }
+    if (!ctx || !clock) return;
+    const o = ctx.getOutputTimestamp(); HYDRA_MODE.pad(i, o.contextTime + (ts - o.performanceTime) / 1000 - calibration);
+  },
   onHint: () => playHint(),
   onCrystal: (side, ts) => {   // LB / RB at the boss
     if (armed && !clock) { beginCount(); return; }

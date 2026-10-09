@@ -42,7 +42,7 @@ export function midiToHit(data) {
   return lane ? { lane, force: vel / 127 } : null;
 }
 
-export function createPads({ onHit, onStatus, onMelody, onCrystal, onHint, melodyMode = () => false } = {}) {
+export function createPads({ onHit, onStatus, onMelody, onCrystal, onHint, melodyMode = () => false, rawMode = () => false, onRaw } = {}) {
   const status = { midi: [], pads: [] };
   const look = { x: 0, y: 0 };
   const report = () => onStatus && onStatus(status);
@@ -78,7 +78,11 @@ export function createPads({ onHit, onStatus, onMelody, onCrystal, onHint, melod
         names.push(gp.id);
         const prev = was.get(gp.index) || [];
         const now = gp.buttons.map((b) => b.pressed || b.value > 0.5);
-        if (melodyMode()) {
+        if (rawMode()) {
+          // ROUND 4 (owner, 2026-10-09): its own layout — every button press goes to the round as a raw index
+          // (drums: LB + D-pad; guns: A B X Y + RB — hydra.js maps them)
+          now.forEach((on, i) => { if (on && !prev[i]) onRaw && onRaw(i, performance.now()); });
+        } else if (melodyMode()) {
           // the guns: D-pad + face buttons = the 8 columns; LT / RT force a row; View listens
           const force = now[FORCE_TOP] ? "top" : now[FORCE_BOTTOM] ? "bottom" : null;
           if (now[4] && !prev[4]) onCrystal && onCrystal("left", performance.now());    // LB / RB: the boss's two crystals

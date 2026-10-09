@@ -10,6 +10,7 @@
    MOVEMENTS: head 1 attacks to round 1's music, head 2 to round 2's, head 3 to round 3's; a head going down moves
    the band on at the next bar line, at that song's own tempo. All three down: the finale, then the results.
    The rules are game/hydrafight.js (pure, tested). main.js hands in G: getters/setters onto its own state. */
+import * as THREE from "three";
 import { HydraFight, SHIELD_HOLDS } from "../game/hydrafight.js";
 import { startClock } from "../audio/clock.js";
 import { gradeRound } from "../game/grade.js";
@@ -19,9 +20,14 @@ import { createHighway } from "../ui/highway.js";
 import { createAcid } from "../scene/acid.js";
 const { VOICE_PRESETS, voiceSettings } = window.HB_VOICES;
 
-const DRUMS = [{ lane: "hat", key: "q" }, { lane: "snare", key: "w" }, { lane: "crash", key: "e" },
-  { lane: "kick", key: "a" }, { lane: "tom low", key: "s" }, { lane: "tom high", key: "d" }];
-const NOTE_KEYS = ["j", "k", "l", ";", "u", "i", "o", "p"];   // lowest → highest: the right hand's home row, then the row above
+// FIVE AND FIVE (owner, 2026-10-09: "5 drums, 5 cannon/mortar type; drums = left bumper and the D-pad, guns = B X Y A and
+// right bumper"). The two toms are one tom here. pad = the standard-mapping button index; glyph = what the highway shows.
+const DRUMS = [{ lanes: ["hat"], key: "q", pad: 12, glyph: "↑" }, { lanes: ["snare"], key: "w", pad: 14, glyph: "←" },
+  { lanes: ["crash"], key: "e", pad: 4, glyph: "LB" }, { lanes: ["kick"], key: "a", pad: 13, glyph: "↓" },
+  { lanes: ["tom low", "tom high"], key: "s", pad: 15, glyph: "→" }];
+const GUNS = [{ key: "j", pad: 2, glyph: "X" }, { key: "k", pad: 0, glyph: "A" }, { key: "l", pad: 3, glyph: "Y" },
+  { key: "i", pad: 1, glyph: "B" }, { key: "o", pad: 5, glyph: "RB" }];   // lowest → highest
+const NOTE_KEYS = GUNS.map((g) => g.key), NG = GUNS.length, ND = DRUMS.length;
 const HEAD_COLORS = ["#ff7a5a", "#e8c84a", "#5ad1ff"];
 const APPROACH = 1.7;   // seconds a note is on the highway before its beat
 
@@ -30,7 +36,7 @@ export function hydraMode(G) {
   let movement = 0, items = [], L = 16, judged = new Set(), offsets = [], startAt = 0, until = 0;
   let lastBeat = null, spitTurn = 0, lastTickT = 0, finale = false;
   const metronomeBeat = (time) => G.pool.noteOn({ channel: 0, midi: 72, baseNote: 60, buffer: G.drums.click, velocity: 0.3, when: time, destination: G.mixer.metronome, settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
-  const isDrum = (lane) => DRUMS.some((d) => d.lane === lane);
+  const isDrum = (lane) => DRUMS.some((d) => d.lanes.includes(lane));
 
   /** a song's notes as highway items: drums by name, melody lanes ranked by pitch onto the 8 note columns */
   function itemsOf(song) {
@@ -38,12 +44,44 @@ export function hydraMode(G) {
     const mel = [...new Set(play.filter((n) => !isDrum(n.lane)).map((n) => n.lane))];
     const avg = Object.fromEntries(mel.map((l) => { const ps = play.filter((n) => n.lane === l).map(pitch); return [l, ps.reduce((a, b) => a + b, 0) / ps.length]; }));
     mel.sort((a, b) => avg[a] - avg[b]);
-    const colOf = (l) => (mel.length <= 1 ? 3 : Math.round((mel.indexOf(l) * 7) / (mel.length - 1)));
+    const colOf = (l) => (mel.length <= 1 ? 2 : Math.round((mel.indexOf(l) * (NG - 1)) / (mel.length - 1)));
+    // two notes landing on the same column at the same beat would be one press: keep the first
+    const seen = new Set();
     return play.map((n, i) => ({ i, lane: n.lane, beat: n.beat, midi: n.midi, vel: n.vel ?? 0.9,
-      col: isDrum(n.lane) ? DRUMS.findIndex((d) => d.lane === n.lane) : 6 + colOf(n.lane), drum: isDrum(n.lane) }));
+      col: isDrum(n.lane) ? DRUMS.findIndex((d) => d.lanes.includes(n.lane)) : ND + colOf(n.lane), drum: isDrum(n.lane) }))
+      .filter((it) => { const k = it.col + "@" + it.beat.toFixed(3); if (seen.has(k)) return false; seen.add(k); return true; });
   }
   /** how many wounds each head can take: one and a half passes of its movement's notes (at least 8) */
   const hpOf = (song) => Math.max(8, Math.round(1.5 * (song.playNotes || song.notes).filter((n) => !isDrum(n.lane)).length));
+
+  // THE GUNS (10-09): five bronze guns along the altar's sea edge, low to high left to right; a hit fires a bolt at the attacker
+  let guns = [], bolts = [];
+  function buildGuns() {
+    const T = THREE, scene = G.stage3d.scene, p = G.stage3d.playSpot();
+    const bronze = new T.MeshStandardMaterial({ color: 0x8a6a3a, metalness: 0.85, roughness: 0.35 }), wood = new T.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.8 });
+    const boltMat = new T.MeshBasicMaterial({ color: 0xffd27a });
+    guns = GUNS.map((g, i) => {
+      const grp = new T.Group(); grp.position.set(p.x + (i - 2) * 0.85, p.y, p.z + 2.1); grp.scale.setScalar(0.6);   // (10-09: smaller, at the rim — full size hid the middle head)
+      const base = new T.Mesh(new T.BoxGeometry(0.45, 0.32, 0.5), wood); base.position.y = 0.16; grp.add(base);
+      const barrel = new T.Mesh(new T.CylinderGeometry(0.07, 0.1, 0.9, 14), bronze); barrel.rotation.x = Math.PI / 2 - 0.45; barrel.position.set(0, 0.45, 0.15); grp.add(barrel);
+      scene.add(grp); return { grp, muzzle: new T.Vector3(p.x + (i - 2) * 0.85, p.y + 0.4, p.z + 2.4), boltMat };
+    });
+  }
+  function fireGun(g) {
+    const gun = guns[g], H = G.stage3d.hydra; if (!gun) return;
+    const T = THREE, to = H.mouth(movement) || gun.muzzle.clone().add(new T.Vector3(0, 3, 10));
+    const m = new T.Mesh(new T.SphereGeometry(0.12, 10, 8), gun.boltMat); m.position.copy(gun.muzzle); G.stage3d.scene.add(m);
+    bolts.push({ m, from: gun.muzzle.clone(), to: to.clone(), t0: performance.now() / 1000 });
+    gun.grp.position.z -= 0.08; setTimeout(() => { gun.grp.position.z += 0.08; }, 90);   // recoil
+  }
+  function updateBolts() {
+    const now = performance.now() / 1000;
+    for (let i = bolts.length - 1; i >= 0; i--) {
+      const b = bolts[i], k = (now - b.t0) / 0.3;
+      if (k >= 1) { G.stage3d.scene.remove(b.m); bolts.splice(i, 1); continue; }
+      b.m.position.lerpVectors(b.from, b.to, k); b.m.position.y += Math.sin(k * Math.PI) * 0.8;
+    }
+  }
 
   function setupMovement() {
     const s = G.song(); L = 4 * s.bars; items = itemsOf(s); judged = new Set(); startAt = G.clock.first; until = G.clock.first;
@@ -61,15 +99,16 @@ export function hydraMode(G) {
     const H = G.stage3d.hydra; H.rise();
     acid = createAcid(G.stage3d.scene, { center: G.stage3d.playSpot(), radius: 6 });   // over his altar (the play spot)   // wide: the acid bursts on it well out in front of you
     acid.onLand = (head) => { const ev = fight.acidLands(head); events(ev); return ev.some((e) => e.type === "acidBlocked"); };
-    highway = createHighway({ drums: DRUMS.map((d) => ({ key: d.key, label: d.key.toUpperCase() })),
-      notes: NOTE_KEYS.map((k) => ({ key: k, head: 0, label: k === ";" ? ";" : k.toUpperCase() })), headColors: HEAD_COLORS });
+    highway = createHighway({ drums: DRUMS.map((d) => ({ key: d.key, label: `${d.key.toUpperCase()} ${d.glyph}` })),
+      notes: GUNS.map((g) => ({ key: g.key, head: 0, label: `${g.key.toUpperCase()} ${g.glyph}` })), headColors: HEAD_COLORS });
+    buildGuns();
     highway.show(true); active = true; movement = 0;
     setupMovement(); recolor();
     G.hudUI.setLife(100, 100);
-    G.hudUI.say("THE HYDRA — left hand: drums keep the shield up · right hand: J K L ; U I O P parry the head's strikes", "good", 8000);
+    G.hudUI.say("THE HYDRA — left hand: drums keep the shield up (Q W E A S · LB + D-pad) · right hand: the guns fire on the notes (J K L I O · X A Y B RB)", "good", 8000);
     lastTickT = G.ctx.currentTime;
     setInterval(tick, 25);
-    const draw = () => { if (active) { highway.draw(upcoming(), G.ctx.currentTime, APPROACH); acid.update(G.ctx.currentTime); } requestAnimationFrame(draw); };
+    const draw = () => { if (active) { highway.draw(upcoming(), G.ctx.currentTime, APPROACH); acid.update(G.ctx.currentTime); updateBolts(); } requestAnimationFrame(draw); };
     requestAnimationFrame(draw);
   }
   function recolor() {   // the note lanes take the attacking head's colour
@@ -123,7 +162,17 @@ export function hydraMode(G) {
     const k = e.key.toLowerCase(), d = DRUMS.findIndex((x) => x.key === k), n = NOTE_KEYS.indexOf(k);
     if (d < 0 && n < 0) return false;
     e.preventDefault();
-    const col = d >= 0 ? d : 6 + n, win = G.judgeWindow(), bd = G.clock.beatDur;
+    hit(d >= 0 ? d : ND + n, press);
+    return true;
+  }
+  /** a controller button (standard mapping index) — main.js routes them here in round 4 */
+  function pad(i, press) {
+    if (!active) return;
+    const d = DRUMS.findIndex((x) => x.pad === i), n = GUNS.findIndex((x) => x.pad === i);
+    if (d >= 0 || n >= 0) hit(d >= 0 ? d : ND + n, press);
+  }
+  function hit(col, press) {
+    const d = col < ND ? col : -1, win = G.judgeWindow(), bd = G.clock.beatDur;
     // the nearest unhit occurrence in this column, inside the hitbox
     let best = null, bestD = Infinity;
     const bp = (press - G.clock.first) / bd;
@@ -138,12 +187,12 @@ export function hydraMode(G) {
       const entry = G.KEYMAP_BY_LANE[best.it.lane];
       if (entry) G.pool.noteOn({ channel: entry.idx, midi: 60, baseNote: 60, ...G.laneSound(entry.ln, best.it.midi), velocity: best.it.vel, when: G.ctx.currentTime });
       highway.flash(col, true);
+      if (!best.it.drum) fireGun(col - ND);   // the gun on the altar fires at the attacking head
       events(best.it.drum ? fight.drum(true) : fight.strike(movement, true));
     } else {   // nothing due here: a drum still sounds (quietly); a note key does nothing
-      if (d >= 0) { const entry = G.KEYMAP_BY_LANE[DRUMS[d].lane]; if (entry) G.pool.noteOn({ channel: entry.idx, midi: 60, baseNote: 60, ...G.laneSound(entry.ln), velocity: 0.35, when: G.ctx.currentTime }); }
+      if (d >= 0) { const entry = G.KEYMAP_BY_LANE[DRUMS[d].lanes[0]]; if (entry) G.pool.noteOn({ channel: entry.idx, midi: 60, baseNote: 60, ...G.laneSound(entry.ln), velocity: 0.35, when: G.ctx.currentTime }); }
       highway.flash(col, false);
     }
-    return true;
   }
 
   // the BAND: what you don't play (the run's simpler patterns leave some notes out) plays by itself
@@ -210,7 +259,7 @@ export function hydraMode(G) {
   function lost() { G.life.over = true; G.hudUI.say("The hydra won…", "bad", 4000); setTimeout(() => results(true), 1400); }
 
   return {
-    startHydra, key,
+    startHydra, key, pad,
     get active() { return active; }, get fight() { return fight; }, get movement() { return movement; },
     upcoming,   // harness: what's on the highway
   };

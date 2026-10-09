@@ -8,7 +8,7 @@
 const say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body: typeof body === "string" ? body : JSON.stringify(body) });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const JITTER = 0.05, DRUMLESS = 6, SKIP = 9, SHOT = new URLSearchParams(location.hash.slice(1)).get("shot");   // #shot=SEC: one composed frame (3D + highway) to the sink
-const KEYS = ["q", "w", "e", "a", "s", "d", "j", "k", "l", ";", "u", "i", "o", "p"];
+const KEYS = ["q", "w", "e", "a", "s", "j", "k", "l", "i", "o"];   // (10-09: five drums, five guns)
 localStorage.removeItem("gr.run2"); sessionStorage.clear();
 const f = document.getElementById("f");
 f.onload = async () => {

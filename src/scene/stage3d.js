@@ -535,6 +535,34 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     HAND_RESTS.sea[0].set(p.x + 0.66, p.y + 1.0, p.z + 0.1); HAND_RESTS.sea[1].set(p.x - 0.66, p.y + 1.0, p.z + 0.1);
     if (hydra) hydra.moveTo(p.clone().setY(p.y + EYE));
   }
+  // THE FLIGHT IN (owner, 2026-10-09: "for the final battle it flies us to the altar — make a path up the stairs"): from the sea
+  // gate along the dock, up the middle of his altar's stairs (measured in the model: centred on its +z face, x -0.035, foot at
+  // z 0.95, top tier at y 0.36), onto the top, turning to face the sea; eased, ~7 s; then onDone (the count-in)
+  let cine = null;
+  function flyIn(seconds = 7, onDone) {
+    usePlaySpot();
+    if (hydra) for (let i = 0; i < 3; i++) hydra.standBack(i, true);   // the heads hang back while you climb (the fight picks its attacker)
+    const a = cove.userData.altar, end = STATIONS.sea.pos.clone();
+    if (!a || !a.children[0]) { if (onDone) onDone(); return; }
+    a.updateMatrixWorld(true);
+    const src = a.children[0], W = (x, y, z) => src.localToWorld(new THREE.Vector3(x, y, z)), EYE_UP = new THREE.Vector3(0, 1.65, 0);
+    const foot = W(-0.035, -0.36, 1.25), mid = W(-0.035, 0.0, 0.62).add(EYE_UP), top = W(-0.035, 0.36, 0.25).add(EYE_UP);
+    const deckEye = DOCK.y + 0.08 + 1.65;
+    const pts = [new THREE.Vector3(foot.x, deckEye, COVE.wallZ + 1.5), new THREE.Vector3(foot.x, deckEye, foot.z - 1.2), mid, top, end];
+    cine = { curve: new THREE.CatmullRomCurve3(pts, false, "centripetal"), t0: performance.now() / 1000, dur: seconds, onDone, end };
+  }
+  const _cineLook = new THREE.Vector3(), _cineOut = new THREE.Vector3();
+  function updateCine() {
+    const u = Math.min(1, (performance.now() / 1000 - cine.t0) / cine.dur), e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+    const pos = cine.curve.getPointAt(e);
+    camera.position.copy(pos); st.pos.copy(pos);
+    // look a little ahead along the path; over the last stretch turn to look out over the sea (the station's own gaze)
+    cine.curve.getPointAt(Math.min(1, e + 0.07), _cineLook); _cineLook.y -= 0.25;
+    _cineOut.copy(cine.end).add(new THREE.Vector3(0, Math.tan(STATIONS.sea.pitch ?? 0) * 20, 20));
+    _cineLook.lerp(_cineOut, THREE.MathUtils.smoothstep(e, 0.7, 1));
+    camera.lookAt(_cineLook);
+    if (u >= 1) { st.yaw = STATIONS.sea.yaw; st.pitch = STATIONS.sea.pitch; const f = cine.onDone; cine = null; if (f) f(); }
+  }
   const hydra = createHydra(scene, { origin: new THREE.Vector3(0, -4.6, DOCK.z1 + 7.5), target: BOOTH_POS.clone().setY(2.2), sea });   // close (owner): bases under the water, necks stretched, never reaching further
   if (new URLSearchParams(location.search).has("hydra")) hydra.rise();
   { const b = new URLSearchParams(location.search).get("bite");   // dev: &bite=1 bites every 3 s, heads in turn; &bite=hold freezes the middle head at full lunge
@@ -2223,6 +2251,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       st.pos.lerp(S.pos, ks);
       camera.position.copy(st.pos);
       camera.quaternion.setFromEuler(_eul.set((st.pitch ?? PITCH0) + look.y * LOOK_PITCH, st.yaw - look.x * LOOK_YAW, 0, "YXZ"));
+      if (cine) updateCine();          // the final battle's opening flight overrides the seat
       if (fly.on) updateFly(fireDt);   // DEV: the free camera overrides the seat
     }
     updateGhostHands(heardNow, ghosts);
@@ -2756,7 +2785,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         hand.rest.copy(HAND_RESTS[name][h]);
         if (!hand.active && !vrOn()) { hand.group.position.copy(hand.rest); hand.group.quaternion.setFromUnitVectors(UP, restDir); }
       });
-    }, get scene() { return scene; }, get camera() { return camera; }, boothPos: BOOTH_POS, playSpot: () => playSpot(), lighting, get station() { return station; }, melodyStations, kit: KIT, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
+    }, get scene() { return scene; }, get camera() { return camera; }, flyIn: (s, f) => flyIn(s, f), get flying() { return !!cine; }, boothPos: BOOTH_POS, playSpot: () => playSpot(), lighting, get station() { return station; }, melodyStations, kit: KIT, pickDrum, drumScreen, get mobile() { return MOBILE; }, get tier() { return TIER; }, debugTextures: () => { const s = []; scene.traverse((o) => { for (const m of Array.isArray(o.material) ? o.material : o.material ? [o.material] : []) for (const k in m) if (m[k] && m[k].isTexture && m[k].image && m[k].image.width) s.push(m[k].image.width); }); return Math.max(0, ...s); },
     /** look input, each -1..1: x = right, y = up (screen mode only) */
     setLookInput: (x, y) => { look.inX = Math.max(-1, Math.min(1, x)); look.inY = Math.max(-1, Math.min(1, y)); }, setVrHitHandler: (fn) => { onVrHit = fn; },
     /** debug: where each stick tip is (world), and whether a controller holds it */
