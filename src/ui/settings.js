@@ -97,8 +97,9 @@ export function createSettings({ onChange, onRestart, onEditor } = {}) {
           <option value="potato">Potato — half resolution, bare minimum (weak tablets)</option>
           <option value="bare">Bare — no textures, flat colours (the weakest tablets)</option>
         </select></div>
-      <h3>Make</h3>
-      <div class="row"><button data-act="editor" class="wide">🛠 Level editor</button></div>
+      ${import.meta.env.DEV ? `<h3>Make</h3>
+      <div class="row"><button data-act="editor" class="wide">🛠 Level editor</button></div>` : ""}
+      <div class="row ver">Fortissimo v${typeof __APP_VERSION__ === "string" ? __APP_VERSION__ : "dev"}</div>
       <div class="foot"><button data-act="restart">Restart song</button><button data-act="close2">Done ✓</button></div>
     </div>`;
   document.body.appendChild(root);
@@ -123,7 +124,7 @@ export function createSettings({ onChange, onRestart, onEditor } = {}) {
   root.querySelector("[data-act=close2]").addEventListener("click", close);
   root.querySelector("[data-act=restart]").addEventListener("click", () => onRestart && onRestart());
   // the LEVEL EDITOR from here too (10-08: a tablet / phone has no tilde key)
-  root.querySelector("[data-act=editor]").addEventListener("click", () => { close(); onEditor && onEditor(); });
+  { const b = root.querySelector("[data-act=editor]"); if (b) b.addEventListener("click", () => { close(); onEditor && onEditor(); }); }
   root.addEventListener("click", (e) => { if (e.target === root) close(); });
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.preventDefault(); root.style.display === "grid" ? close() : open(); }

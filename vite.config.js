@@ -85,8 +85,22 @@ const songSave = {
   },
 };
 
+// RELEASE BUILD (10-09, "make it professional"): the dev pages (public/_*.html, public/dev/) never ship; the version from package.json
+// is baked in as __APP_VERSION__ (Options shows it); import.meta.env.DEV gates the editor, the harness hooks and the device log.
+const pkg = JSON.parse(fs.readFileSync(new URL("./package.json", import.meta.url), "utf8"));
+const pruneDev = {
+  name: "prune-dev", apply: "build",
+  closeBundle() {
+    const out = "dist";
+    for (const f of fs.readdirSync(out)) if (/^_.*\.html$/.test(f)) fs.rmSync(path.join(out, f));
+    fs.rmSync(path.join(out, "dev"), { recursive: true, force: true });
+  },
+};
+
 export default {
-  plugins: [deviceLog, levelSave, modelList, songSave],
+  define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  plugins: [deviceLog, levelSave, modelList, songSave, pruneDev],
+  build: { sourcemap: false, chunkSizeWarningLimit: 1500 },
   server: { port: 5180, strictPort: true, host: true },
   preview: { port: 5181 },
 };

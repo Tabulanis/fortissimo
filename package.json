@@ -1,11 +1,13 @@
 {
-  "name": "garden-rhythm",
+  "name": "fortissimo",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "release": "node tools/release.mjs",
+    "check": "node tools/release.mjs --check"
   },
   "dependencies": {
     "three": "^0.170.0"
@@ -14,5 +16,7 @@
     "@gltf-transform/cli": "^4.5.1",
     "iwer": "^2.5.0",
     "vite": "^6.0.0"
-  }
+  },
+  "version": "0.1.0",
+  "description": "Fortissimo \u2014 the rhythm game where you are the instrument"
 }

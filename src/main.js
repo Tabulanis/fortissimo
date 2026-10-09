@@ -99,7 +99,7 @@ stage.addEventListener("webglcontextlost", () => bootlog("WEBGL CONTEXT LOST"));
 // (scratchpad/sink.py) that many seconds after load — headless --screenshot fires before
 // the models arrive, this fires when I say. Harmless without the sink.
 // &face=bass|treble turns to that station first (1.5 s for the turn), so the gun courts can be photographed too.
-{ const sec = +new URLSearchParams(location.search).get("shot"), face = new URLSearchParams(location.search).get("face");
+if (import.meta.env.DEV) { const sec = +new URLSearchParams(location.search).get("shot"), face = new URLSearchParams(location.search).get("face");
   const snap = () => { const c = stage.tagName === "CANVAS" ? stage : stage.querySelector("canvas");   // #stage is the canvas itself
     if (!c) { bootlog("shot", { error: "no canvas" }); return; }
     let png = ""; try { png = c.toDataURL("image/png"); } catch (e) { bootlog("shot", { error: String(e) }); return; }
@@ -116,7 +116,7 @@ stage.addEventListener("webglcontextlost", () => bootlog("WEBGL CONTEXT LOST"));
     frames = 0;
   }, 5000); }
 if (IS_TOUCH) document.documentElement.classList.add("touch");   // touch layout (no keyboard hints)
-window.__gr = {};   // debug handle for the browser harness (stage3d joins it when built)
+window.__gr = import.meta.env.DEV ? {} : null;   // debug handle for the browser harness (stage3d joins it when built) — never in a release
 
 // --- the song: parts unlock two drums at a time; the ghost bell locks them ---
 const BARS = 16;                          // per station: bottom row 1-8, top row 9-16 (owner, 2026-10-03)
@@ -1267,7 +1267,7 @@ stage3d.setVrHitHandler((idx, force, ms) => {
 });
 stage3d.addVrButton();
 stage3d.setLoop(frame);
-window.__gr.stage3d = stage3d;
+if (window.__gr) window.__gr.stage3d = stage3d;
 relabel();
 applyStage();
 resize();   // now there's a stage to size
