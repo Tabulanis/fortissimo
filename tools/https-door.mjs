@@ -34,4 +34,4 @@ server.on("upgrade", (req, sock, head) => {   // the dev server's live-reload we
   });
   const end = () => { up.destroy(); sock.destroy(); }; up.on("error", end); sock.on("error", end);
 });
-server.listen(PORT, "0.0.0.0", () => console.log(`https://192.168.1.155:${PORT}/ → :${TO.port}`));
+server.listen(PORT, "0.0.0.0", () => console.log(`https on :${PORT} → :${TO.port}`));
