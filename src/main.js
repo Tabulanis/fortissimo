@@ -307,6 +307,7 @@ function applyStage() {
   for (let i = 0; i < 6 + 2 * BARS; i++) stage3d.setDrumVisible(i, i < 6 || used.has(i) || (CREATE && i < 6 + BARS + 8));   // creating: every gun you can write for
   stage3d.setStation(CONDUCT || HYDRA ? "sea" : isMelody() ? partMode() : "drums");   // bass: turn right, treble: turn left; conducting: the podium
   if (audioStarted) updateBackLevels();                      // the sections' background music follows progress
+  stage3d.setCuePulse(RUN.stream === "all");   // full song: short per-note flashes, never a continuous glow
   stageMessage();
   if (audioStarted) joinBacking();   // a finished instrument's left-out notes join in
 }
@@ -316,11 +317,13 @@ function stageMessage() {
   if (!defend) return;   // before Start: the menu is up
   if (defend.done) { hudUI.setPart(`${song().name} done`); return; }
   const sec = defend.section, pct = Math.round(defend.progress(sec) * 100);
-  hudUI.setPart(`${song().name} · ${sec} ${pct}%`);
+  const all = defend.sectionNotes(sec).length, got = all - defend.unlocked(sec).length;
+  hudUI.setPart(RUN.stream === "all" ? `${song().name} · FULL SONG · ${sec} · locked ${got}/${all}` : `${song().name} · ${sec} ${pct}%`);
   const how = sec === "drums" ? (IS_TOUCH ? "tap the drums" : "top Q W E · bottom A S D")
     : sec === "treble" ? `mortar fire charges the crystals — hit one when it's READY, on its count (${IS_TOUCH ? "tap it" : padConnected ? "LB / RB" : "Q-R left, T-I right"})`
     : IS_TOUCH ? "tap the buttons" : padConnected ? "D-pad + X A B Y = the 8 columns (the game picks the gun)" : "mortars A S D F G H J K · cannons Q W E R T Y U I";
-  const rule = RUN.lock === 1 ? "every note you hit locks"
+  const rule = RUN.stream === "all" ? "FULL SONG — every note is coming. Hit one clean and it LOCKS: it plays itself and stops coming. Clear the sky."
+    : RUN.lock === 1 ? "every note you hit locks"
     : RUN.keep === "any" ? `groups of ${RUN.lock === Infinity ? "the whole section" : RUN.lock}: every note you hit locks`
     : RUN.keep === "half" ? `groups of ${RUN.lock === Infinity ? "the whole section" : RUN.lock}, in order — break it and half of your hits still lock`
     : RUN.lock === Infinity ? "hit them ALL, in order, to lock the section" : `hit all ${RUN.lock}, in order, to lock them`;
@@ -977,7 +980,7 @@ function makeStartButton() {
     addBacking();
     if (CREATE) startCreating();
     else if (HYDRA) startHydra();
-    else if (!HYDRA) defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, keep: RUN.keep, beatDur: clock.beatDur });
+    else if (!HYDRA) defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, keep: RUN.keep, beatDur: clock.beatDur, all: RUN.stream === "all" });   // full song: every note streams
     if (defend) { const sec = new URLSearchParams(location.search).get("section");   // dev: ?section=bass|treble starts the round there (photos of the armies)
       const k = ["drums", "bass", "treble"].indexOf(sec); if (k > 0) defend.sectionIdx = k; }
     stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat

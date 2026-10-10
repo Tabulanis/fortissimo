@@ -410,6 +410,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // of the camera (re-picked whenever the camera has moved 2 m), plus the enemies (animated or instanced: they walk right up)
   const OCC_LAYER = 3, OCC_RANGE = new URLSearchParams(location.search).has("occfull") ? 1e9 : 4;   // ?occfull: the old whole-scene pass, to compare   // the dome is 3.4 m round (0,0,0.3), the stations' cameras stand near its middle
   const _occAt = new THREE.Vector3(1e9, 0, 0), _occB = new THREE.Box3();
+  // FULL-SONG CUES (owner, 2026-10-10: "if there's too many notes at once, cut the brightness so it goes bright and STOPS before the
+  // next note, not a continuous bright"): each target flashes for CUE_PULSE s before its beat and is dark again 60 ms after
+  let cuePulse = false; const CUE_PULSE = 0.3;
   let glowFrame = 0;
   let glowers = null; const _gFr = new THREE.Frustum(), _gM = new THREE.Matrix4();   // everything on the glow channel (built once, after the scene is up)
   const shown = (o) => { for (; o; o = o.parent) if (!o.visible) return false; return true; };
@@ -2606,7 +2609,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       for (const e of activeNotes) {
         if (e.laneIdx !== lane || e.hit) continue;
         const dt = e.time - heardNow;
-        if (dt < -0.12 || dt > 1.2) continue;
+        if (dt < -(cuePulse ? 0.06 : 0.12) || dt > (cuePulse ? CUE_PULSE : 1.2)) continue;
         if (!next || Math.abs(dt) < Math.abs(next.dt)) next = { dt };
       }
       const r = rings[lane];
@@ -2621,7 +2624,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       const mat = drumMat[lane];
       if (mat && mat.color && !mat.userData.base) mat.userData.base = mat.color.clone();
       let tint = 0;
-      if (pending[lane] > 0.01 && drumVisible[lane]) {
+      if (pending[lane] > 0.01 && drumVisible[lane] && !cuePulse) {
         // the target glows up WITH its rocket / cart (owner, 2026-10-04): the game feeds its
         // progress down the lane — dim at launch, climbing, white-hot right on the beat — in the lane's colour
         const pl = pending[lane], ramp = pl * pl * pl;
@@ -2639,7 +2642,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       if (next && drumVisible[lane]) {
         const dt = next.dt;
         // charge 0..1: cubic so the brightening is fastest right before the beat
-        const c = dt >= 0 ? Math.pow(1 - dt / 1.2, 3) : Math.max(0, 1 + dt / 0.12);
+        const c = dt >= 0 ? Math.pow(1 - dt / (cuePulse ? CUE_PULSE : 1.2), 3) : Math.max(0, 1 + dt / (cuePulse ? 0.06 : 0.12));   // pulse mode: a short flash, dark before the next note
         const peak = Math.abs(dt) < 0.025 ? 1 : 0;              // the flash AT the beat
         fl.glow.visible = true;
         fl.glow.material.opacity = Math.min(1, 0.08 + 0.85 * c + 0.25 * peak);
@@ -2973,6 +2976,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     debugCountdown: () => [0, 1, 2, 3, 4, 5].map((i) => Math.max(0, ...activeNotes.filter((e) => e.laneIdx === i && e.num.visible).map((e) => e.numN))),
     debugGunInfo: () => ({ red: melodyStations.bass.bars.map((b) => +(b._red || 0).toFixed(2)) }),
     debugShieldGlowAmount: (v) => { if (shieldMix) shieldMix.uniforms.amount.value = v; },   // harness
+    setCuePulse: (on) => { cuePulse = !!on; },   // full-song mode: short per-note flashes instead of the long warm-up
     debugShieldOnly: (on) => { shieldOnly = !!on; },
     get debugBatcher() { return batcher; },
     debugGlowers: () => { const on = glowShowing(); return [on, ...(glowers || []).filter((o) => shown(o) && (!o.frustumCulled || !o.geometry || _gFr.intersectsObject(o))).map((o) => (o.parent && o.parent.name ? o.parent.name + "/" : "") + (o.name || o.type) + "@" + o.getWorldPosition(new THREE.Vector3()).toArray().map((v) => v.toFixed(1)).join(","))]; },   // harness: what keeps the glow pass on

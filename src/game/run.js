@@ -69,6 +69,11 @@ export function normalize(cfg = {}) {
   if (!LOCKS.includes(c.lock)) c.lock = 1;
   if (!DAMAGES.includes(c.damage)) c.damage = "normal";
   if (!KEEPS.includes(c.keep)) c.keep = c.lock === 1 ? "any" : "none";
+  // STREAM (owner, 2026-10-10): "steps" = the song learned in layers (as above); "all" = FULL SONG — every note of the chart
+  // comes from the first bar, every hit locks its note and the locked ones stop coming, so the sky clears as you learn it.
+  // Full song implies the full chart, single notes, keep whatever you hit.
+  c.stream = c.stream === "all" ? "all" : "steps";
+  if (c.stream === "all") { c.patterns = "full"; c.lock = 1; c.keep = "any"; }
   delete c.step;   // the old bell loop's setting
   return c;
 }
@@ -79,9 +84,10 @@ export function scoreMultiplier(cfg) {
   const parts = {
     tempo: 1 + (c.tempo - 1) * 0.8,                                       // 0.75x -> x0.80, 1.25x -> x1.20
     patterns: { easy: 0.7, medium: 0.85, full: 1 }[c.patterns],
-    lock: { 1: 0.8, 3: 0.95, 8: 1.05 }[c.lock] ?? 1.15,                 // all at once: x1.15
-    keep: { any: 0.85, half: 1, none: 1.1 }[c.keep],
+    lock: c.stream === "all" ? 1 : ({ 1: 0.8, 3: 0.95, 8: 1.05 }[c.lock] ?? 1.15),   // all at once: x1.15 (full song sets these itself: no penalty)
+    keep: c.stream === "all" ? 1 : { any: 0.85, half: 1, none: 1.1 }[c.keep],
     damage: { gentle: 0.9, normal: 1, harsh: 1.1 }[c.damage],
+    stream: { steps: 1, all: 1.25 }[c.stream],                             // the whole song at once: x1.25
   };
   const total = Object.values(parts).reduce((a, b) => a * b, 1);
   return { total: Math.round(total * 100) / 100, parts };

@@ -48,10 +48,11 @@ export class Defend {
    * @param {{notes: {lane, beat, midi?, vel?}[], bars: number}} song  (beats; the song loops every 4*bars beats)
    * @param {{lockSize?: number, keep?: "any"|"half"|"none", rng?: () => number}} opts
    */
-  constructor(song, { lockSize = 1, keep = "any", rng = Math.random } = {}) {
+  constructor(song, { lockSize = 1, keep = "any", rng = Math.random, all = false } = {}) {
     this.loopBeats = 4 * song.bars;
     this.lockSize = lockSize;
     this.keep = keep;
+    this.all = !!all;   // FULL SONG (owner, 2026-10-10): no layers, no thinning, no fillers — every unlocked note streams, every pass
     this.rng = rng;
     this.notes = song.notes.map((n, id) => ({ ...n, id, section: sectionOf(n.lane) }));
     this.locked = new Set();          // note ids
@@ -80,6 +81,7 @@ export class Defend {
   _plan(k) {
     const key = this.sectionIdx + ":" + k;
     if (this._plans.has(key)) return this._plans.get(key);
+    if (this.all) { const ids = this.unlocked().map((n) => n.id); this._plans.set(key, ids); return ids; }   // the whole section, as written
     const open = this.unlocked();
     let layer = open;
     if (this.keep !== "none" && open.length) {
