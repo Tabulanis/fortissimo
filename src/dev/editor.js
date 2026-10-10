@@ -53,6 +53,7 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
       <div style="font-size:11px;opacity:.6;margin-top:3px">a spot shines down its own "down": aim it with 2 Turn</div></div>
     <div style="margin-top:10px;font-weight:700;letter-spacing:.08em">LIGHTING <button data-k="lightReset" style="font:11px system-ui;margin-left:6px">defaults</button></div>
     <div data-k="light" style="display:grid;grid-template-columns:auto 1fr 38px;gap:3px 6px;align-items:center;margin-top:5px;font-size:12px"></div>
+    <div data-k="importer"></div>
     <div style="margin-top:8px;opacity:.6;font-size:11px;line-height:1.35">HOLD right mouse to look · W A S D fly · Q/E down/up · Shift fast · wheel = fly speed · Esc let go · tilde (~) leaves (the game was paused; it resumes)</div>
     </div>`;
   for (const b of el.querySelectorAll("button")) b.style.cssText = "flex:1;padding:5px 6px;border-radius:6px;border:1px solid #6a4a2a;background:#3a2414;color:#f1e3cc;cursor:pointer;font:12px system-ui";
@@ -89,6 +90,8 @@ export function createEditor({ scene, camera, dom, props = null, lighting = null
   const setMode = (m) => { tc.setMode(m); for (const b of el.querySelectorAll("[data-a]")) b.style.outline = b.dataset.a === m ? "2px solid #ffb35a" : ""; };
   setMode("translate");
   $("fold").addEventListener("click", (e) => { e.stopPropagation(); setFold(!folded); });
+  // the SONG IMPORTER (src/dev/importsong.js): a tracker project → a level, from inside the editor
+  import("./importsong.js").then(({ createImporter }) => { createImporter({ host: $("importer"), log }); for (const b of $("importer").querySelectorAll("button")) b.style.cssText = "padding:5px 6px;border-radius:6px;border:1px solid #6a4a2a;background:#3a2414;color:#f1e3cc;cursor:pointer"; for (const i of $("importer").querySelectorAll("input")) i.style.cssText = "width:100%;box-sizing:border-box;background:#120c08;color:#f1e3cc;border:1px solid #6a4a2a;border-radius:4px;padding:3px"; });
   try { if (localStorage.getItem("gr.editFold")) setFold(true); } catch { /* fine */ }
   const setSnap = (v) => { snap = v; tc.setTranslationSnap(v ? 0.25 : null); tc.setRotationSnap(v ? THREE.MathUtils.degToRad(15) : null); tc.setScaleSnap(v ? 0.1 : null); $("snap").checked = v; };
   $("snap").addEventListener("change", (e) => setSnap(e.target.checked));
