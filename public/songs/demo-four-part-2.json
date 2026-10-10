@@ -1,0 +1,1766 @@
+{
+ "format": "fortissimo-song",
+ "version": 1,
+ "world": "rome",
+ "swing": 0,
+ "name": "Round 2",
+ "title": "Demo Four Part",
+ "bpm": 100,
+ "bars": 4,
+ "notes": [
+  {
+   "lane": "bass 1",
+   "beat": 0,
+   "vel": 0.90625,
+   "midi": 41
+  },
+  {
+   "lane": "bass 12",
+   "beat": 0,
+   "vel": 0.71875,
+   "midi": 60
+  },
+  {
+   "lane": "crash",
+   "beat": 0,
+   "vel": 0.875,
+   "midi": 60
+  },
+  {
+   "lane": "hat",
+   "beat": 0,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "kick",
+   "beat": 0,
+   "vel": 0.9375,
+   "midi": 60
+  },
+  {
+   "lane": "treble 1",
+   "beat": 0,
+   "vel": 0.90625,
+   "midi": 60
+  },
+  {
+   "lane": "bass 1",
+   "beat": 0.5,
+   "vel": 0.90625,
+   "midi": 41
+  },
+  {
+   "lane": "hat",
+   "beat": 0.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "bass 2",
+   "beat": 1,
+   "vel": 0.90625,
+   "midi": 44
+  },
+  {
+   "lane": "hat",
+   "beat": 1,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "snare",
+   "beat": 1,
+   "vel": 0.90625,
+   "midi": 60
+  },
+  {
+   "lane": "treble 3",
+   "beat": 1,
+   "vel": 0.90625,
+   "midi": 63
+  },
+  {
+   "lane": "bass 1",
+   "beat": 1.5,
+   "vel": 0.90625,
+   "midi": 41
+  },
+  {
+   "lane": "hat",
+   "beat": 1.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "treble 11",
+   "beat": 1.5,
+   "vel": 0.75,
+   "midi": 69
+  },
+  {
+   "lane": "bass 1",
+   "beat": 2,
+   "vel": 0.90625,
+   "midi": 41
+  },
+  {
+   "lane": "hat",
+   "beat": 2,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "kick",
+   "beat": 2,
+   "vel": 0.875,
+   "midi": 60
+  },
+  {
+   "lane": "treble 2",
+   "beat": 2,
+   "vel": 0.90625,
+   "midi": 62
+  },
+  {
+   "lane": "bass 1",
+   "beat": 2.5,
+   "vel": 0.90625,
+   "midi": 41
+  },
+  {
+   "lane": "hat",
+   "beat": 2.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "bass 4",
+   "beat": 3,
+   "vel": 0.90625,
+   "midi": 48
+  },
+  {
+   "lane": "hat",
+   "beat": 3,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "snare",
+   "beat": 3,
+   "vel": 0.9375,
+   "midi": 60
+  },
+  {
+   "lane": "treble 1",
+   "beat": 3,
+   "vel": 0.90625,
+   "midi": 60
+  },
+  {
+   "lane": "bass 1",
+   "beat": 3.5,
+   "vel": 0.90625,
+   "midi": 41
+  },
+  {
+   "lane": "hat",
+   "beat": 3.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "kick",
+   "beat": 3.5,
+   "vel": 0.78125,
+   "midi": 60
+  },
+  {
+   "lane": "treble 9",
+   "beat": 3.5,
+   "vel": 0.6875,
+   "midi": 65
+  },
+  {
+   "lane": "bass 11",
+   "beat": 4,
+   "vel": 0.71875,
+   "midi": 58
+  },
+  {
+   "lane": "bass 6",
+   "beat": 4,
+   "vel": 0.90625,
+   "midi": 51
+  },
+  {
+   "lane": "hat",
+   "beat": 4,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "kick",
+   "beat": 4,
+   "vel": 0.9375,
+   "midi": 60
+  },
+  {
+   "lane": "treble 5",
+   "beat": 4,
+   "vel": 0.90625,
+   "midi": 67
+  },
+  {
+   "lane": "bass 6",
+   "beat": 4.5,
+   "vel": 0.90625,
+   "midi": 51
+  },
+  {
+   "lane": "hat",
+   "beat": 4.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "bass 4",
+   "beat": 5,
+   "vel": 0.90625,
+   "midi": 48
+  },
+  {
+   "lane": "hat",
+   "beat": 5,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "snare",
+   "beat": 5,
+   "vel": 0.90625,
+   "midi": 60
+  },
+  {
+   "lane": "treble 4",
+   "beat": 5,
+   "vel": 0.90625,
+   "midi": 65
+  },
+  {
+   "lane": "bass 6",
+   "beat": 5.5,
+   "vel": 0.90625,
+   "midi": 51
+  },
+  {
+   "lane": "hat",
+   "beat": 5.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "treble 10",
+   "beat": 5.5,
+   "vel": 0.75,
+   "midi": 67
+  },
+  {
+   "lane": "treble 5",
+   "beat": 5.5,
+   "vel": 0.90625,
+   "midi": 67
+  },
+  {
+   "lane": "bass 6",
+   "beat": 6,
+   "vel": 0.90625,
+   "midi": 51
+  },
+  {
+   "lane": "hat",
+   "beat": 6,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "kick",
+   "beat": 6,
+   "vel": 0.875,
+   "midi": 60
+  },
+  {
+   "lane": "treble 3",
+   "beat": 6,
+   "vel": 0.90625,
+   "midi": 63
+  },
+  {
+   "lane": "bass 6",
+   "beat": 6.5,
+   "vel": 0.90625,
+   "midi": 51
+  },
+  {
+   "lane": "hat",
+   "beat": 6.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "bass 3",
+   "beat": 7,
+   "vel": 0.90625,
+   "midi": 46
+  },
+  {
+   "lane": "hat",
+   "beat": 7,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "snare",
+   "beat": 7,
+   "vel": 0.9375,
+   "midi": 60
+  },
+  {
+   "lane": "treble 2",
+   "beat": 7,
+   "vel": 0.90625,
+   "midi": 62
+  },
+  {
+   "lane": "bass 4",
+   "beat": 7.5,
+   "vel": 0.90625,
+   "midi": 48
+  },
+  {
+   "lane": "hat",
+   "beat": 7.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "kick",
+   "beat": 7.5,
+   "vel": 0.78125,
+   "midi": 60
+  },
+  {
+   "lane": "treble 1",
+   "beat": 7.5,
+   "vel": 0.90625,
+   "midi": 60
+  },
+  {
+   "lane": "treble 9",
+   "beat": 7.5,
+   "vel": 0.6875,
+   "midi": 65
+  },
+  {
+   "lane": "bass 1",
+   "beat": 8,
+   "vel": 0.90625,
+   "midi": 41
+  },
+  {
+   "lane": "bass 12",
+   "beat": 8,
+   "vel": 0.71875,
+   "midi": 60
+  },
+  {
+   "lane": "hat",
+   "beat": 8,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "kick",
+   "beat": 8,
+   "vel": 0.9375,
+   "midi": 60
+  },
+  {
+   "lane": "treble 1",
+   "beat": 8,
+   "vel": 0.90625,
+   "midi": 60
+  },
+  {
+   "lane": "bass 1",
+   "beat": 8.5,
+   "vel": 0.90625,
+   "midi": 41
+  },
+  {
+   "lane": "hat",
+   "beat": 8.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "bass 2",
+   "beat": 9,
+   "vel": 0.90625,
+   "midi": 44
+  },
+  {
+   "lane": "hat",
+   "beat": 9,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "snare",
+   "beat": 9,
+   "vel": 0.90625,
+   "midi": 60
+  },
+  {
+   "lane": "treble 3",
+   "beat": 9,
+   "vel": 0.90625,
+   "midi": 63
+  },
+  {
+   "lane": "bass 1",
+   "beat": 9.5,
+   "vel": 0.90625,
+   "midi": 41
+  },
+  {
+   "lane": "hat",
+   "beat": 9.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "treble 11",
+   "beat": 9.5,
+   "vel": 0.75,
+   "midi": 69
+  },
+  {
+   "lane": "bass 1",
+   "beat": 10,
+   "vel": 0.90625,
+   "midi": 41
+  },
+  {
+   "lane": "hat",
+   "beat": 10,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "kick",
+   "beat": 10,
+   "vel": 0.875,
+   "midi": 60
+  },
+  {
+   "lane": "treble 4",
+   "beat": 10,
+   "vel": 0.90625,
+   "midi": 65
+  },
+  {
+   "lane": "bass 1",
+   "beat": 10.5,
+   "vel": 0.90625,
+   "midi": 41
+  },
+  {
+   "lane": "hat",
+   "beat": 10.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "bass 4",
+   "beat": 11,
+   "vel": 0.90625,
+   "midi": 48
+  },
+  {
+   "lane": "hat",
+   "beat": 11,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "snare",
+   "beat": 11,
+   "vel": 0.9375,
+   "midi": 60
+  },
+  {
+   "lane": "treble 5",
+   "beat": 11,
+   "vel": 0.90625,
+   "midi": 67
+  },
+  {
+   "lane": "bass 1",
+   "beat": 11.5,
+   "vel": 0.90625,
+   "midi": 41
+  },
+  {
+   "lane": "hat",
+   "beat": 11.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "kick",
+   "beat": 11.5,
+   "vel": 0.78125,
+   "midi": 60
+  },
+  {
+   "lane": "treble 9",
+   "beat": 11.5,
+   "vel": 0.6875,
+   "midi": 65
+  },
+  {
+   "lane": "bass 10",
+   "beat": 12,
+   "vel": 0.71875,
+   "midi": 56
+  },
+  {
+   "lane": "bass 5",
+   "beat": 12,
+   "vel": 0.90625,
+   "midi": 49
+  },
+  {
+   "lane": "hat",
+   "beat": 12,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "kick",
+   "beat": 12,
+   "vel": 0.9375,
+   "midi": 60
+  },
+  {
+   "lane": "treble 4",
+   "beat": 12,
+   "vel": 0.90625,
+   "midi": 65
+  },
+  {
+   "lane": "bass 5",
+   "beat": 12.5,
+   "vel": 0.90625,
+   "midi": 49
+  },
+  {
+   "lane": "hat",
+   "beat": 12.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "treble 5",
+   "beat": 12.5,
+   "vel": 0.90625,
+   "midi": 67
+  },
+  {
+   "lane": "bass 4",
+   "beat": 13,
+   "vel": 0.90625,
+   "midi": 48
+  },
+  {
+   "lane": "hat",
+   "beat": 13,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "snare",
+   "beat": 13,
+   "vel": 0.90625,
+   "midi": 60
+  },
+  {
+   "lane": "treble 3",
+   "beat": 13,
+   "vel": 0.90625,
+   "midi": 63
+  },
+  {
+   "lane": "bass 5",
+   "beat": 13.5,
+   "vel": 0.90625,
+   "midi": 49
+  },
+  {
+   "lane": "hat",
+   "beat": 13.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "treble 10",
+   "beat": 13.5,
+   "vel": 0.75,
+   "midi": 67
+  },
+  {
+   "lane": "bass 4",
+   "beat": 14,
+   "vel": 0.90625,
+   "midi": 48
+  },
+  {
+   "lane": "bass 9",
+   "beat": 14,
+   "vel": 0.71875,
+   "midi": 55
+  },
+  {
+   "lane": "hat",
+   "beat": 14,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "kick",
+   "beat": 14,
+   "vel": 0.875,
+   "midi": 60
+  },
+  {
+   "lane": "tom low",
+   "beat": 14,
+   "vel": 0.875,
+   "midi": 60
+  },
+  {
+   "lane": "treble 2",
+   "beat": 14,
+   "vel": 0.90625,
+   "midi": 62
+  },
+  {
+   "lane": "tom low",
+   "beat": 14.25,
+   "vel": 0.875,
+   "midi": 60
+  },
+  {
+   "lane": "bass 4",
+   "beat": 14.5,
+   "vel": 0.90625,
+   "midi": 48
+  },
+  {
+   "lane": "hat",
+   "beat": 14.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "tom high",
+   "beat": 14.5,
+   "vel": 0.875,
+   "midi": 60
+  },
+  {
+   "lane": "tom high",
+   "beat": 14.75,
+   "vel": 0.875,
+   "midi": 60
+  },
+  {
+   "lane": "bass 3",
+   "beat": 15,
+   "vel": 0.90625,
+   "midi": 46
+  },
+  {
+   "lane": "hat",
+   "beat": 15,
+   "vel": 0.6875,
+   "midi": 60
+  },
+  {
+   "lane": "snare",
+   "beat": 15,
+   "vel": 0.9375,
+   "midi": 60
+  },
+  {
+   "lane": "tom low",
+   "beat": 15,
+   "vel": 0.875,
+   "midi": 60
+  },
+  {
+   "lane": "treble 1",
+   "beat": 15,
+   "vel": 0.90625,
+   "midi": 60
+  },
+  {
+   "lane": "tom low",
+   "beat": 15.25,
+   "vel": 0.875,
+   "midi": 60
+  },
+  {
+   "lane": "bass 2",
+   "beat": 15.5,
+   "vel": 0.90625,
+   "midi": 44
+  },
+  {
+   "lane": "hat",
+   "beat": 15.5,
+   "vel": 0.5625,
+   "midi": 60
+  },
+  {
+   "lane": "kick",
+   "beat": 15.5,
+   "vel": 0.78125,
+   "midi": 60
+  },
+  {
+   "lane": "tom high",
+   "beat": 15.5,
+   "vel": 0.875,
+   "midi": 60
+  },
+  {
+   "lane": "treble 9",
+   "beat": 15.5,
+   "vel": 0.6875,
+   "midi": 65
+  },
+  {
+   "lane": "tom high",
+   "beat": 15.75,
+   "vel": 0.875,
+   "midi": 60
+  }
+ ],
+ "sounds": {
+  "kick": {
+   "path": "found/VCSL-Struck-Membranophones-Bass-Drum-1-BDrumNew_hit_v7_rr2_Sum.wav",
+   "note": 60,
+   "track": 0,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "hat": {
+   "path": "found/VCSL-Struck-Idiophones-Tambourine-4---Legacy-tamb2_rr1.wav",
+   "note": 60,
+   "track": 2,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "crash": {
+   "path": "found/VCSL-Struck-Idiophones-Clash-Cymbals-1-cymbal_crash1_ff3.wav",
+   "note": 60,
+   "track": 3,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "bass 1": {
+   "path": "found/VSCO-2-CE-Cello-Section-pizzT-pizzT_A2_v2_RR2.wav",
+   "note": 41,
+   "track": 6,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "bass 12": {
+   "path": "found/VSCO-2-CE-OldTrombone-Sustain-Trombone_Sustain_D2_v4_1.wav",
+   "note": 60,
+   "track": 7,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "treble 1": {
+   "path": "found/VCSL-Composite-Chordophones-Folk-Harp-EWHarp_Normal_D3_v3_RR1.wav",
+   "note": 60,
+   "track": 8,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "snare": {
+   "path": "found/VSCO-2-CE-snare-drum3_marching-snare3_fff_1.wav",
+   "note": 60,
+   "track": 1,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "bass 2": {
+   "path": "found/VSCO-2-CE-Cello-Section-pizzT-pizzT_A2_v2_RR2.wav",
+   "note": 44,
+   "track": 6,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "treble 3": {
+   "path": "found/VCSL-Composite-Chordophones-Folk-Harp-EWHarp_Normal_D3_v3_RR1.wav",
+   "note": 63,
+   "track": 8,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "treble 11": {
+   "path": "found/VSCO-2-CE-Violin-Section-Spic-VlnEns_Spic_C4_v2_rr2.wav",
+   "note": 69,
+   "track": 9,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "treble 2": {
+   "path": "found/VCSL-Composite-Chordophones-Folk-Harp-EWHarp_Normal_D3_v3_RR1.wav",
+   "note": 62,
+   "track": 8,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "bass 4": {
+   "path": "found/VSCO-2-CE-Cello-Section-pizzT-pizzT_A2_v2_RR2.wav",
+   "note": 48,
+   "track": 6,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "treble 9": {
+   "path": "found/VSCO-2-CE-Violin-Section-Spic-VlnEns_Spic_C4_v2_rr2.wav",
+   "note": 65,
+   "track": 9,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "bass 6": {
+   "path": "found/VSCO-2-CE-Cello-Section-pizzT-pizzT_A2_v2_RR2.wav",
+   "note": 51,
+   "track": 6,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "bass 11": {
+   "path": "found/VSCO-2-CE-OldTrombone-Sustain-Trombone_Sustain_D2_v4_1.wav",
+   "note": 58,
+   "track": 7,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "treble 5": {
+   "path": "found/VCSL-Composite-Chordophones-Folk-Harp-EWHarp_Normal_D3_v3_RR1.wav",
+   "note": 67,
+   "track": 8,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "treble 4": {
+   "path": "found/VCSL-Composite-Chordophones-Folk-Harp-EWHarp_Normal_D3_v3_RR1.wav",
+   "note": 65,
+   "track": 8,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "treble 10": {
+   "path": "found/VSCO-2-CE-Violin-Section-Spic-VlnEns_Spic_C4_v2_rr2.wav",
+   "note": 67,
+   "track": 9,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "bass 3": {
+   "path": "found/VSCO-2-CE-Cello-Section-pizzT-pizzT_A2_v2_RR2.wav",
+   "note": 46,
+   "track": 6,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "bass 5": {
+   "path": "found/VSCO-2-CE-Cello-Section-pizzT-pizzT_A2_v2_RR2.wav",
+   "note": 49,
+   "track": 6,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "bass 10": {
+   "path": "found/VSCO-2-CE-OldTrombone-Sustain-Trombone_Sustain_D2_v4_1.wav",
+   "note": 56,
+   "track": 7,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "tom low": {
+   "path": "found/VSCO-2-CE-Percussion-Timpani-Timpani2_Hit_v4_rr2_Sum.wav",
+   "note": 60,
+   "track": 4,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "bass 9": {
+   "path": "found/VSCO-2-CE-OldTrombone-Sustain-Trombone_Sustain_D2_v4_1.wav",
+   "note": 55,
+   "track": 7,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  },
+  "tom high": {
+   "path": "found/VCSL-Struck-Membranophones-Frame-Drum-HDrumL_Hit_v3_rr1_Sum.wav",
+   "note": 60,
+   "track": 5,
+   "voice": {
+    "attack": 0.002,
+    "hold": 0,
+    "decay": 0.08,
+    "sustain": 1,
+    "release": 0.12,
+    "cutoff": 1,
+    "reso": 0,
+    "velToCutoff": 0.6,
+    "glide": 0,
+    "pan": 0,
+    "gain": 1,
+    "loop": false
+   }
+  }
+ },
+ "back": {
+  "drums": [],
+  "bass": [],
+  "treble": []
+ },
+ "tracks": [
+  {
+   "name": "Bass drum",
+   "fx": {
+    "nudge": 0,
+    "vol": 0.85,
+    "pan": 0,
+    "eq": {
+     "low": 0,
+     "mid": 0,
+     "high": 0
+    },
+    "dist": {
+     "on": false,
+     "drive": 0.4
+    },
+    "crush": {
+     "on": false,
+     "bits": 8
+    },
+    "chorus": {
+     "on": false,
+     "rate": 1.5,
+     "depth": 0.01,
+     "mix": 0.5
+    },
+    "delay": {
+     "on": false,
+     "send": 0.3
+    },
+    "reverb": {
+     "on": false,
+     "send": 0.3
+    },
+    "filter": {
+     "on": false,
+     "type": "lowpass",
+     "freq": 2000,
+     "q": 1
+    }
+   }
+  },
+  {
+   "name": "snare",
+   "fx": {
+    "nudge": 0,
+    "vol": 0.85,
+    "pan": 0,
+    "eq": {
+     "low": 0,
+     "mid": 0,
+     "high": 0
+    },
+    "dist": {
+     "on": false,
+     "drive": 0.4
+    },
+    "crush": {
+     "on": false,
+     "bits": 8
+    },
+    "chorus": {
+     "on": false,
+     "rate": 1.5,
+     "depth": 0.01,
+     "mix": 0.5
+    },
+    "delay": {
+     "on": false,
+     "send": 0.3
+    },
+    "reverb": {
+     "on": false,
+     "send": 0.3
+    },
+    "filter": {
+     "on": false,
+     "type": "lowpass",
+     "freq": 2000,
+     "q": 1
+    }
+   }
+  },
+  {
+   "name": "hihat",
+   "fx": {
+    "nudge": 0,
+    "vol": 0.85,
+    "pan": 0,
+    "eq": {
+     "low": 0,
+     "mid": 0,
+     "high": 0
+    },
+    "dist": {
+     "on": false,
+     "drive": 0.4
+    },
+    "crush": {
+     "on": false,
+     "bits": 8
+    },
+    "chorus": {
+     "on": false,
+     "rate": 1.5,
+     "depth": 0.01,
+     "mix": 0.5
+    },
+    "delay": {
+     "on": false,
+     "send": 0.3
+    },
+    "reverb": {
+     "on": false,
+     "send": 0.3
+    },
+    "filter": {
+     "on": false,
+     "type": "lowpass",
+     "freq": 2000,
+     "q": 1
+    }
+   }
+  },
+  {
+   "name": "crash",
+   "fx": {
+    "nudge": 0,
+    "vol": 0.85,
+    "pan": 0,
+    "eq": {
+     "low": 0,
+     "mid": 0,
+     "high": 0
+    },
+    "dist": {
+     "on": false,
+     "drive": 0.4
+    },
+    "crush": {
+     "on": false,
+     "bits": 8
+    },
+    "chorus": {
+     "on": false,
+     "rate": 1.5,
+     "depth": 0.01,
+     "mix": 0.5
+    },
+    "delay": {
+     "on": false,
+     "send": 0.3
+    },
+    "reverb": {
+     "on": false,
+     "send": 0.3
+    },
+    "filter": {
+     "on": false,
+     "type": "lowpass",
+     "freq": 2000,
+     "q": 1
+    }
+   }
+  },
+  {
+   "name": "tom low",
+   "fx": {
+    "nudge": 0,
+    "vol": 0.85,
+    "pan": 0,
+    "eq": {
+     "low": 0,
+     "mid": 0,
+     "high": 0
+    },
+    "dist": {
+     "on": false,
+     "drive": 0.4
+    },
+    "crush": {
+     "on": false,
+     "bits": 8
+    },
+    "chorus": {
+     "on": false,
+     "rate": 1.5,
+     "depth": 0.01,
+     "mix": 0.5
+    },
+    "delay": {
+     "on": false,
+     "send": 0.3
+    },
+    "reverb": {
+     "on": false,
+     "send": 0.3
+    },
+    "filter": {
+     "on": false,
+     "type": "lowpass",
+     "freq": 2000,
+     "q": 1
+    }
+   }
+  },
+  {
+   "name": "tom high",
+   "fx": {
+    "nudge": 0,
+    "vol": 0.85,
+    "pan": 0,
+    "eq": {
+     "low": 0,
+     "mid": 0,
+     "high": 0
+    },
+    "dist": {
+     "on": false,
+     "drive": 0.4
+    },
+    "crush": {
+     "on": false,
+     "bits": 8
+    },
+    "chorus": {
+     "on": false,
+     "rate": 1.5,
+     "depth": 0.01,
+     "mix": 0.5
+    },
+    "delay": {
+     "on": false,
+     "send": 0.3
+    },
+    "reverb": {
+     "on": false,
+     "send": 0.3
+    },
+    "filter": {
+     "on": false,
+     "type": "lowpass",
+     "freq": 2000,
+     "q": 1
+    }
+   }
+  },
+  {
+   "name": "Bass instrument bottom",
+   "fx": {
+    "nudge": 0,
+    "vol": 0.85,
+    "pan": 0,
+    "eq": {
+     "low": 0,
+     "mid": 0,
+     "high": 0
+    },
+    "dist": {
+     "on": false,
+     "drive": 0.4
+    },
+    "crush": {
+     "on": false,
+     "bits": 8
+    },
+    "chorus": {
+     "on": false,
+     "rate": 1.5,
+     "depth": 0.01,
+     "mix": 0.5
+    },
+    "delay": {
+     "on": false,
+     "send": 0.3
+    },
+    "reverb": {
+     "on": false,
+     "send": 0.3
+    },
+    "filter": {
+     "on": false,
+     "type": "lowpass",
+     "freq": 2000,
+     "q": 1
+    }
+   }
+  },
+  {
+   "name": "Bass instrument top",
+   "fx": {
+    "nudge": 0,
+    "vol": 0.85,
+    "pan": 0,
+    "eq": {
+     "low": 0,
+     "mid": 0,
+     "high": 0
+    },
+    "dist": {
+     "on": false,
+     "drive": 0.4
+    },
+    "crush": {
+     "on": false,
+     "bits": 8
+    },
+    "chorus": {
+     "on": false,
+     "rate": 1.5,
+     "depth": 0.01,
+     "mix": 0.5
+    },
+    "delay": {
+     "on": false,
+     "send": 0.3
+    },
+    "reverb": {
+     "on": false,
+     "send": 0.3
+    },
+    "filter": {
+     "on": false,
+     "type": "lowpass",
+     "freq": 2000,
+     "q": 1
+    }
+   }
+  },
+  {
+   "name": "Treble instrument bottom",
+   "fx": {
+    "nudge": 0,
+    "vol": 0.85,
+    "pan": 0,
+    "eq": {
+     "low": 0,
+     "mid": 0,
+     "high": 0
+    },
+    "dist": {
+     "on": false,
+     "drive": 0.4
+    },
+    "crush": {
+     "on": false,
+     "bits": 8
+    },
+    "chorus": {
+     "on": false,
+     "rate": 1.5,
+     "depth": 0.01,
+     "mix": 0.5
+    },
+    "delay": {
+     "on": false,
+     "send": 0.3
+    },
+    "reverb": {
+     "on": false,
+     "send": 0.3
+    },
+    "filter": {
+     "on": false,
+     "type": "lowpass",
+     "freq": 2000,
+     "q": 1
+    }
+   }
+  },
+  {
+   "name": "Treble instrument top",
+   "fx": {
+    "nudge": 0,
+    "vol": 0.85,
+    "pan": 0,
+    "eq": {
+     "low": 0,
+     "mid": 0,
+     "high": 0
+    },
+    "dist": {
+     "on": false,
+     "drive": 0.4
+    },
+    "crush": {
+     "on": false,
+     "bits": 8
+    },
+    "chorus": {
+     "on": false,
+     "rate": 1.5,
+     "depth": 0.01,
+     "mix": 0.5
+    },
+    "delay": {
+     "on": false,
+     "send": 0.3
+    },
+    "reverb": {
+     "on": false,
+     "send": 0.3
+    },
+    "filter": {
+     "on": false,
+     "type": "lowpass",
+     "freq": 2000,
+     "q": 1
+    }
+   }
+  },
+  {
+   "name": "DRUM BACK",
+   "fx": {
+    "nudge": 0,
+    "vol": 0.85,
+    "pan": 0,
+    "eq": {
+     "low": 0,
+     "mid": 0,
+     "high": 0
+    },
+    "dist": {
+     "on": false,
+     "drive": 0.4
+    },
+    "crush": {
+     "on": false,
+     "bits": 8
+    },
+    "chorus": {
+     "on": false,
+     "rate": 1.5,
+     "depth": 0.01,
+     "mix": 0.5
+    },
+    "delay": {
+     "on": false,
+     "send": 0.3
+    },
+    "reverb": {
+     "on": false,
+     "send": 0.3
+    },
+    "filter": {
+     "on": false,
+     "type": "lowpass",
+     "freq": 2000,
+     "q": 1
+    }
+   }
+  },
+  {
+   "name": "BASS BACK",
+   "fx": {
+    "nudge": 0,
+    "vol": 0.85,
+    "pan": 0,
+    "eq": {
+     "low": 0,
+     "mid": 0,
+     "high": 0
+    },
+    "dist": {
+     "on": false,
+     "drive": 0.4
+    },
+    "crush": {
+     "on": false,
+     "bits": 8
+    },
+    "chorus": {
+     "on": false,
+     "rate": 1.5,
+     "depth": 0.01,
+     "mix": 0.5
+    },
+    "delay": {
+     "on": false,
+     "send": 0.3
+    },
+    "reverb": {
+     "on": false,
+     "send": 0.3
+    },
+    "filter": {
+     "on": false,
+     "type": "lowpass",
+     "freq": 2000,
+     "q": 1
+    }
+   }
+  },
+  {
+   "name": "TREBLE BACK",
+   "fx": {
+    "nudge": 0,
+    "vol": 0.85,
+    "pan": 0,
+    "eq": {
+     "low": 0,
+     "mid": 0,
+     "high": 0
+    },
+    "dist": {
+     "on": false,
+     "drive": 0.4
+    },
+    "crush": {
+     "on": false,
+     "bits": 8
+    },
+    "chorus": {
+     "on": false,
+     "rate": 1.5,
+     "depth": 0.01,
+     "mix": 0.5
+    },
+    "delay": {
+     "on": false,
+     "send": 0.3
+    },
+    "reverb": {
+     "on": false,
+     "send": 0.3
+    },
+    "filter": {
+     "on": false,
+     "type": "lowpass",
+     "freq": 2000,
+     "q": 1
+    }
+   }
+  }
+ ],
+ "fxBus": {
+  "reverbDecay": 3.2,
+  "delayTime": 0.3,
+  "delayFb": 0.25
+ },
+ "masterVol": 0.9
+}

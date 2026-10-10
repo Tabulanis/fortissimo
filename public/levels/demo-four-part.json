@@ -1,0 +1,21 @@
+{
+ "format": "fortissimo-level",
+ "version": 1,
+ "name": "Demo Four Part",
+ "title": "Demo Four Part",
+ "world": "rome",
+ "rounds": [
+  "demo-four-part-1.json",
+  "demo-four-part-2.json",
+  "demo-four-part-3.json"
+ ],
+ "hydra": {
+  "from": [
+   1,
+   2,
+   3
+  ],
+  "bpm": 100,
+  "bars": 4
+ }
+}
