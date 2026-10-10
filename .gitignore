@@ -2,7 +2,6 @@ node_modules/
 dist/
 *.log
 .DS_Store
-.local_backups/
 
 # Android (Capacitor) build output
 android/app/build/

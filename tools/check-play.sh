@@ -3,7 +3,8 @@
 # panel must appear. Prints one line per level: PASS/FAIL + the results text. Needs the dev server (:5180) and the sink (:8899).
 #   tools/check-play.sh            low medium high
 #   tools/check-play.sh medium     one level
-S=/tmp/fortissimo-dev "$(dirname "$0")/.."; fail=0
+S=${FORTISSIMO_DEV_DIR:-/tmp/fortissimo-dev}   # where the photo sink (tools/sink.py) writes
+cd "$(dirname "$0")/.."; fail=0
 for q in ${@:-low medium high}; do
   n0=$(grep -c "/info_full\|/err_full" $S/create.log 2>/dev/null || echo 0)
   mkdir -p $S/ffcp && cp $S/ffp/user.js $S/ffcp/
