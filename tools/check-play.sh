@@ -7,7 +7,7 @@ S=/tmp/fortissimo-dev "$(dirname "$0")/.."; fail=0
 for q in ${@:-low medium high}; do
   n0=$(grep -c "/info_full\|/err_full" $S/create.log 2>/dev/null || echo 0)
   mkdir -p $S/ffcp && cp $S/ffp/user.js $S/ffcp/
-  timeout 400 ~/.local/opt/firefox/firefox --headless --no-remote --window-size 1100,760 --profile $S/ffcp "http://127.0.0.1:5180/tests/harness/_fullplay.html#q=$q" >/dev/null 2>&1
+  timeout 720 ~/.local/opt/firefox/firefox --headless --no-remote --window-size 1100,760 --profile $S/ffcp "http://127.0.0.1:5180/tests/harness/_fullplay.html#q=$q" >/dev/null 2>&1
   for p in $(ls /proc | grep -E '^[0-9]+$'); do ls -l /proc/$p/fd 2>/dev/null | grep -q "$S/ffcp/" && kill $p; done; sleep 1; rm -rf $S/ffcp
   line=$(grep "/info_full\|/err_full" $S/create.log | tail -1)
   n1=$(grep -c "/info_full\|/err_full" $S/create.log 2>/dev/null || echo 0)

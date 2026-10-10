@@ -1,0 +1,18 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1100px;height:760px;border:0"></iframe>
+<script type="module">
+// WHY ISN'T THE ROBOT HITTING (10-09 evening): the same steps as _fullplay, reporting each state along the way
+const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+localStorage.removeItem("gr.run2"); localStorage.setItem("gr.level", "0");
+f.src = "/?autobegin=1&quality=low";
+f.onload = async () => { const w = f.contentWindow, d = w.document; const out = { t: [] };
+  try { await wait(3500); out.loadingAtStart = !!d.getElementById("gr-loading"); [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click(); await wait(1000);
+    const G = w.__gr.game; out.ctx1 = G.ctx && G.ctx.state; out.clock1 = !!G.clock; out.up1 = G.upcoming().length; out.settings = d.getElementById("gr-set").style.display;
+    await wait(4000); out.ctx2 = G.ctx && G.ctx.state; out.up2 = G.upcoming().length; out.hitsBefore = (w.__gr.hits || []).length;
+    const press = (k) => { w.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true })); w.dispatchEvent(new w.KeyboardEvent("keyup", { key: k, bubbles: true })); };
+    const now = G.ctx.getOutputTimestamp().contextTime, next = G.upcoming().filter((a) => a.time > now + 0.3).sort((a, b) => a.time - b.time)[0];
+    out.next = next && { lane: G.laneOf(next.laneIdx), dt: +(next.time - now).toFixed(2) };
+    if (next) { const o = G.ctx.getOutputTimestamp(); await wait(Math.max(0, o.performanceTime + (next.time - o.contextTime) * 1000 - w.performance.now())); press({ hat: "q", snare: "w", crash: "e", kick: "a", "tom low": "s", "tom high": "d" }[G.laneOf(next.laneIdx)] || "q"); }
+    await wait(600); out.hitsAfter = (w.__gr.hits || []).length; out.lastHit = (w.__gr.hits || []).slice(-1)[0]; out.locked = G.defend ? G.defend.locked.size : null; out.paused = d.body.innerText.includes("3") ? "?" : "";
+  } catch (e) { out.err = String(e) + (e.stack || "").slice(0, 200); }
+  fetch("http://127.0.0.1:8899/diag", { method: "POST", body: JSON.stringify(out) }); };
+</script>
