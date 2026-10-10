@@ -62,7 +62,7 @@ const CSS = `
 }
 `;
 
-export function createSettings({ onChange, onRestart, onEditor } = {}) {
+export function createSettings({ onChange, onRestart, onEditor, onOpen, onClose } = {}) {
   const s = loadSettings();
   const style = document.createElement("style");
   style.textContent = CSS;
@@ -120,8 +120,8 @@ export function createSettings({ onChange, onRestart, onEditor } = {}) {
     });
   }
   let afterClose = null;   // (10-08) the main menu's Options: the menu hides while these are open and comes back on Done
-  const open = (then = null) => { root.style.display = "grid"; afterClose = typeof then === "function" ? then : null; };
-  const close = () => { root.style.display = "none"; const f = afterClose; afterClose = null; if (f) f(); };
+  const open = (then = null) => { const was = root.style.display === "grid"; root.style.display = "grid"; afterClose = typeof then === "function" ? then : null; if (!was && onOpen) onOpen(); };
+  const close = () => { const was = root.style.display === "grid"; root.style.display = "none"; const f = afterClose; afterClose = null; if (f) f(); if (was && onClose) onClose(); };
   gear.addEventListener("click", open);
   if (new URLSearchParams(location.search).has("settings")) open();   // dev: ?settings opens it (screenshots)
   root.querySelector("[data-act=close]").addEventListener("click", close);

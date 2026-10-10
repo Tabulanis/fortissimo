@@ -1,0 +1,15 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1000px;height:700px;border:0"></iframe>
+<script type="module">
+// PAUSE (10-09): a song running → Settings opened → the audio clock is suspended → closed → counts in → running again
+const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms)), say = (k, b) => fetch("http://127.0.0.1:8899/" + k, { method: "POST", body: b });
+localStorage.removeItem("gr.run2");
+f.src = "/?autobegin=1&quality=low";
+f.onload = async () => { const w = f.contentWindow, d = w.document; const out = {};
+  try { await wait(6000); [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click(); await wait(6000);
+    const st = () => (w.__gr.game.ctx ? w.__gr.game.ctx.state : "no ctx");
+    out.playing = st();
+    d.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await wait(400); out.afterEscape = st(); out.settingsShown = d.getElementById("gr-set").style.display;
+    d.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await wait(400); out.rightAfterClose = st(); await wait(3000); out.afterCountIn = st();
+  } catch (e) { out.err = String(e); }
+  say("pause", JSON.stringify(out)); };
+</script>

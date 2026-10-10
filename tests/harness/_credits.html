@@ -1,0 +1,12 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1000px;height:700px;border:0"></iframe>
+<script type="module">
+// CREDITS from the title menu (10-09): the button is there, the file renders, Back returns to the title
+const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+f.src = "/?quality=low";
+f.onload = async () => { const w = f.contentWindow, d = w.document; const out = {};
+  try { await wait(6000); const b = d.querySelector("#gr-menu [data-a=credits]"); out.button = !!b; b.click(); await wait(800);
+    const t = d.querySelector("#gr-menu .card").textContent; out.headings = (t.match(/Sounds|Models and art|Type|Software/g) || []).length; out.len = t.length;
+    d.querySelector("#gr-menu [data-a=back]").click(); await wait(300); out.backToTitle = !!d.querySelector("#gr-menu [data-a=credits]");
+  } catch (e) { out.err = String(e); }
+  fetch("http://127.0.0.1:8899/credits", { method: "POST", body: JSON.stringify(out) }); };
+</script>

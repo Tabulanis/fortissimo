@@ -61,13 +61,24 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
   let cfg = normalize(run);
   let lvl = Math.min(level, unlocked);
 
+  // CREDITS (10-09): public/legal/credits.md, shown as it is — every sound, model and library with its licence
+  async function credits() {
+    let md = ""; try { md = await (await fetch("/legal/credits.md")).text(); } catch { md = "# Credits\n\nCouldn't load the credits file."; }
+    const esc = (t) => t.replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
+    const html = md.split("\n").map((l) => l.startsWith("# ") ? `<h1 style="font-size:28px">${esc(l.slice(2))}</h1>` : l.startsWith("## ") ? `<h2 style="margin-top:14px">${esc(l.slice(3))}</h2>`
+      : l.startsWith("- ") ? `<div style="font-size:13px;opacity:0.85;margin:3px 0 3px 10px">· ${esc(l.slice(2))}</div>` : l.trim() ? `<p class="sub" style="margin:6px 0">${esc(l)}</p>` : "").join("");
+    card.innerHTML = `<div style="max-height:70vh;overflow:auto;text-align:left">${html}</div><button class="back" data-a="back">← Back</button>`;
+    card.querySelector("[data-a=back]").onclick = title;
+  }
   function title() {
     card.innerHTML = `<h1>Fortissimo</h1><div class="sub">play the song, one piece at a time</div>
       <button class="big" data-a="play">Start ▶</button>
       ${onCreate ? `<button class="big" data-a="create">Create ✎</button>` : ""}
-      ${onOptions ? `<button class="big" data-a="options">Options ⚙</button>` : ""}`;
+      ${onOptions ? `<button class="big" data-a="options">Options ⚙</button>` : ""}
+      <button class="back" data-a="credits">Credits</button>`;
     card.querySelector("[data-a=play]").onclick = levelsScreen;
     if (onCreate) card.querySelector("[data-a=create]").onclick = () => onCreate(card, title);
+    card.querySelector("[data-a=credits]").onclick = credits;
     if (onOptions) card.querySelector("[data-a=options]").onclick = () => {   // (10-08) the menu steps aside so the settings show, and comes back on Done
       root.style.display = "none"; onOptions(() => { root.style.display = ""; });
     };   // the song-maker (maker-ui.js) draws in this card

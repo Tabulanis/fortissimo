@@ -1,0 +1,76 @@
+# release.yml — EVERY PLATFORM FROM ONE TAG (10-09, "deployment across multiple platforms… professional").
+# Push a tag like v0.2.0 (the release wizard does: `npm run release`) and this builds, on GitHub's machines:
+#   web/        the site (also the VR-browser build) as a zip
+#   android/    a signed release APK + an AAB for the Play Store — if the signing secrets are set, else an unsigned debug APK
+#   desktop/    Windows / macOS / Linux installers (Electron)
+# and attaches them all to a GitHub Release for that tag. Secrets to set once in the repo (Settings → Secrets):
+#   ANDROID_KEYSTORE_B64 (the .jks, base64), ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+# The owner types those; nothing here can create them.
+name: release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: cd dist && zip -qr ../fortissimo-web-${{ github.ref_name }}.zip .
+      - uses: actions/upload-artifact@v4
+        with: { name: web, path: fortissimo-web-*.zip }
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+      - name: signing key (only when the secrets exist)
+        if: ${{ env.KS != '' }}
+        env: { KS: ${{ secrets.ANDROID_KEYSTORE_B64 }} }
+        run: echo "$KS" | base64 -d > android/release.jks
+      - name: build
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          cd android
+          if [ -f release.jks ]; then ./gradlew assembleRelease bundleRelease -q; else ./gradlew assembleDebug -q; fi
+          mkdir -p ../out && find app/build/outputs -name "*.apk" -o -name "*.aab" | xargs -I{} cp {} ../out/
+      - uses: actions/upload-artifact@v4
+        with: { name: android, path: out/* }
+  desktop:
+    strategy:
+      matrix: { os: [ubuntu-latest, windows-latest, macos-latest] }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: npm run desktop:build
+      - uses: actions/upload-artifact@v4
+        with: { name: desktop-${{ matrix.os }}, path: "desktop/out/*.*" }
+  publish:
+    needs: [web, android, desktop]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true

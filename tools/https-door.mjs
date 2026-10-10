@@ -10,7 +10,16 @@ import fs from "node:fs";
 import os from "node:os";
 
 const CA = `${os.homedir()}/aidojo/shared/house-ca`, PORT = 5181, TO = { host: "127.0.0.1", port: 5180 };
+// /download → the newest APK in out/ (the phone installs it straight from this page; a debug build until the signing key is set up)
+const newestApk = () => { const out = `${process.cwd()}/out`; if (!fs.existsSync(out)) return null;
+  const all = fs.readdirSync(out).flatMap((v) => { const d = `${out}/${v}`; return fs.statSync(d).isDirectory() ? fs.readdirSync(d).filter((f) => f.endsWith(".apk")).map((f) => `${d}/${f}`) : []; });
+  return all.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0] || null; };
 const server = https.createServer({ cert: fs.readFileSync(`${CA}/void.crt`), key: fs.readFileSync(`${CA}/void.key`) }, (req, res) => {
+  if (req.url === "/download" || req.url === "/download/") {
+    const f = newestApk(); if (!f) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("No APK built yet."); }
+    res.writeHead(200, { "content-type": "application/vnd.android.package-archive", "content-length": fs.statSync(f).size, "content-disposition": `attachment; filename="${f.split("/").pop()}"` });
+    return fs.createReadStream(f).pipe(res);
+  }
   const up = http.request({ ...TO, method: req.method, path: req.url, headers: { ...req.headers, host: `127.0.0.1:${TO.port}` } }, (r) => {
     res.writeHead(r.statusCode, r.headers); r.pipe(res);
   });

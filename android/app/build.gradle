@@ -1,5 +1,14 @@
 apply plugin: 'com.android.application'
 
+// SIGNING (Fortissimo, 10-09): the release key comes from android/keystore.properties (gitignored; the owner writes it —
+// storeFile, storePassword, keyAlias, keyPassword) or, on GitHub Actions, from android/release.jks + the ANDROID_* secrets.
+// Neither exists → release builds are unsigned (debug builds use the debug key as always).
+def ksProps = new Properties()
+def ksFile = rootProject.file("keystore.properties")
+if (ksFile.exists()) ksFile.withInputStream { ksProps.load(it) }
+def ciStore = rootProject.file("release.jks")
+def hasRelease = ksFile.exists() || (ciStore.exists() && System.getenv("ANDROID_KEYSTORE_PASSWORD") != null)
+
 android {
     namespace = "com.tabulanis.fortissimo"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +25,18 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (ksFile.exists()) {
+                storeFile file(ksProps['storeFile']); storePassword ksProps['storePassword']; keyAlias ksProps['keyAlias']; keyPassword ksProps['keyPassword']
+            } else if (hasRelease) {
+                storeFile ciStore; storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD"); keyAlias System.getenv("ANDROID_KEY_ALIAS"); keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasRelease) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

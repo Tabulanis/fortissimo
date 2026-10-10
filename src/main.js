@@ -28,6 +28,7 @@ import { fillKit, kitPlan } from "./game/kit.js";
 const runName = (r) => { const lv = levelOf(r); return lv ? `Level ${lv}` : "Custom"; };
 import { createMenu } from "./ui/menu.js";
 import { createLoading } from "./ui/loading.js";
+import { initNative, wake, haptic } from "./app/native.js";
 import { pickSounds } from "./ui/maker-ui.js";
 import { createMode } from "./modes/create.js";
 import { hydraMode } from "./modes/hydra.js";
@@ -233,7 +234,24 @@ const hudUI = createHud({ onHint: () => playHint() });
 let autoCorrect = SET.autoCorrect;   // A toggles; also in settings
 function showDifficulty() { hudUI.setDifficulty(`${runName(RUN)} ×${scoreMultiplier(RUN).total}${autoCorrect ? " · Auto ✓" : ""}`); }
 showDifficulty();
+initNative({ onBack: () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })) });   // the phone's back button = Escape
+// PAUSE (10-09, "make it professional"): opening Settings — the gear, Escape, the phone's back button, or the app going to the
+// background — freezes the song by suspending the audio clock (the same trick dev mode uses); closing it counts 3-2-1 back in.
+let pausedSong = false, resumeTimer = null;
+function pauseSong() {
+  if (pausedSong || !ctx || ctx.state !== "running" || !clock) return;
+  ctx.suspend(); pausedSong = true; wake.off(); bootlog("paused");
+}
+function resumeSong() {
+  if (!pausedSong || !ctx) return;
+  clearTimeout(resumeTimer);
+  let n = 3; const step = () => { if (!pausedSong) return; if (n > 0) { hudUI.say(String(n), "good", 700); n--; resumeTimer = setTimeout(step, 750); return; }
+    ctx.resume(); pausedSong = false; wake.on(); hudUI.say("Go!", "good", 500); bootlog("resumed"); };
+  step();
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden && ctx && ctx.state === "running" && clock) settingsUI.open(); });
 const settingsUI = createSettings({
+  onOpen: () => pauseSong(), onClose: () => resumeSong(),
   onChange: (k, v) => {
     if (k === "autoCorrect") { autoCorrect = v; showDifficulty(); return; }
     if (mixer) mixer.setVolume(k, v);
@@ -561,6 +579,7 @@ function horn() {
 }
 
 function endRound() {
+  wake.off();
   const stats = gradeRound(roundOffsets, judgeDiff().window);
   { const g = levelGroups(LESSONS).find((x) => x.rounds[2] === roundIdx);   // round 3 of a level: straight into the big to-do
     if (g) { try { if (unlockedLevel() < roundIdx + 1) localStorage.setItem(UNLOCKED_KEY, roundIdx + 1); } catch { /* fine */ } bootlog("round 3 done", stats); bigToDo(g); return; } }
@@ -888,6 +907,7 @@ function conductGesture(kind, t = beatsNow()) {
 }
 window.addEventListener("keyup", (e) => { if (conductor && e.key.toLowerCase() === "p") conductGesture("release"); });
 function beginCount() {
+  wake.on();   // the screen stays on through the song (packaged app / phones)
   if (!armed || clock || counting) return;
   counting = true;
   const beat = 60 / BPM, cx = window.innerWidth / 2, cy = window.innerHeight * 0.38;
@@ -1317,6 +1337,7 @@ function hitLane(idx, lane, press, padVel = 1) {
     }
     defendEvents();
   }
+  haptic(lab);
   if (window.__gr) (window.__gr.hits ||= []).push({ lane: lane.name, lab, force: +padVel.toFixed(2), vel: +vel.toFixed(3) });   // harness readout
 
   // record exactly as played (real timing, real velocity, mistakes and OFF

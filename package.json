@@ -7,19 +7,63 @@
     "build": "vite build",
     "preview": "vite preview",
     "release": "node tools/release.mjs",
-    "check": "node tools/release.mjs --check"
+    "check": "node tools/release.mjs --check",
+    "desktop": "electron .",
+    "desktop:build": "electron-builder --config.directories.output=desktop/out"
   },
   "dependencies": {
     "three": "^0.170.0"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.3",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.5.3",
     "@capacitor/core": "^8.5.3",
     "@gltf-transform/cli": "^4.5.1",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
     "iwer": "^2.5.0",
     "vite": "^6.0.0"
   },
   "version": "0.1.0",
-  "description": "Fortissimo — the rhythm game where you are the instrument"
+  "description": "Fortissimo \u2014 the rhythm game where you are the instrument",
+  "main": "desktop/main.cjs",
+  "build": {
+    "appId": "com.tabulanis.fortissimo",
+    "productName": "Fortissimo",
+    "files": [
+      "dist/**/*",
+      "desktop/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "desktop/out",
+      "buildResources": "assets"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Game",
+      "icon": "public/app/icon-512.png"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "public/app/icon-512.png"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.games",
+      "icon": "public/app/icon-512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
 }
