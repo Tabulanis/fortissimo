@@ -252,6 +252,7 @@ function resumeSong() {
 document.addEventListener("visibilitychange", () => { if (document.hidden && ctx && ctx.state === "running" && clock) settingsUI.open(); });
 const settingsUI = createSettings({
   onOpen: () => pauseSong(), onClose: () => resumeSong(),
+  onCalibrate: () => startCalibration(),
   onChange: (k, v) => {
     if (k === "autoCorrect") { autoCorrect = v; showDifficulty(); return; }
     if (mixer) mixer.setVolume(k, v);
@@ -846,13 +847,18 @@ function makeCalibrateButton() {
   btn.style.cssText =
     "position:fixed;bottom:24px;left:8px;z-index:21;font:13px monospace;" +
     "padding:6px 14px;background:#131;color:#fc6;border:1px solid #fc6;cursor:pointer";
-  btn.addEventListener("click", () => {
-    if (!clock || calib) return;
-    calib = { hits: [] };
-    offsets = [];
-  });
-  document.body.appendChild(btn);
+  btn.addEventListener("click", () => startCalibration());
+  if (import.meta.env.DEV) document.body.appendChild(btn);   // (10-09) the dev corner button; players use Options → Calibrate timing
   return btn;
+}
+// CALIBRATION for players (10-09): Options → "Calibrate timing". Your next 16 hits are measured against the beat and their
+// typical offset (the median) is taken off every press from then on — this is what makes a phone's audio delay playable.
+function startCalibration() {
+  if (calib) return false;
+  if (!clock) { hudUI.say("Start a song first, then calibrate while it plays", "", 3000); return false; }
+  calib = { hits: [] }; offsets = [];
+  setTimeout(() => hudUI.say("Calibrating — play along with the beat for 16 hits", "good", 4000), pausedSong ? 3100 : 0);   // after the count-in
+  return true;
 }
 
 // the song begins on the first key / tap / pad press after Start: 3, 2, 1, go
@@ -1433,6 +1439,7 @@ function recordPress(idx, offsetSec, vel, laneName, lab) {
       calib.hits.push(offsetSec);
       if (calib.hits.length >= 16) {
         calibration = median(calib.hits);
+        hudUI.say(`Calibrated: ${Math.round(calibration * 1000)} ms`, "good", 3500);
         try { localStorage.setItem(CALIB_KEY, String(calibration)); } catch {}
         calib = null;
       }

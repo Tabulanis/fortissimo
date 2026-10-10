@@ -1,0 +1,27 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1000px;height:700px;border:0"></iframe>
+<script type="module">
+// CALIBRATE from Options (10-09): during a song, Options → "Calibrate timing" closes the panel and counts back in; the robot then
+// plays the drum cues (like _fullplay) until 16 hits are measured → "Calibrated: N ms" on the HUD and gr.calib saved
+const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const KEY = { hat: "q", snare: "w", crash: "e", kick: "a", "tom low": "s", "tom high": "d" };
+localStorage.removeItem("gr.run2"); localStorage.removeItem("gr.calib"); localStorage.setItem("gr.level", "0");
+f.src = "/?autobegin=1&quality=low";
+f.onload = async () => { const w = f.contentWindow, d = w.document; const out = {};
+  try { await wait(5000); [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click(); await wait(5000);
+    const G = w.__gr.game, hud = () => d.getElementById("gr-hud").innerText;
+    d.dispatchEvent(new w.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await wait(300); out.paused = G.ctx.state;
+    d.querySelector("#gr-set [data-act=calibrate]").click(); await wait(200);
+    out.settingsClosed = d.getElementById("gr-set").style.display === "none"; out.msg = (hud().match(/Calibrating[^\n]*/) || [])[0] || "(none)";
+    await wait(3200); out.running = G.ctx.state;
+    const press = (k) => { w.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true })); w.dispatchEvent(new w.KeyboardEvent("keyup", { key: k, bubbles: true })); };
+    const at = (T, k) => { const o = G.ctx.getOutputTimestamp(); setTimeout(() => press(k), Math.max(0, o.performanceTime + (T + G.calibration - o.contextTime) * 1000 - w.performance.now())); };
+    const planned = new Set(), t0 = performance.now(); let result = null;
+    while (performance.now() - t0 < 40000 && !result) {
+      const now = G.ctx.getOutputTimestamp().contextTime;
+      for (const a of G.upcoming()) { const key = a.laneIdx + "@" + a.time.toFixed(3), lane = G.laneOf(a.laneIdx); if (!planned.has(key) && a.time - now < 0.6 && KEY[lane]) { planned.add(key); at(a.time + 0.02, KEY[lane]); } }
+      result = (hud().match(/Calibrated:[^\n]*/) || [])[0] || null; await wait(40);
+    }
+    out.result = result || "(no result in 40 s)"; out.saved = w.localStorage.getItem("gr.calib"); out.pressed = planned.size;
+  } catch (e) { out.err = String(e); }
+  fetch("http://127.0.0.1:8899/calib", { method: "POST", body: JSON.stringify(out) }); };
+</script>

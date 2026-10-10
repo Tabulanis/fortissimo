@@ -62,7 +62,7 @@ const CSS = `
 }
 `;
 
-export function createSettings({ onChange, onRestart, onEditor, onOpen, onClose } = {}) {
+export function createSettings({ onChange, onRestart, onEditor, onOpen, onClose, onCalibrate } = {}) {
   const s = loadSettings();
   const style = document.createElement("style");
   style.textContent = CSS;
@@ -89,6 +89,7 @@ export function createSettings({ onChange, onRestart, onEditor, onOpen, onClose 
       <h3>Playing</h3>
       <div class="row"><span>Auto-correct <span class="note">— your hits land on the beat</span></span><input type="checkbox" data-k="autoCorrect"></div>
       <div class="note">Difficulty is picked in the start menu.</div>
+      <div class="row"><span>Timing <small>— if hits feel early or late on this device</small></span><button data-act="calibrate">Calibrate timing</button></div>
       <h3>Graphics</h3>
       <div class="row"><select data-k="quality" class="wide">
           <option value="auto">Auto — measures this device</option>
@@ -127,6 +128,7 @@ export function createSettings({ onChange, onRestart, onEditor, onOpen, onClose 
   root.querySelector("[data-act=close]").addEventListener("click", close);
   root.querySelector("[data-act=close2]").addEventListener("click", close);
   root.querySelector("[data-act=restart]").addEventListener("click", () => onRestart && onRestart());
+  root.querySelector("[data-act=calibrate]").addEventListener("click", () => { if (onCalibrate && onCalibrate()) close(); });   // closes (and counts back in) so you can play along
   // SAVE (10-09): copy the save / the log to the clipboard (to send us, or to move to another device); reset progress asks twice
   const copy = async (b, text) => { try { await navigator.clipboard.writeText(text); b.textContent = "Copied ✓"; } catch { b.textContent = "Couldn't copy"; } setTimeout(() => { b.textContent = b.dataset.label; }, 1800); };
   for (const [act, fn] of [["copysave", exportSave], ["copylog", () => logLines().join("\n")]]) {
