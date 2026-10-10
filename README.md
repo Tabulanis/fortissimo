@@ -47,7 +47,7 @@ npm run dev        # http://localhost:5180
 Phone: open the dev server's address on the same network (or the https door, `tools/https-door.mjs`, to install it as an app).
 Desktop: `npm run desktop`. Android: `npm run release` walks through building the APK.
 
-**Controls (keyboard):** drums `Q W E A S D` · mortars `A S D F` / `Q W E R` · Hydra: drums `Q W E A S` + guns `J K L I O`. Hold `Esc` for options.
+**Controls (keyboard):** drums `Q W E A S D` · mortars `A S D F` / `Q W E R` · Hydra: drums `Q W E A S` + guns `J K L I O`. `Esc` for options.
 
 ## Status
 
