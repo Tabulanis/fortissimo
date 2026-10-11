@@ -57,11 +57,21 @@ export function createHydra(scene, { origin = new THREE.Vector3(0, -1.4, 37), ta
   api.bite = (i, now) => { const h = H[i % H.length]; if (h) { h.lungeAt = now; h.head.bite(now + 0.3); if (sea) { const p = surfaceOf(h, h.lastPitch, h.lastYaw || 0); sea.addRipple(p.x, p.z, 2.4); } } };
   api.rear = (i, on = true) => { const h = H[i % H.length]; if (h) h.rearTo = on ? 1 : 0; };
   api.hit = (i, now) => { const h = H[i % H.length]; if (h) { h.hitAt = now; h.rearTo = 0; if (sea) sea.addRipple(h.base.x, h.base.z - 2, 2.0); } };
-  api.standBack = (i, on = true) => { const h = H[i % H.length]; if (h) h.backTo = on ? 1 : 0; };   // round 4: the heads not attacking lean away (10-08: the middle one sat 3.5 m from the camera)
+  api.standBack = (i, on = true) => { const h = H[i % H.length]; if (h) h.backTo = typeof on === "number" ? on : on ? 1 : 0; };   // a number = part way back (10-11: the attacker at 0.45 so it never covers the kit)   // round 4: the heads not attacking lean away (10-08: the middle one sat 3.5 m from the camera)
   api.down = (i) => { const h = H[i % H.length]; if (h) { h.aliveTo = 0; h.rearTo = 0; } };
   api.up = (i) => { const h = H[i % H.length]; if (h) h.aliveTo = 1; };
   api.mouth = (i, out = new THREE.Vector3()) => { const h = H[i % H.length]; return h ? h.head.skull.getWorldPosition(out) : null; };   // where acid leaves from
   api.holdLunge = (i) => { api._hold = i; if (H.length) H[i % H.length].hold = true; };   // dev: freeze a head at full strike for a photo
+  // ROUND 4 LANES (owner, 2026-10-11: "fire, ice and acid from the heads, from the mouth to the drum"): a head that is the SOURCE of
+  // lanes holds STILL — no sway, no wobble — so the far end of its lanes never wanders; and its mouth glows its element
+  api.still = (i, on = true) => { const h = H[i % H.length]; if (h) h.stillTo = on ? 1 : 0; };
+  api.mouthGlow = (i, color, strength = 1) => { const h = H[i % H.length]; if (!h) return;
+    if (!h.glow) { const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowMap(), color: 0xffffff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+      m.scale.setScalar(1.6); m.position.set(0, -0.1, 0.6); h.head.skull.add(m); h.glow = m; }
+    h.glow.material.color.set(color); h.glow.material.opacity = Math.min(1, strength); h.glow.visible = strength > 0.01; };
+  const glowMap = () => { if (api._glowMap) return api._glowMap; const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d");
+    const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, "rgba(255,255,255,1)"); r.addColorStop(0.35, "rgba(255,255,255,0.5)"); r.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = r; g.fillRect(0, 0, 64, 64); return (api._glowMap = new THREE.CanvasTexture(c)); };
   api.update = (dt, now, beatPhase = now) => {
     if (!api.ready) return;
     api.level += (api._levelTo - api.level) * Math.min(1, dt * 0.9);   // rises over ~3 s
@@ -69,18 +79,20 @@ export function createHydra(scene, { origin = new THREE.Vector3(0, -1.4, 37), ta
       h.alv += (h.aliveTo - h.alv) * Math.min(1, dt * 1.2);   // one head sinking / regrowing
       h.rear += (h.rearTo - h.rear) * Math.min(1, dt * 6);
       h.back += (h.backTo - h.back) * Math.min(1, dt * 1.5);
+      h.still = (h.still || 0) + ((h.stillTo || 0) - (h.still || 0)) * Math.min(1, dt * 2);   // a lane source settles still over ~0.5 s
       const t = now, s = h.seed, lv = api.level * h.alv;
       const dh = now - h.hitAt, recoil = dh >= 0 && dh < 1.2 ? Math.exp(-dh * 3.5) * Math.sin(Math.min(1, dh / 0.12) * Math.PI / 2) : 0;
       const dl = now - h.lungeAt; h.lunge = h.hold ? 1 : dl < 0 ? 0 : dl < 0.35 ? Math.sin(dl / 0.35 * Math.PI / 2) : dl < 1.25 ? 1 - (dl - 0.35) / 0.9 : 0;
       if (h.hold) h.head.jaw(1); else if (h.rear > 0.02 || h.rearTo) h.head.jaw(Math.max(0.15, 0.85 * h.rear));   // rearing: jaws open (back to the idle 0.15 after)
       // the base stays under the water: rising = the neck pitching up from flat-on-the-water to its lean
       _to.subVectors(target, h.base); const yaw = Math.atan2(_to.x, _to.z);   // the snout (+z) toward the podium
-      const sway = Math.sin(beatPhase * Math.PI * 0.5 + s) * 0.12 + Math.sin(t * 0.37 + s * 1.3) * 0.05;
-      const pitch = (1 - lv) * 1.35 + h.lean * lv + h.lunge * 0.24 + Math.sin(t * 0.8 + s) * 0.04 * lv - 0.32 * h.rear * lv - 0.18 * recoil * lv - 0.45 * h.back * lv;   // rearing pulls back; a wound throws it BACK too (10-08: it was + — every wound lunged the head into the camera)   // forward lean about the base (local x); the strike is mostly the neck CURLING (below)
+      const calm = 1 - h.still;   // still: the source of the lanes doesn't sway or wobble
+      const sway = (Math.sin(beatPhase * Math.PI * 0.5 + s) * 0.12 + Math.sin(t * 0.37 + s * 1.3) * 0.05) * calm;
+      const pitch = (1 - lv) * 1.35 + h.lean * lv + h.lunge * 0.24 + Math.sin(t * 0.8 + s) * 0.04 * lv * calm - 0.32 * h.rear * lv - 0.18 * recoil * lv - 0.45 * h.back * lv;   // rearing pulls back; a wound throws it BACK too (10-08: it was + — every wound lunged the head into the camera)   // forward lean about the base (local x); the strike is mostly the neck CURLING (below)
       _e.set(pitch, yaw, sway * lv, "YXZ"); h.pivot.quaternion.setFromEuler(_e);
-      h.head.setSway(t, s, 0.5 + 0.5 * lv);
+      h.head.setSway(t, s, (0.5 + 0.5 * lv) * calm);
       // the strike: the upper neck curls forward toward the podium (setSway reset the bones this frame)
-      { const B = h.head.bones, N = RIG.neckBones; for (let b = Math.floor(N / 2); b < N; b++) B[b].rotateX(0.11 * h.lunge); }
+      { const B = h.head.bones, N = RIG.neckBones; for (let b = Math.floor(N / 2); b < N; b++) B[b].rotateX(0.11 * (8 / N) * 1.25 * h.lunge); }   // (10-11: more bones share the same curl, a touch more of it)
       // the skull tilts BACK as the neck pitches forward, so the jaws face the podium (not the crown)
       h.head.skull.rotation.x = -0.08 - 1.0 * h.lunge;   // at rest barely; in the strike the jaws come round to face you
       h.pivot.visible = lv > 0.02;

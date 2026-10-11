@@ -35,7 +35,7 @@ export function createAcid(scene, { center, radius = 3.2 } = {}) {
   };
   api.burst = (at, through) => {
     const m = new THREE.Mesh(globGeo, burstMat.clone()); m.position.copy(at); root.add(m);
-    bursts.push({ m, t0: performance.now() / 1000, big: through ? 5 : 3.2 });
+    bursts.push({ m, t0: performance.now() / 1000, big: through ? 1.1 : 0.6 });   // (10-11: 3.2-5 m at the drum filled the screen green on every hit)
   };
   let hit = 0;
   api.setShield = (level) => { domeMat.uniforms.uLevel.value = Math.max(0, Math.min(1, level)); };

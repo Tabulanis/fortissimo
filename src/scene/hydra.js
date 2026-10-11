@@ -22,7 +22,7 @@ export const RIG = {
   // measured from the mesh (2026-10-06): neck y -1.69..-0.25 (narrow, leans back to -z), skull
   // above, snout +z out to 0.93, lower jaw tip at y -0.15 z 0.78, horns -z. Tune by eye.
   neckTop: -0.25,      // y where the neck ends and the skull begins
-  neckBones: 8,        // the long-necked export (2026-10-06 22:43): 3.6 m of neck, eight bones to curl it
+  neckBones: 16,       // the long-necked export (2026-10-06 22:43): 3.6 m of neck; 16 bones (owner, 10-11: "more bones, let 'em use that length") — the bends are scaled by 8/N
   mouthY: 0.35,        // (fallback only, when the file has no _JAW flag)
   hingeZ: 0.22,        // the jaw hinge: measured from a side density map — the head is tilted, the hinge is high
   hingeY: 0.33,
@@ -97,7 +97,7 @@ export function createHydraHead({ geometry, material, bounds }) {
         const k = i / (N - 1);
         bones[i].quaternion.copy(rest[i]);
         bones[i].rotateZ(Math.sin(t * 0.9 + seed + k * 2.2) * 0.08 * amount * (0.3 + k));
-        bones[i].rotateX(Math.sin(t * 0.7 + seed * 1.3 + k * 1.6) * 0.06 * amount * (0.3 + k));
+        bones[i].rotateX(Math.sin(t * 0.7 + seed * 1.3 + k * 1.6) * 0.06 * (8 / bones.length) * amount * (0.3 + k));
       }
       // a strike: the neck whips forward (+z) over 0.35 s, then eases back
       const dt = t - biteAt;

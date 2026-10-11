@@ -29,10 +29,14 @@ const GUNS = [{ key: "j", pad: 2, glyph: "X" }, { key: "k", pad: 0, glyph: "A" }
   { key: "i", pad: 1, glyph: "B" }, { key: "o", pad: 5, glyph: "RB" }];   // lowest → highest
 const NOTE_KEYS = GUNS.map((g) => g.key), NG = GUNS.length, ND = DRUMS.length;
 const HEAD_COLORS = ["#ff7a5a", "#e8c84a", "#5ad1ff"];
+// (owner, 2026-10-11) each head has an ELEMENT: what it spits and strikes with — fire, ice, acid
+const ELEMENT = ["fire", "ice", "acid"], ELEMENT_GLOW = { fire: "#ff7a2a", ice: "#9fdcff", acid: "#9cff3a" }, ELEMENT_NAME = { fire: "FIRE", ice: "ICE", acid: "ACID" };
+const GUN_HEX = ["#ff8a4a", "#ffd23a", "#a8ff3a", "#3adcff", "#ff4fa0"];   // the five guns, low → high, each its own lane colour
 const APPROACH = 1.7;   // seconds a note is on the highway before its beat
 
 export function hydraMode(G) {
   let fight = null, acid = null, highway = null, kit = null, active = false, strikesFrom = 0;
+  const _away = new THREE.Vector3(), _up = new THREE.Vector3(0, 1.2, 0);
   let movement = 0, items = [], L = 16, judged = new Set(), offsets = [], startAt = 0, until = 0;
   let lastTickT = 0, finale = false;
   const metronomeBeat = (time) => G.pool.noteOn({ channel: 0, midi: 72, baseNote: 60, buffer: G.drums.click, velocity: 0.3, when: time, destination: G.mixer.metronome, settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
@@ -76,9 +80,10 @@ export function hydraMode(G) {
   function setupMovement() {
     const s = G.song(); L = 4 * s.bars; items = itemsOf(s); judged = new Set(); startAt = G.clock.first; until = G.clock.first;
     strikesFrom = startAt + 8 * G.clock.beatDur;   // the first two bars are drums only: get the shield up, then the head strikes
-    G.hudUI.say(`HEAD ${movement + 1} ATTACKS — its strikes come at the GUNS (J K L I O); the other head spits acid at the DRUMS (Q W E A S): keep the shield up`, "good", 7000);
+    { const sp = fight ? spitterOf() : (movement + 1) % 3;
+      G.hudUI.say(`${ELEMENT_NAME[ELEMENT[movement]]} HEAD ATTACKS — its lanes run to the GUNS (J K L I O) · the ${ELEMENT_NAME[ELEMENT[sp]]} head spits at the DRUMS (Q W E A S): keep the shield up`, "good", 7000); }
 
-    for (let i = 0; i < 3; i++) G.stage3d.hydra.standBack(i, i !== movement);   // the attacker owns the stage
+    for (let i = 0; i < 3; i++) G.stage3d.hydra.standBack(i, i !== movement ? 1 : 0.45);   // the attacker owns the stage — but part way back, so it never covers the kit (10-11)
     bootlog("hydra movement", { movement: movement + 1, song: s.name, bpm: G.BPM, drums: items.filter((x) => x.drum).length, notes: items.filter((x) => !x.drum).length, hp: fight.heads[movement].hp });
   }
   /** which head spits a drum lane's acid: the heads NOT attacking take the drums in turn (the attacker, if it's the last one) */
@@ -98,7 +103,7 @@ export function hydraMode(G) {
     const DRUM_HEX = ["#3adcff", "#ff4fa0", "#a8ff3a", "#9a5cff", "#ffd23a"];   // hat snare crash kick tom — the courtyard kit's colours
     kit = createAltarKit(G.stage3d.scene, { spot: G.stage3d.playSpot(), approach: APPROACH,
       drums: DRUMS.map((d, i) => ({ label: d.key.toUpperCase(), color: DRUM_HEX[i] })),
-      guns: GUNS.map((g) => ({ label: g.key.toUpperCase() })), fireTexture: G.stage3d.fireTexture, fireSim: G.stage3d.fireSim });   // (10-11) the key alone, big
+      guns: GUNS.map((g, i) => ({ label: g.key.toUpperCase(), color: GUN_HEX[i] })), fireTexture: G.stage3d.fireTexture, fireSim: G.stage3d.fireSim });   // (10-11) the key alone, big
     highway = { draw: (items, now) => kit.update(items, now), flash: (c, good) => kit.press(c, good), show: (on) => { kit.root.visible = on; kit.station.visible = on; },
       setNoteColor() {}, el: { dataset: {} } };
     highway.show(true); active = true; movement = 0;
@@ -108,8 +113,12 @@ export function hydraMode(G) {
     lastTickT = G.ctx.currentTime;
     setInterval(tick, 25);
     const draw = () => {
-      if (active) { const H = G.stage3d.hydra, m = H.mouth(movement); if (m) kit.setGunSource(m);   // the strikes come out of the attacker's mouth
-        kit.setDrumSources((col) => H.mouth(spitterOf(col)));                                        // the acid out of the others' mouths
+      if (active) { const H = G.stage3d.hydra, m = H.mouth(movement), sp = spitterOf(); if (m) kit.setGunSource(m, ELEMENT[movement]);   // the strikes come out of the attacker's mouth, in its element
+        // the spit's source: the spitting head's mouth pushed 3.5 m further from the eye and up a little — that head stands beside the
+        // altar, and from its mouth the globs flew past the camera (a screen-filling blob, 10-11 photos) and its lanes read end-on
+        kit.setDrumSources(() => { const mo = H.mouth(sp); if (!mo) return null; const cam = G.stage3d.camera.position;
+          return mo.add(_away.subVectors(mo, cam).setY(0).normalize().multiplyScalar(3.5)).add(_up); }, ELEMENT[sp]);
+        for (let i = 0; i < 3; i++) { const src = i === movement || i === sp; H.still(i, src); H.mouthGlow(i, ELEMENT_GLOW[ELEMENT[i]], src ? 0.9 : 0); }   // lane sources hold still and glow
         highway.draw(upcoming(), G.ctx.currentTime, APPROACH); acid.update(G.ctx.currentTime); updateBolts(); }
       requestAnimationFrame(draw); };
     requestAnimationFrame(draw);
