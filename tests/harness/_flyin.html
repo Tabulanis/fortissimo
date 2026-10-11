@@ -1,0 +1,16 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1280px;height:720px;border:0"></iframe>
+<script type="module">
+// THE FLY-IN shows the cove (10-11): trigger the big to-do at round 3's treble, photograph 3 s and 6 s into the flight, log the zone events
+const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms)), say = (k, b) => fetch("http://127.0.0.1:8899/" + k, { method: "POST", body: b });
+localStorage.setItem("gr.level", "2"); localStorage.removeItem("gr.run2"); sessionStorage.clear();
+f.src = "/?autobegin=1&quality=medium";
+f.onload = async () => { const w = f.contentWindow, d = w.document; const out = {};
+  try { await wait(6000); [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click(); await wait(3000);
+    const S = w.__gr.stage3d, vis = () => ["cove", "sea", "altar-kit"].map((n) => { const o = S.scene.getObjectByName(n); return n + ":" + (o ? o.visible : "none"); }).join(" ");
+    out.before = vis(); w.__gr.game.bigToDo(); await wait(1500); out.atRise = vis();
+    await wait(4500); out.flying = S.flying; out.inFlight = vis();   // ~1.8 s into the 7 s flight
+    const shot = async (tag) => say("png/flyin-" + tag, await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png")))));
+    await shot("a"); await wait(3000); await shot("b"); out.later = vis();
+  } catch (e) { out.err = String(e); }
+  say("flyin", JSON.stringify(out)); };
+</script>

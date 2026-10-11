@@ -678,7 +678,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const NOZONE = new URLSearchParams(location.search).has("nozone");
   function applyZone() {
     if (NOZONE) return;   // ?nozone — measuring what the zone rule saves
-    const hideCove = COURT_STATIONS.has(station) && !fly.on;
+    const hideCove = COURT_STATIONS.has(station) && !fly.on && !cine;   // never during a flight
     if (hideCove === zoneHidden) return;
     zoneHidden = hideCove;
     const inCove = (o) => { o.updateMatrixWorld(); return o.getWorldPosition(_zp).z > COVE.wallZ; };
@@ -2945,8 +2945,8 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     setStation(name) {
       if (!STATIONS[name]) return;
       if (name === "sea") usePlaySpot();   // round 4 stands on his altar, wherever it is now
-      applyZone();
       station = name;
+      applyZone();   // (10-11: this ran BEFORE the station changed, so the cove stayed hidden through the whole fly-in — his bug report)
       if (!MOBILE && !LOW) lantern.castShadow = name === "drums";   // the lantern lights the drums only: its shadows are wasted elsewhere
       restDir.copy(REST_DIR).applyAxisAngle(UP, STATIONS[name].yaw);
       hands.forEach((hand, h) => {
