@@ -22,5 +22,5 @@ f.onload = async () => { const w = f.contentWindow, d = w.document; if (w.locati
     }
     say("hydrashot", "ok " + AT.join(","));
   } catch (e) { say("hydrashot", "ERR " + e.message); } };
-f.src = "/?hydra=0,1,2";
+f.src = "/?hydra=0,1,2" + (P.get("x") ? "&" + P.get("x") : "");
 </script>

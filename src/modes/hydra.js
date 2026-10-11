@@ -81,7 +81,7 @@ export function hydraMode(G) {
     const s = G.song(); L = 4 * s.bars; items = itemsOf(s); judged = new Set(); startAt = G.clock.first; until = G.clock.first;
     strikesFrom = startAt + 8 * G.clock.beatDur;   // the first two bars are drums only: get the shield up, then the head strikes
     { const sp = fight ? spitterOf() : (movement + 1) % 3;
-      G.hudUI.say(`${ELEMENT_NAME[ELEMENT[movement]]} HEAD ATTACKS — its lanes run to the GUNS (J K L I O) · the ${ELEMENT_NAME[ELEMENT[sp]]} head spits at the DRUMS (Q W E A S): keep the shield up`, "good", 7000); }
+      G.hudUI.say(`${ELEMENT_NAME[ELEMENT[movement]]} HEAD ATTACKS — its lanes run to the GUNS (${gunKeys()}) · the ${ELEMENT_NAME[ELEMENT[sp]]} head spits at the DRUMS (${drumKeys()}): keep the shield up`, "good", 7000); }
 
     for (let i = 0; i < 3; i++) G.stage3d.hydra.standBack(i, i !== movement ? 1 : 0.45);   // the attacker owns the stage — but part way back, so it never covers the kit (10-11)
     bootlog("hydra movement", { movement: movement + 1, song: s.name, bpm: G.BPM, drums: items.filter((x) => x.drum).length, notes: items.filter((x) => !x.drum).length, hp: fight.heads[movement].hp });
@@ -102,14 +102,15 @@ export function hydraMode(G) {
     // the flat highway — `highway` below is a thin stand-in so the round's code stays as it was (draw / flash)
     const DRUM_HEX = ["#3adcff", "#ff4fa0", "#a8ff3a", "#9a5cff", "#ffd23a"];   // hat snare crash kick tom — the courtyard kit's colours
     kit = createAltarKit(G.stage3d.scene, { spot: G.stage3d.playSpot(), approach: APPROACH,
-      drums: DRUMS.map((d, i) => ({ label: d.key.toUpperCase(), color: DRUM_HEX[i] })),
-      guns: GUNS.map((g, i) => ({ label: g.key.toUpperCase(), color: GUN_HEX[i] })), fireTexture: G.stage3d.fireTexture, fireSim: G.stage3d.fireSim });   // (10-11) the key alone, big
+      drums: DRUMS.map((d, i) => ({ label: d.key.toUpperCase(), pad: d.glyph, color: DRUM_HEX[i] })),
+      guns: GUNS.map((g, i) => ({ label: g.key.toUpperCase(), pad: g.glyph, color: GUN_HEX[i] })), fireTexture: G.stage3d.fireTexture, fireSim: G.stage3d.fireSim });   // (10-11) one big label each: the key, or the pad button
+    relabel();
     highway = { draw: (items, now) => kit.update(items, now), flash: (c, good) => kit.press(c, good), show: (on) => { kit.root.visible = on; kit.station.visible = on; },
       setNoteColor() {}, el: { dataset: {} } };
     highway.show(true); active = true; movement = 0;
     setupMovement(); recolor();
     G.hudUI.setLife(100, 100);
-    G.hudUI.say("THE HYDRA — left hand: drums keep the shield up (Q W E A S · LB + D-pad) · right hand: the guns fire on the notes (J K L I O · X A Y B RB)", "good", 8000);
+    G.hudUI.say(`THE HYDRA — left hand: drums keep the shield up (${drumKeys()}) · right hand: the guns fire on the notes (${gunKeys()})`, "good", 8000);
     lastTickT = G.ctx.currentTime;
     setInterval(tick, 25);
     const draw = () => {
@@ -123,6 +124,9 @@ export function hydraMode(G) {
       requestAnimationFrame(draw); };
     requestAnimationFrame(draw);
   }
+  /** the kit's labels follow what's in hand: a controller's buttons, the keyboard's letters, nothing on touch */
+  function relabel() { if (kit) kit.setLabelMode(G.padConnected ? "pad" : G.touch ? "none" : "key"); }
+  const drumKeys = () => (G.padConnected ? "D-pad + LB" : G.touch ? "tap the drums" : "Q W E A S"), gunKeys = () => (G.padConnected ? "X A Y B RB" : G.touch ? "tap the guns" : "J K L I O");
   function recolor() {   // the note lanes take the attacking head's colour
     const c = HEAD_COLORS[movement]; highway.el.dataset.head = movement;
     highway.setNoteColor(c);
@@ -274,7 +278,7 @@ export function hydraMode(G) {
     startHydra();
   }
   return {
-    startHydra, startInPage, key, pad,
+    startHydra, startInPage, key, pad, relabel,
     get active() { return active; }, get fight() { return fight; }, get movement() { return movement; },
     upcoming,   // harness: what's on the highway
   };

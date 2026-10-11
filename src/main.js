@@ -210,7 +210,7 @@ const partObj = () => (defend && !defend.done ? { mode: defend.section, bars: so
 const partBars = () => song().bars;   // the whole song is the loop
 const partMode = () => (recorder ? recorder.part : (partObj() && partObj().mode) || "drums");       // "drums" | "bass" | "treble"
 const isMelody = () => partMode() !== "drums";
-let padConnected = false;   // a game controller is plugged in (the bars then show its buttons)
+let padConnected = import.meta.env.DEV && new URLSearchParams(location.search).has("pad");   // a game controller is plugged in (the bars then show its buttons); dev: ?pad=1 pretends one (photos)
 // the notes this run's pattern difficulty leaves out. NOTHING plays that you
 // haven't played (owner, 2026-10-03: "random horns"): an instrument's left-out
 // notes join only once that instrument is finished, as a locked loop.
@@ -640,6 +640,7 @@ function relabel() {   // the letters / pad buttons on the guns and drums, for t
   for (const k of ["bass", "treble"]) stage3d.melodyStations[k].setLabels(padConnected ? padLabelsFor(k) : IS_TOUCH ? NO_LABELS : lettersFor(k));
   // the drums show the controller's buttons with a pad in hand (owner, 2026-10-06), the keyboard letters otherwise; tablets: none
   if (IS_TOUCH) stage3d.hideDrumLabels();
+  if (typeof HYDRA_MODE !== "undefined" && HYDRA_MODE.relabel) HYDRA_MODE.relabel();   // round 4's kit too (10-11: it showed letters to a pad player)
   else { stage3d.setDrumLabels(padConnected ? PAD_DRUM_LABELS : null); stage3d.showDrumLabels(); }
 }
 const NO_LABELS = Array(16).fill("");   // tablets: no letters anywhere (owner, 2026-10-04) — unless a controller is plugged in
@@ -1391,6 +1392,7 @@ function hitLane(idx, lane, press, padVel = 1) {
 const G = {
   get CREATE() { return CREATE; }, get BANKS() { return BANKS; }, get RUN() { return RUN; }, get HYDRA() { return HYDRA; },
   applyStage: () => applyStage(), relabel: () => relabel(), song: () => song(), laneSound: (ln, midi) => laneSound(ln, midi),
+  get padConnected() { return padConnected; }, get touch() { return IS_TOUCH; },   // what's in hand: the kits label themselves for it
   updateBackLevels: () => updateBackLevels(), hurtFlash: () => hurtFlash(), runName: (r) => runName(r),
   get ctx() { return ctx; }, get pool() { return pool; }, get KEYMAP_BY_LANE() { return KEYMAP_BY_LANE; }, get stage3d() { return stage3d; },
   get hudUI() { return hudUI; }, get results() { return results; }, get drums() { return drums; }, get mixer() { return mixer; }, get life() { return life; },

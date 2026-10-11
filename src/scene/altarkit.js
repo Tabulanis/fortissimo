@@ -33,6 +33,7 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7, fireT
   const glowTex = fireTexture || softDisc();
   const eye = new THREE.Vector3(spot.x, spot.y + 1.65, spot.z - 0.5);
   const targets = [];   // { pos, obj, mat, glow, color, spawn, drum }
+  const labelSprites = [];   // every key / button label on the kit (the drums' planes join below), for setLabelMode
   // DRUMS: two rows like the courtyard kit (top three, bottom two), left of centre, heads turned to your eye
   // (x as you SEE it, + = right; facing +z out to sea, world +x is your LEFT, so it is flipped where used)
   const K = 1.35, UP = 0.3;   // (10-11) bigger and higher: each drum a clear silhouette against the sky at the end of its lane
@@ -49,6 +50,8 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7, fireT
     const head = new THREE.Mesh(new THREE.CircleGeometry(0.155, 28), headMat); head.position.z = 0.121; g.add(head);
     const lab = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.17), new THREE.MeshBasicMaterial({ map: label(d.label), transparent: true, depthWrite: false }));
     lab.position.z = 0.124; g.add(lab);
+    lab.userData.maps = { key: lab.material.map, pad: label(d.pad || d.label) };   // the keyboard letter or the controller button (setLabelMode)
+    labelSprites.push(lab);
     g.scale.setScalar(K); root.add(g); g.lookAt(eye);
     const h = halo(d.color, 0.55 * K); h.position.copy(g.position); h.lookAt(eye);   // (10-11 photo: at 0.9 a hit flash swallowed the screen)
     targets.push({ pos: g.position.clone(), obj: g, mat: headMat, glow: h, color: new THREE.Color(d.color), drum: true, spawn: g.position.clone().add(new THREE.Vector3(-x * 1.5, 1.6, 9)) });
@@ -59,7 +62,8 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7, fireT
   const muzzles = [];
   guns.forEach((gn, i) => {
     const b = st.bars[i]; if (!b || !b.top) return;
-    if (b.label && b.label.material) { b.label.material.map = label(gn.label); b.label.material.needsUpdate = true; b.label.scale.setScalar(0.2); b.label.position.y += 0.12; }   // BIG keys (10-11)
+    if (b.label && b.label.material) { b.label.material.map = label(gn.label); b.label.material.needsUpdate = true; b.label.scale.setScalar(0.2); b.label.position.y += 0.12;
+      b.label.userData.maps = { key: b.label.material.map, pad: label(gn.pad || gn.label) }; labelSprites.push(b.label); }   // BIG keys (10-11), both kinds
     const pos = st.group.localToWorld(b.top.clone());
     muzzles.push(pos.clone().add(new THREE.Vector3(0, 0.25, 0.25)));
     const col = new THREE.Color(gn.color || 0xff8a4a);
@@ -146,6 +150,8 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7, fireT
       });
     },
     press(col, good) { flashes.set(col, { until: performance.now() + 180, good }); },
+    /** "key" = keyboard letters, "pad" = the controller's buttons, "none" = nothing (touch) — what's in the player's hands (10-11) */
+    setLabelMode(mode) { for (const l of labelSprites) { if (mode === "none") { l.visible = false; continue; } l.visible = true; l.material.map = l.userData.maps[mode] || l.userData.maps.key; l.material.needsUpdate = true; } },
     remove() { if (fireSim) for (const c of comets) if (c) fireSim.forget(c.id); scene.remove(root); scene.remove(st.group); },
   };
 }
