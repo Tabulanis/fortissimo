@@ -2977,6 +2977,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     debugGunInfo: () => ({ red: melodyStations.bass.bars.map((b) => +(b._red || 0).toFixed(2)) }),
     debugShieldGlowAmount: (v) => { if (shieldMix) shieldMix.uniforms.amount.value = v; },   // harness
     setCuePulse: (on) => { cuePulse = !!on; },   // full-song mode: short per-note flashes instead of the long warm-up
+    get fireTexture() { return fireTexture; }, get fireSim() { return fireSim; },   // lent to round 4's kit: the same comets and trails as the rockets
     debugShieldOnly: (on) => { shieldOnly = !!on; },
     get debugBatcher() { return batcher; },
     debugGlowers: () => { const on = glowShowing(); return [on, ...(glowers || []).filter((o) => shown(o) && (!o.frustumCulled || !o.geometry || _gFr.intersectsObject(o))).map((o) => (o.parent && o.parent.name ? o.parent.name + "/" : "") + (o.name || o.type) + "@" + o.getWorldPosition(new THREE.Vector3()).toArray().map((v) => v.toFixed(1)).join(","))]; },   // harness: what keeps the glow pass on

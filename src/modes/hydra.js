@@ -32,7 +32,7 @@ const HEAD_COLORS = ["#ff7a5a", "#e8c84a", "#5ad1ff"];
 const APPROACH = 1.7;   // seconds a note is on the highway before its beat
 
 export function hydraMode(G) {
-  let fight = null, acid = null, highway = null, kit = null, active = false;
+  let fight = null, acid = null, highway = null, kit = null, active = false, strikesFrom = 0;
   let movement = 0, items = [], L = 16, judged = new Set(), offsets = [], startAt = 0, until = 0;
   let lastTickT = 0, finale = false;
   const metronomeBeat = (time) => G.pool.noteOn({ channel: 0, midi: 72, baseNote: 60, buffer: G.drums.click, velocity: 0.3, when: time, destination: G.mixer.metronome, settings: voiceSettings({ voice: VOICE_PRESETS["One shot"] }) });
@@ -52,7 +52,8 @@ export function hydraMode(G) {
       .filter((it) => { const k = it.col + "@" + it.beat.toFixed(3); if (seen.has(k)) return false; seen.add(k); return true; });
   }
   /** how many wounds each head can take: one and a half passes of its movement's notes (at least 8) */
-  const hpOf = (song) => Math.max(8, Math.round(1.5 * (song.playNotes || song.notes).filter((n) => !isDrum(n.lane)).length));
+  // a head goes down after about ONE LOOP of decent play (10-11: it was 1.5 × the notes = 120 parries a head; he lost in 18 s)
+  const hpOf = (song) => Math.max(12, Math.round(0.45 * (song.playNotes || song.notes).filter((n) => !isDrum(n.lane)).length));
 
   // THE GUNS (10-09): five bronze guns along the altar's sea edge, low to high left to right; a hit fires a bolt at the attacker
   let bolts = [];
@@ -74,18 +75,20 @@ export function hydraMode(G) {
 
   function setupMovement() {
     const s = G.song(); L = 4 * s.bars; items = itemsOf(s); judged = new Set(); startAt = G.clock.first; until = G.clock.first;
+    strikesFrom = startAt + 8 * G.clock.beatDur;   // the first two bars are drums only: get the shield up, then the head strikes
+    G.hudUI.say(`HEAD ${movement + 1} ATTACKS — its strikes come at the GUNS (J K L I O); the other head spits acid at the DRUMS (Q W E A S): keep the shield up`, "good", 7000);
 
     for (let i = 0; i < 3; i++) G.stage3d.hydra.standBack(i, i !== movement);   // the attacker owns the stage
     bootlog("hydra movement", { movement: movement + 1, song: s.name, bpm: G.BPM, drums: items.filter((x) => x.drum).length, notes: items.filter((x) => !x.drum).length, hp: fight.heads[movement].hp });
   }
   /** which head spits a drum lane's acid: the heads NOT attacking take the drums in turn (the attacker, if it's the last one) */
-  function spitterOf(col) { const others = fight.alive.filter((h) => h !== movement), from = others.length ? others : [movement]; return from[col % from.length]; }
+  function spitterOf() { const others = fight.alive.filter((h) => h !== movement); return others.length ? others[0] : movement; }   // (10-11) ONE spitter: the next living head — not all of them at once
   const timeOf = (k, it) => G.clock.first + (k * L + it.beat) * G.clock.beatDur;
 
   function startHydra() {
     const songs = G.HYDRA.rounds.map((i) => G.lessonAt(i));
     const dmg = { gentle: 0.7, normal: 1, harsh: 1.4 }[G.RUN.damage] || 1;   // the run's Damage setting, as in rounds 1-3
-    fight = new HydraFight({ hp: songs.map(hpOf), life: 100, bite: 2.5 * dmg, acid: 4 * dmg });
+    fight = new HydraFight({ hp: songs.map(hpOf), life: 100, bite: 1.5 * dmg, acid: 2.5 * dmg, heal: 0.8 });   // (10-11: gentler — the fight is about reading it, not surviving it)
     G.stage3d.setStation("sea");   // re-read the play spot: his altar may have loaded after the camera was placed
     const H = G.stage3d.hydra; H.rise();
     acid = createAcid(G.stage3d.scene, { center: G.stage3d.playSpot(), radius: 6 });   // over his altar (the play spot)   // wide: the acid bursts on it well out in front of you
@@ -94,8 +97,8 @@ export function hydraMode(G) {
     // the flat highway — `highway` below is a thin stand-in so the round's code stays as it was (draw / flash)
     const DRUM_HEX = ["#3adcff", "#ff4fa0", "#a8ff3a", "#9a5cff", "#ffd23a"];   // hat snare crash kick tom — the courtyard kit's colours
     kit = createAltarKit(G.stage3d.scene, { spot: G.stage3d.playSpot(), approach: APPROACH,
-      drums: DRUMS.map((d, i) => ({ label: `${d.key.toUpperCase()} ${d.glyph}`, color: DRUM_HEX[i] })),
-      guns: GUNS.map((g) => ({ label: `${g.key.toUpperCase()} ${g.glyph}` })) });
+      drums: DRUMS.map((d, i) => ({ label: d.key.toUpperCase(), color: DRUM_HEX[i] })),
+      guns: GUNS.map((g) => ({ label: g.key.toUpperCase() })), fireTexture: G.stage3d.fireTexture, fireSim: G.stage3d.fireSim });   // (10-11) the key alone, big
     highway = { draw: (items, now) => kit.update(items, now), flash: (c, good) => kit.press(c, good), show: (on) => { kit.root.visible = on; kit.station.visible = on; },
       setNoteColor() {}, el: { dataset: {} } };
     highway.show(true); active = true; movement = 0;
@@ -120,7 +123,7 @@ export function hydraMode(G) {
     if (!G.clock) return [];
     const now = G.ctx.currentTime, b0 = (now - 0.2 - G.clock.first) / G.clock.beatDur, b1 = (now + APPROACH - G.clock.first) / G.clock.beatDur, out = [];
     for (let k = Math.floor(b0 / L); k <= Math.floor(b1 / L); k++) for (const it of items) {
-      const t = timeOf(k, it); if (t < startAt || judged.has(k + ":" + it.i)) continue;
+      const t = timeOf(k, it); if (t < startAt || judged.has(k + ":" + it.i) || (!it.drum && t < strikesFrom)) continue;
       if (t >= now - 0.2 && t <= now + APPROACH) out.push({ col: it.col, at: t, k, it });
     }
     return out;
@@ -133,7 +136,7 @@ export function hydraMode(G) {
     const bNow = (now - win - G.clock.first) / bd;
     for (let k = Math.max(0, Math.floor((bNow - L) / L)); k <= Math.floor(bNow / L); k++) for (const it of items) {
       const t = timeOf(k, it), id = k + ":" + it.i;
-      if (t < startAt || t + win > now || judged.has(id)) continue;
+      if (t < startAt || t + win > now || judged.has(id) || (!it.drum && t < strikesFrom)) continue;
       judged.add(id); offsets.push(null);
       if (it.drum) {   // the glob got through: the shield drops, and it burns as hard as the shield is down
         events(fight.drum(false)); events(fight.acidLands(spitterOf(it.col))); highway.flash(it.col, false);
