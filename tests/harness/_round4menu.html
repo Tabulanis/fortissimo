@@ -1,0 +1,17 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1100px;height:760px;border:0"></iframe>
+<script type="module">
+// what the menu's "Round 4 — The Hydra" entry actually starts (10-11: he says it starts with drums / bass / treble)
+const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms)), say = (k, b) => fetch("http://127.0.0.1:8899/" + k, { method: "POST", body: b });
+localStorage.removeItem("gr.run2"); localStorage.setItem("gr.level", "0"); sessionStorage.clear();
+let phase = 0; f.src = "/?quality=low";
+f.onload = async () => { const w = f.contentWindow, d = w.document; const out = { phase };
+  try { if (phase === 0) { phase = 1; await wait(6000); [...d.querySelectorAll("#gr-menu button")].find((b) => /^Play|Start/.test(b.textContent.trim()))?.click(); await wait(400);
+      const b = [...d.querySelectorAll("#gr-menu .level")].find((x) => /Round 4/.test(x.textContent) && /Rome/.test(x.textContent)); out.found = !!b; out.locked = b && /🔒/.test(b.textContent); if (b) b.click(); await wait(300);
+      out.url = w.location.href; out.hydraStored = w.sessionStorage.getItem("gr.hydra"); say("round4menu", JSON.stringify(out)); return; }
+    await wait(9000); out.url = w.location.href; out.station = w.__gr.stage3d.station; out.part = d.getElementById("gr-hud").innerText.slice(0, 160).replace(/\n/g, " | ");
+    out.hydra = !!(w.__gr.game.hydra); out.menuShown = !!d.getElementById("gr-menu") && d.getElementById("gr-menu").style.display !== "none";
+    const press = (k) => { w.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true })); w.dispatchEvent(new w.KeyboardEvent("keyup", { key: k, bubbles: true })); };
+    press("x"); await wait(14000); out.afterPress = { station: w.__gr.stage3d.station, hydraActive: !!(w.__gr.game.hydra && w.__gr.game.hydra.active), part: d.getElementById("gr-hud").innerText.slice(0, 120).replace(/\n/g, " | ") };
+  } catch (e) { out.err = String(e); }
+  say("round4menu", JSON.stringify(out)); };
+</script>

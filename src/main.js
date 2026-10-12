@@ -146,7 +146,9 @@ let BANKS = null, recorder = null;
 // ROUND 4, THE HYDRA (2026-10-07): a level's round 4 — you conduct the music of its rounds 1-3 (one
 // movement each) and fight the hydra (hydrafight.js). Entered from round 3's results or the level list:
 // sessionStorage gr.hydra = { rounds: [i, j, k], title }; ?hydra=0,1,2 for harnesses.
-let HYDRA = (() => {   // (10-09: let — round 3's boss can turn the page into round 4 in place: bigToDo) try { const h = JSON.parse(sessionStorage.getItem("gr.hydra") || "null"); sessionStorage.removeItem("gr.hydra"); if (h) return h; } catch { /* below */ }
+// (10-09: let — round 3's boss can turn the page into round 4 in place: bigToDo. 10-11: that comment had swallowed the menu's hand-off below for two days)
+let HYDRA = (() => {
+  try { const h = JSON.parse(sessionStorage.getItem("gr.hydra") || "null"); sessionStorage.removeItem("gr.hydra"); if (h) return h; } catch { /* below */ }
   const q = new URLSearchParams(location.search).get("hydra"); return q ? { rounds: q.split(",").map(Number), title: "The Hydra" } : null; })();
 /** the levels in the song list: Rome = the songs no made level owns (the first three), then each made level's three rounds */
 function levelGroups(list) {
