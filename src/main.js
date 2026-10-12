@@ -1699,7 +1699,7 @@ roundsReady.then(() => {
   try { at = sessionStorage.getItem("gr.menuAt") || "title"; sessionStorage.removeItem("gr.menuAt"); } catch { /* storage blocked: title */ }
   createMenu({
     levels: list.map((r) => ({ name: r.name, title: r.title, bpm: r.bpm, made: !!r.made })),
-    hydras: levelGroups(list).map((g) => ({ ...g, open: g.rounds.every((i) => list[i].made || i <= unlockedLevel()) })),   // round 4 of each level: open once its round 3 is
+    hydras: levelGroups(list).map((g) => ({ ...g, open: import.meta.env.DEV || g.rounds.every((i) => list[i].made || i <= unlockedLevel()) })),   // round 4 of each level: open once its round 3 (dev build: always — a test stage, 10-11) is
     onHydra: goHydra,
     onOptions: (back) => settingsUI.open(back),
     onCreate: async (card, back) => {   // the song-maker's first screen draws in the menu card; Start writing reloads into the arena
