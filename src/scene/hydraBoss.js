@@ -94,7 +94,7 @@ export function createHydra(scene, { origin = new THREE.Vector3(0, -1.4, 37), ta
       // the strike: the upper neck curls forward toward the podium (setSway reset the bones this frame)
       { const B = h.head.bones, N = RIG.neckBones; for (let b = Math.floor(N / 2); b < N; b++) B[b].rotateX(0.11 * (8 / N) * 1.25 * h.lunge); }   // (10-11: more bones share the same curl, a touch more of it)
       // the skull tilts BACK as the neck pitches forward, so the jaws face the podium (not the crown)
-      h.head.skull.rotation.x = -0.08 - 1.0 * h.lunge;   // at rest barely; in the strike the jaws come round to face you
+      h.head.skull.rotateX(-0.08 - 1.0 * h.lunge);   // (10-12: on top of setSway's levelling, not instead of it)   // at rest barely; in the strike the jaws come round to face you
       h.pivot.visible = lv > 0.02;
       // RIPPLES where the neck breaks the surface: a ring every 0.45 s while up, sized by how fast the neck is moving;
       // a big one as it first breaks the surface

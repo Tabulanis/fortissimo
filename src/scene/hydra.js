@@ -26,7 +26,7 @@ export const RIG = {
   mouthY: 0.35,        // (fallback only, when the file has no _JAW flag)
   hingeZ: 0.22,        // the jaw hinge: measured from a side density map — the head is tilted, the hinge is high
   hingeY: 0.33,
-  band: 0.1,           // soft blend width at the jaw's edges
+  band: 0.18,          // soft blend width at the jaw's edges (10-12: wider, so the throat stretches instead of splitting)
 };
 
 let loaded = null;   // { geometry, material, bounds }
@@ -38,6 +38,7 @@ export function loadHydraHead(url = "/models/HydraHead.glb") {
     const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);   // bake the file's node transform
     geometry.computeBoundingBox();
     skinGeometry(geometry);   // ownership comes baked in the file (_JAW, tools/hydra-jaw-labels.py)
+    mesh.material.side = THREE.DoubleSide;   // (10-12: "see-through under the chin" — the inside of the mouth and throat has no back faces of its own)
     loaded = { geometry, material: mesh.material, bounds: geometry.boundingBox };
     resolve(loaded);
   }, undefined, reject));
@@ -91,14 +92,20 @@ export function createHydraHead({ geometry, material, bounds }) {
   let biteAt = -1e9, jawOpen = 0.15;   // idle: lips just parted
   const head = {
     group, mesh, bones, skull, jaw,
-    /** idle: a slow S-curve sway up the neck; t in seconds, seed per head */
+    /** idle: SERPENTINE — slow S-waves travelling UP the neck (owner, 2026-10-12: "it looks drunk… more serpentine"). Each wave is a
+     *  sine along the neck that moves with time, biggest mid-neck and zero at both ends, so the base stays planted and the skull
+     *  stays level: the skull counter-rotates by the sum of the bends beneath it and keeps looking at you. Per-bone angles are
+     *  scaled by 8/N, so more bones = a smoother curve, not a bigger one (the old sideways sway doubled when the neck went to 16). */
     setSway(t, seed = 0, amount = 1) {
+      const per = 8 / N; let sumZ = 0, sumX = 0;
       for (let i = 0; i < N; i++) {
-        const k = i / (N - 1);
+        const k = i / (N - 1), env = Math.sin(Math.PI * k);   // zero at the base and the top, full in the middle
         bones[i].quaternion.copy(rest[i]);
-        bones[i].rotateZ(Math.sin(t * 0.9 + seed + k * 2.2) * 0.08 * amount * (0.3 + k));
-        bones[i].rotateX(Math.sin(t * 0.7 + seed * 1.3 + k * 1.6) * 0.06 * (8 / bones.length) * amount * (0.3 + k));
+        const z = (Math.sin(t * 1.1 + seed - k * 7.5) * 0.11 + Math.sin(t * 0.43 + seed * 1.7 - k * 3.1) * 0.05) * env * per * amount;   // the side-to-side S, travelling up
+        const x = (Math.sin(t * 0.8 + seed * 1.3 - k * 5.0) * 0.05) * env * per * amount;                                                  // a gentler forward ripple
+        bones[i].rotateZ(z); bones[i].rotateX(x); sumZ += z; sumX += x;
       }
+      skull.quaternion.copy(rest[N]); skull.rotateZ(-sumZ * 0.9); skull.rotateX(-sumX * 0.7);   // the head stays level, eyes on the podium
       // a strike: the neck whips forward (+z) over 0.35 s, then eases back
       const dt = t - biteAt;
       if (dt >= 0 && dt < 1.2) {

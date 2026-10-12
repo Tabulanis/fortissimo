@@ -1,0 +1,18 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1400px;height:900px;border:0"></iframe>
+<script type="module">
+// A CLOSE LOOK at a hydra head (10-12: "see-through under the chin", "looks drunk"): round 4 loaded, one head held at full strike, the camera flown up close
+const P = new URLSearchParams(location.hash.slice(1)), say = (tag, body) => fetch("http://127.0.0.1:8899/" + tag, { method: "POST", body }), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+sessionStorage.clear(); const f = document.getElementById("f");
+f.onload = async () => { const w = f.contentWindow, d = w.document; if (w.location.href === "about:blank") return;
+  try { await wait(7000); const S = w.__gr.stage3d, H = S.hydra, i = +(P.get("head") || 1);
+    H.rise(); H.holdLunge(i); await wait(2500);
+    const m = H.mouth(i), cam = S.camera, T = await import("three");
+    // stand 3.2 m in front of the mouth (toward the altar), a little below, looking at it — straight onto the camera (fly mode is off here)
+    const toCam = new T.Vector3().subVectors(cam.position, m).setY(0).normalize().multiplyScalar(3.2);
+    const at = m.clone().add(toCam).add(new T.Vector3(0, -0.5, 0));
+    if (P.has("pose")) { cam.position.copy(at); cam.lookAt(m); }
+    await wait(600); const png = await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png")))); say("png/headshot-" + i, png);
+    say("headshot", JSON.stringify({ mouth: m.toArray().map((v) => +v.toFixed(2)), cam: cam.position.toArray().map((v) => +v.toFixed(2)), at: at.toArray().map((v) => +v.toFixed(2)) }));
+  } catch (e) { say("headshot", "ERR " + e.message); } };
+f.src = "/?hydra=0,1,2" + (P.get("x") ? "&" + decodeURIComponent(P.get("x")) : "");
+</script>
