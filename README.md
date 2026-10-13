@@ -70,7 +70,6 @@ A playable demo of one level, being turned into a full game. In progress, in rou
 ## Built with
 
 [three.js](https://threejs.org) · [Vite](https://vitejs.dev) · [Capacitor](https://capacitorjs.com) · [Electron](https://www.electronjs.org) ·
-recorded instruments from [VCSL](https://vis.versilstudios.com/vcsl.html), [VSCO-2 CE](https://vis.versilstudios.com/vsco-community.html) and [NSynth](https://magenta.tensorflow.org/datasets/nsynth) ·
 full credits in [public/legal/credits.md](public/legal/credits.md).
 
 ## Licence

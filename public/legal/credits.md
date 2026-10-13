@@ -4,9 +4,6 @@ Made by Tabulanis.
 
 ## Sounds
 - Round 1 ("Dope") contains sounds from the NSynth dataset by Google Magenta — CC BY 4.0 (magenta.tensorflow.org/datasets/nsynth)
-- Strumstick: Versilian Community Sample Library (VCSL) — CC0
-- Cello: VSCO-2 Community Edition — CC0
-- Drum kit, mortars and other effects: made for this game [CHECK: list every bank in public/banks with its source before shipping]
 
 ## Models and art
 - Town, gate, columns, fountain, ship, dock, altar, hydra and creatures: Tabulanis
