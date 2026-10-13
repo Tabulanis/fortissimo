@@ -121,7 +121,9 @@ const hackbeat = {
     // game's own songs-src/, so the song travels with the game's repo, not only with the tracker's
     server.middlewares.use("/__hackbeat/keep", (req, res) => {
       try { const name = new URL(req.url, "http://x").searchParams.get("name") || ""; if (!/^[\w .-]{1,80}$/.test(name)) throw new Error("bad name");
-        fs.mkdirSync("songs-src", { recursive: true }); fs.copyFileSync(path.join(HB, "projects", name + ".json"), path.join("songs-src", name + ".json"));
+        // the notes and settings only: the embedded audio (sampleData) is dropped — the game already has its own copy of every sound it uses
+        const proj = JSON.parse(fs.readFileSync(path.join(HB, "projects", name + ".json"), "utf8")); delete proj.sampleData;
+        fs.mkdirSync("songs-src", { recursive: true }); fs.writeFileSync(path.join("songs-src", name + ".json"), JSON.stringify(proj, null, 1) + "\n");
         res.end("kept songs-src/" + name + ".json"); } catch (e) { res.statusCode = 400; res.end(String(e)); }
     });
     server.middlewares.use("/__hackbeat/samples", (req, res) => {
