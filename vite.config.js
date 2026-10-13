@@ -117,6 +117,13 @@ const hackbeat = {
       try { const name = new URL(req.url, "http://x").searchParams.get("name") || ""; if (!/^[\w .-]{1,80}$/.test(name)) throw new Error("bad name");
         res.setHeader("content-type", "application/json"); res.end(fs.readFileSync(path.join(HB, "projects", name + ".json"), "utf8")); } catch (e) { res.statusCode = 404; res.end(String(e)); }
     });
+    // (10-13, his call: "the song files are part of the game") — an import keeps the SOURCE: the tracker project is copied into the
+    // game's own songs-src/, so the song travels with the game's repo, not only with the tracker's
+    server.middlewares.use("/__hackbeat/keep", (req, res) => {
+      try { const name = new URL(req.url, "http://x").searchParams.get("name") || ""; if (!/^[\w .-]{1,80}$/.test(name)) throw new Error("bad name");
+        fs.mkdirSync("songs-src", { recursive: true }); fs.copyFileSync(path.join(HB, "projects", name + ".json"), path.join("songs-src", name + ".json"));
+        res.end("kept songs-src/" + name + ".json"); } catch (e) { res.statusCode = 400; res.end(String(e)); }
+    });
     server.middlewares.use("/__hackbeat/samples", (req, res) => {
       if (req.method !== "POST") { res.statusCode = 405; return res.end(); }
       let body = ""; req.on("data", (c) => { if (body.length < 200000) body += c; });

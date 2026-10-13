@@ -58,8 +58,9 @@ export function createImporter({ host, log = () => {} }) {
       const level = makeLevel(songs, { name: title, title, files });
       const r = await fetch("/__song", { method: "POST", body: JSON.stringify({ slug, level, songs }) });
       if (!r.ok) throw new Error(await r.text());
+      const kept = await (await fetch("/__hackbeat/keep?name=" + encodeURIComponent(name))).text();   // the source goes with the game
       const notes = songs.map((s) => s.notes.length).join(" / ");
-      say(`Imported "${title}" as level "${slug}" — notes per round ${notes}; sounds copied ${cp.copied.length}, ogg ${cp.ogg ? cp.ogg.length : 0}.` + (warnings.length ? "\n" + warnings.join("\n") : "") + "\nReload to see it in the level list.");
+      say(`Imported "${title}" as level "${slug}" — notes per round ${notes}; sounds copied ${cp.copied.length}, ogg ${cp.ogg ? cp.ogg.length : 0}; ${kept}.` + (warnings.length ? "\n" + warnings.join("\n") : "") + "\nReload to see it in the level list.");
     } catch (err) { say("Import failed: " + (err && err.message || err)); }
   });
   refresh();
