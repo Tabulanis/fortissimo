@@ -8,18 +8,27 @@ f.src = "/?autobegin=1&quality=low&section=treble";
 f.onload = async () => { const w = f.contentWindow, d = w.document; const out = { byChannel: {}, perPass: [] };
   try { await wait(5000); [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click(); await wait(1200);
     const G = w.__gr.game, pool = G.pool, on = pool.noteOn.bind(pool); let pass = -1, cur = null;
-    pool.noteOn = (o) => { const c = o.channel; out.byChannel[c] = (out.byChannel[c] || 0) + 1; if (cur && (c === 208 || c === 209)) cur[c] = (cur[c] || 0) + 1; return on(o); };
+    // a LEVEL METER on each track's voices: every note's output goes through an analyser first (10-13: "it still isn't playing")
+    const meters = {}, meterFor = (c, dest) => { const m = meters[c] ||= { an: G.ctx.createAnalyser(), peak: 0, sum: 0, n: 0, dest }; if (!m.wired) { m.an.fftSize = 512; m.an.connect(dest); m.wired = true; } return m.an; };
+    pool.noteOn = (o) => { const c = o.channel; out.byChannel[c] = (out.byChannel[c] || 0) + 1; if (cur && (c === 208 || c === 209)) cur[c] = (cur[c] || 0) + 1;
+      if ((c === 208 || c === 209) && o.destination) { o = { ...o, destination: meterFor(c, o.destination) }; if (!out.dest) out.dest = {}; out.dest[c] = o.destination.constructor.name; if (!out.pitch) out.pitch = {}; (out.pitch[c] ||= new Set()).add(o.midi); }
+      return on(o); };
+    const buf = new Float32Array(512); setInterval(() => { for (const [c, m] of Object.entries(meters)) { m.an.getFloatTimeDomainData(buf); let pk = 0, ss = 0; for (const v of buf) { pk = Math.max(pk, Math.abs(v)); ss += v * v; } m.peak = Math.max(m.peak, pk); m.sum += Math.sqrt(ss / buf.length); m.n++; } }, 20);
     const kit = w.__gr.stage3d.kit, keyFor = (lane) => { const m = /^(bass|treble) (\d+)$/.exec(lane); if (!m) return null; const bar = +m[2], top = bar > 8, built = kit[m[1]][top ? "top" : "bottom"] || [], k = built.indexOf((bar - 1) % 8); return k < 0 ? null : (top ? "qwertyui" : "asdfghjk")[k]; };
     const press = (k) => { w.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true })); w.dispatchEvent(new w.KeyboardEvent("keyup", { key: k, bubbles: true })); };
     const at = (T, k) => { const o = G.ctx.getOutputTimestamp(); setTimeout(() => press(k), Math.max(0, o.performanceTime + (T + G.calibration - o.contextTime) * 1000 - w.performance.now())); };
     const planned = new Set(), t0 = performance.now(), loopS = 4 * 4 * G.clock.beatDur;
-    while (performance.now() - t0 < 60000) {
+    if (P.has("lockall")) { await wait(4000); G.defend.lockAll(); out.lockedAllAt = +((G.ctx.currentTime - G.clock.first) / loopS).toFixed(2); }
+    while (performance.now() - t0 < (+(P.get("secs") || 60)) * 1000) {
       const now = G.ctx.getOutputTimestamp().contextTime, p = Math.floor((now - G.clock.first) / loopS);
       if (p !== pass) { pass = p; cur = { pass: p, locked: G.defend.locked.size }; out.perPass.push(cur); }
       for (const a of G.upcoming()) { const key = a.laneIdx + "@" + a.time.toFixed(3), k = keyFor(G.laneOf(a.laneIdx)); if (!planned.has(key) && a.time - now < 0.6 && k) { planned.add(key); at(a.time, k); } }
       await wait(40);
     }
-    out.section = G.defend.section; out.trebleLocked = G.defend.progress("treble");
+    out.meters = Object.fromEntries(Object.entries(meters).map(([c, m]) => [c, { peak: +m.peak.toFixed(3), avgRms: +(m.sum / Math.max(1, m.n)).toFixed(4) }]));
+    if (out.pitch) for (const c in out.pitch) out.pitch[c] = [...out.pitch[c]].sort((a, b) => a - b);
+    out.section = G.defend.section; out.trebleLocked = G.defend.progress("treble"); out.done = G.defend.done;
+    out.hud = d.getElementById("gr-hud").innerText.slice(0, 140).replace(/\n/g, " | "); out.resultsShown = !!(d.getElementById("gr-results") && d.getElementById("gr-results").style.display !== "none");
   } catch (e) { out.err = String(e) + (e.stack || "").slice(0, 200); }
   fetch("http://127.0.0.1:8899/violin", { method: "POST", body: JSON.stringify(out) }); };
 </script>
