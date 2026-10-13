@@ -32,7 +32,7 @@ Keyboard, touch, and game controllers all work. There's a built-in song maker, t
 
 <p align="center"><img src="docs/img/drums.jpg" width="880" alt="Round 1 — the drums"></p>
 <p align="center"><img src="docs/img/bass.jpg" width="440" alt="Round 2 — the mortars"> <img src="docs/img/treble.jpg" width="440" alt="Round 3 — the lightning crystals"></p>
-<p align="center"><img src="docs/img/hydra.jpg" width="880" alt="Round 4 — the Hydra at the altar"></p>
+<p align="center"><img src="docs/img/hydra.jpg" width="880" alt="Round 4 — the Hydra rises around the altar"></p>
 <p align="center"><img src="docs/img/sea.jpg" width="880" alt="The cove"></p>
 
 ## Play the demo
