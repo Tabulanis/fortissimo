@@ -1,0 +1,24 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:900px;height:420px;border:0"></iframe>
+<script type="module">
+// PHONE: can a tap set off the lightning crystals? (10-13: "no way to set off the crystals on phone") — in the treble round, where each
+// crystal is on screen, what a tap ON it picks: the plain pick, and the game's pick (which snaps to wanted notes within the hit box's reach)
+const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+localStorage.setItem("gr.run2", JSON.stringify({ density: "easy", hitbox: 0.25, tempo: 1, damage: "gentle" })); localStorage.setItem("gr.level", "6");
+f.src = "/?autobegin=1&quality=low&section=treble&device=phone";
+f.onload = async () => { const w = f.contentWindow, d = w.document, out = {};
+  try { await wait(5000); [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click(); await wait(3000);
+    const S = w.__gr.stage3d, G = w.__gr.game, BARS = 16, idx = [6 + BARS + 8, 6 + BARS + 12];
+    out.station = S.station;
+    out.crystals = idx.map((i) => { const p = S.drumScreen(i); return { i, x: Math.round(p.x), y: Math.round(p.y), rad: Math.round(p.rad), plain: S.pickDrum(p.x, p.y) }; });
+    const wanted = G.upcoming().map((a) => a.laneIdx);
+    out.withSnap = idx.map((i) => { const p = S.drumScreen(i); return S.pickDrum(p.x, p.y, { prefer: wanted, reach: Math.round(40 + 0.25 * 650) }); });
+    out.wantedNear = wanted.length;
+    // a REAL tap: charge the left crystal to READY on the next beat, then touch it right on its count
+    const L = G.lightning, c = L.crystals[0], p = S.drumScreen(idx[0]), canvas = d.querySelector("canvas"), r = canvas.getBoundingClientRect();
+    c.charge = 99; c.ready = true; c.moment = G.ctx.getOutputTimestamp().contextTime + 0.4; out.before = { ready: c.ready };
+    await wait(400);
+    canvas.dispatchEvent(new w.PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerType: "touch", pointerId: 7, clientX: r.left + p.x, clientY: r.top + p.y }));
+    await wait(300); out.after = { ready: c.ready, charge: c.charge };
+  } catch (e) { out.err = String(e) + (e.stack || "").slice(0, 200); }
+  fetch("http://127.0.0.1:8899/crystaltap", { method: "POST", body: JSON.stringify(out) }); };
+</script>

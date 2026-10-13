@@ -2318,6 +2318,17 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   }
   /** opts.prefer: target indices to snap to from up to opts.reach px away (phone Easy) */
   function pickDrum(cx, cy, { prefer = null, reach = 0 } = {}) {
+    // THE LIGHTNING CRYSTALS first (10-13, on his phone: "no way to set off the crystals"): they're never a note the game wants, so the
+    // snap-to-wanted below stole every tap on them for a nearby mortar — and they weren't in the plain pick at all. A tap on one is it.
+    if (station === "treble") {
+      let best = -1, bestD = Infinity;
+      for (const i of [6 + BARS + PER_ROW, 6 + BARS + PER_ROW + 4]) {   // the treble top row's two crystals (main.js hitCrystal)
+        const p = drumScreen(i); if (!p) continue;
+        const d = Math.hypot(cx - p.x, cy - p.y);
+        if (d <= Math.max(44, p.rad * 1.8) && d < bestD) { best = i; bestD = d; }
+      }
+      if (best >= 0) return best;
+    }
     if (prefer && prefer.length) {
       let best = -1, bestD = Infinity;
       for (const i of new Set(prefer)) {
