@@ -1,0 +1,21 @@
+{
+ "format": "fortissimo-level",
+ "version": 1,
+ "name": "Trojan",
+ "title": "Trojan",
+ "world": "rome",
+ "rounds": [
+  "trojan-1.json",
+  "trojan-2.json",
+  "trojan-3.json"
+ ],
+ "hydra": {
+  "from": [
+   1,
+   2,
+   3
+  ],
+  "bpm": 76,
+  "bars": 4
+ }
+}

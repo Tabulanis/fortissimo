@@ -5,8 +5,9 @@ const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTim
 f.src = "/?fly=1&quality=low";
 f.onload = async () => { const w = f.contentWindow, d = w.document; const out = {};
   try { let sel = null; for (let i = 0; i < 40 && !sel; i++) { await wait(300); sel = d.querySelector("[data-i=project]"); }
+    for (let i = 0; i < 40 && sel && sel.options.length < 2; i++) await wait(250);   // the list fills from the dev server
     out.panel = !!sel; out.projects = sel ? sel.options.length : 0;
-    sel.value = "Demo-FourPart"; sel.dispatchEvent(new w.Event("change")); d.querySelector("[data-i=title]").value = "Demo Four Part";
+    const P = new URLSearchParams(location.hash.slice(1)); sel.value = P.get("p") || "Demo-FourPart"; sel.dispatchEvent(new w.Event("change")); d.querySelector("[data-i=title]").value = P.get("t") || "Demo Four Part";
     d.querySelector("[data-i=go]").click();
     let text = ""; for (let i = 0; i < 60; i++) { await wait(500); text = d.querySelector("[data-i=out]").textContent; if (/Imported|failed/.test(text)) break; }
     out.result = text;

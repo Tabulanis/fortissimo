@@ -2,7 +2,7 @@
 <script type="module">
 // WHY ISN'T THE ROBOT HITTING (10-09 evening): the same steps as _fullplay, reporting each state along the way
 const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
-localStorage.removeItem("gr.run2"); localStorage.setItem("gr.level", "0");
+localStorage.removeItem("gr.run2"); localStorage.setItem("gr.level", new URLSearchParams(location.hash.slice(1)).get("lvl") || "0");
 f.src = "/?autobegin=1&quality=low";
 f.onload = async () => { const w = f.contentWindow, d = w.document; const out = { t: [] };
   try { await wait(3500); out.loadingAtStart = !!d.getElementById("gr-loading"); [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click(); await wait(1000);

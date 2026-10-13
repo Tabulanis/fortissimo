@@ -36,8 +36,10 @@ export function createImporter({ host, log = () => {} }) {
       say("Reading " + name + "…");
       const project = await (await fetch("/__hackbeat/project?name=" + encodeURIComponent(name))).json();
       const order = (project.order && project.order.length ? project.order : project.patterns.map((_, i) => i)).filter((i) => project.patterns[i]);
-      if (order.length < 3) return say(`This project has ${order.length} pattern(s) in its play order — a level needs three (rounds 1, 2, 3).`);
+      if (!order.length) return say("This project has no patterns in its play order.");
       const songs = [], warnings = [], paths = new Set();
+      // (10-12, his first song had one bit: "stick it in the game, I want to try it out") — fewer than three: the last one repeats
+      if (order.length < 3) { warnings.push(`${order.length} pattern(s): round${order.length === 1 ? "s 2 and 3 replay it" : " 3 replays the last"} until you write the rest`); while (order.length < 3) order.push(order[order.length - 1]); }
       if (order.length > 3) warnings.push(`${order.length} patterns in play order: the first three became the rounds, the other ${order.length - 3} left out`);
       order.slice(0, 3).forEach((pi, i) => {
         const r = roundFromProject({ ...project, order: [pi] }, { name: `Round ${i + 1}`, title });   // ONE pattern = one round

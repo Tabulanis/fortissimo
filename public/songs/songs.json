@@ -31,5 +31,23 @@
   "title": "Demo Four Part",
   "file": "demo-four-part-3.json",
   "level": "demo-four-part"
+ },
+ {
+  "name": "Round 1",
+  "title": "Trojan",
+  "file": "trojan-1.json",
+  "level": "trojan"
+ },
+ {
+  "name": "Round 2",
+  "title": "Trojan",
+  "file": "trojan-2.json",
+  "level": "trojan"
+ },
+ {
+  "name": "Round 3",
+  "title": "Trojan",
+  "file": "trojan-3.json",
+  "level": "trojan"
  }
 ]
