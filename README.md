@@ -39,10 +39,14 @@ Keyboard, touch, and game controllers all work. There's a built-in song maker, t
 
 The demo ships with the three original rounds — the songs are placeholders while the real score is being written, so expect them to be a bit goofy. The game underneath is the real thing.
 
-```bash
-npm install
-npm run dev        # http://localhost:5180
-```
+1. Get the code: **Code → Download ZIP** above (and unzip it), or `git clone https://github.com/Tabulanis/fortissimo`.
+2. Install [Node.js](https://nodejs.org) (free; the LTS version) if you don't have it.
+3. Double-click **`play.bat`** (Windows) or **`play.sh`** (Linux / macOS).
+   The first run installs what the game needs and builds it (a few minutes); after that it starts in seconds.
+   The game opens in your browser at `http://localhost:5180`. Close the script's window to stop it.
+
+Opening `index.html` directly won't work — it's the source page and needs building first; the script does that.
+Working on the game instead: `npm install`, then `npm run dev` (the dev server with the level editor).
 
 Phone: open the dev server's address on the same network (or the https door, `tools/https-door.mjs`, to install it as an app).
 Desktop: `npm run desktop`. Android: `npm run release` walks through building the APK.
