@@ -169,7 +169,9 @@ const lastRound = () => roundIdx >= LESSONS.length - 1;
 // THE BOSS STATION (owner, 2026-10-04): the song's top-row treble notes (bars 9-16) come DOWN onto the
 // mortars of the same column (pitch kept) — the two crystals aren't song notes: the mortar fire CHARGES
 // them, and you hit one when it's READY (THE LIGHTNING, below)
-const toCrystals = (n) => { const m = /^treble (\d+)$/.exec(n.lane); if (!m || +m[1] < 9) return n; return { ...n, lane: `treble ${+m[1] - 8}` }; };
+// (10-12, his Trojan: "the song is missing the treble bits") — a moved note KEEPS ITS OWN SOUND: `sound` names the lane whose sample it
+// plays, so the top row's violin stays a violin on the harp's mortar instead of turning into harp
+const toCrystals = (n) => { const m = /^treble (\d+)$/.exec(n.lane); if (!m || +m[1] < 9) return n; return { ...n, lane: `treble ${+m[1] - 8}`, sound: n.sound || n.lane }; };
 // FILL THE KIT (owner, 2026-10-04; kit.js): every empty drum / gun slot stands in for one of the
 // song's busiest instruments in its group, playing that instrument's sound, the notes dealt round
 const DRUM_LANES = [...LAYOUT.top, ...LAYOUT.bottom].map((l) => l.name);
@@ -774,8 +776,8 @@ function prepareBackBuffers() {
 //   without one (a hit with no note near it), the bar's own note.
 // A Hackbeat track is ONE voice, like in Hackbeat: its channel is the track's,
 // and a new note cuts the last (mono). Timing sets the volume, never the tone.
-function laneSound(ln, midi) {
-  const s = song().sounds && song().sounds[ln.name];
+function laneSound(ln, midi, own) {   // own: the lane whose sample a NOTE plays (a moved note keeps its instrument), else the lane's own
+  const S = song().sounds, s = S && ((own && S[own]) || S[ln.name]);
   const buf = s && sampleCache.get(s.path);
   const hb = buf ? { midi: midi ?? s.note, baseNote: 60, channel: 200 + (s.track ?? 0), mono: true, settings: hbVoice(s.voice) } : null;
   if (buf && BAKE) {   // phones: the baked sound, through a lite track (shared reverb / echo)
@@ -1097,7 +1099,7 @@ function playHint(only = null, label = null) {
       const entry = KEYMAP_BY_LANE[n.lane];
       if (!entry) continue;
       const time = start + (n.beat + (p.atBar != null ? 4 * p.atBar : 4 * pb * k)) * clock.beatDur;
-      pool.noteOn({ channel: entry.idx + 70, midi: 60, baseNote: 60, ...laneSound(entry.ln, n.midi), velocity: 0.8,
+      pool.noteOn({ channel: entry.idx + 70, midi: 60, baseNote: 60, ...laneSound(entry.ln, n.midi, n.sound), velocity: 0.8,
         when: time });
       hint.notes.push({ laneIdx: entry.idx, time, velocity: 0.9, flashed: false });
     }
@@ -1363,7 +1365,7 @@ function hitLane(idx, lane, press, padVel = 1) {
     channel: idx,
     midi: 60,
     baseNote: 60,
-    ...laneSound(lane, midi),
+    ...laneSound(lane, midi, found && found.sound),
     velocity: vel,
     when: ctx.currentTime,
   });
@@ -1393,7 +1395,7 @@ function hitLane(idx, lane, press, padVel = 1) {
 // --- the MODES (modes/create.js, modes/hydra.js) get the game's state through G ----------------------
 const G = {
   get CREATE() { return CREATE; }, get BANKS() { return BANKS; }, get RUN() { return RUN; }, get HYDRA() { return HYDRA; },
-  applyStage: () => applyStage(), relabel: () => relabel(), song: () => song(), laneSound: (ln, midi) => laneSound(ln, midi),
+  applyStage: () => applyStage(), relabel: () => relabel(), song: () => song(), laneSound: (ln, midi, own) => laneSound(ln, midi, own),
   get padConnected() { return padConnected; }, get touch() { return IS_TOUCH; },   // what's in hand: the kits label themselves for it
   updateBackLevels: () => updateBackLevels(), hurtFlash: () => hurtFlash(), runName: (r) => runName(r),
   get ctx() { return ctx; }, get pool() { return pool; }, get KEYMAP_BY_LANE() { return KEYMAP_BY_LANE; }, get stage3d() { return stage3d; },
@@ -1745,7 +1747,7 @@ if (window.__gr) window.__gr.game = {
   get life() { return life; }, laneOf: (i) => KEYMAP_BY_IDX[i] && KEYMAP_BY_IDX[i].ln.name,
   get hydra() { return HYDRA_MODE; },   // harness: round 4 (its fight, its highway)
   bigToDo: () => { const g = levelGroups(LESSONS).find((x) => x.rounds.includes(roundIdx)); if (g) bigToDo(g); },   // harness: the to-do without playing round 3
-  get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln, midi) => laneSound(ln, midi),
+  get mixer() { return mixer; }, get pool() { return pool; }, laneSound: (ln, midi, own) => laneSound(ln, midi, own),
   backInfo: () => ({ bpm: BPM, songBpm: song().bpm, loopSeconds: +(song().bars * 4 * clock.beatDur).toFixed(3),
     stretched: [...backCache].map(([k, b]) => [k, +b.duration.toFixed(3)]) }),
   upcoming: () => (ctx ? buildUpcoming(ctx.getOutputTimestamp().contextTime) : []),

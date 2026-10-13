@@ -45,7 +45,7 @@ export function fillKit(notes, groups, { per = NOTES_PER_STAND_IN } = {}) {
       for (const n of out.slice().sort((a, b) => a.beat - b.beat)) {
         if (n.lane !== o) continue;
         const to = ring[j++ % ring.length];
-        if (to !== o) { n.lane = to; n.sound = o; }
+        if (to !== o) { n.lane = to; n.sound = n.sound || o; }   // a note that already plays another lane's sound (a moved top-row note) keeps it
       }
     }
   }
