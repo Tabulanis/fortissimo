@@ -2,9 +2,6 @@
 
 Made by Tabulanis.
 
-## Sounds
-- Round 1 ("Dope") contains sounds from the NSynth dataset by Google Magenta — CC BY 4.0 (magenta.tensorflow.org/datasets/nsynth)
-
 ## Models and art
 - Town, gate, columns, fountain, ship, dock, altar, hydra and creatures: Tabulanis
 - App icon and title art: Tabulanis
