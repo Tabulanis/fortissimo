@@ -12,6 +12,9 @@ Then the sea gate rises, and the Hydra comes.</p>
 <img src="https://img.shields.io/badge/desktop-electron-9feaf9" alt="desktop">
 </p>
 
+<p align="center"><a href="https://tabulanis.github.io/fortissimo/"><b>▶ Play the demo in your browser</b></a> — phone or computer, nothing to install.<br>
+<sub>On a phone: open it, then <i>Add to Home Screen</i> for an app icon.</sub></p>
+
 ## What it is
 
 You don't press buttons to match a chart — your press **makes the sound**, instantly, and the game judges how close to the beat you landed.

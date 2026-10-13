@@ -1,0 +1,35 @@
+# pages.yml — THE PLAYABLE DEMO at https://tabulanis.github.io/fortissimo/ (2026-10-13: "on phone, is it easy to install from GitHub?")
+# Every push to main builds the game with BASE=/fortissimo/ (it lives under that path there) and publishes it. On a phone: open the
+# link, play in the browser, or Add to Home Screen for an app icon (GitHub serves https, which phones need for that).
+name: pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
+        env: { ELECTRON_SKIP_BINARY_DOWNLOAD: "1" }
+      - run: npm run build
+        env: { BASE: /fortissimo/ }
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: dist }
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.deployment.outputs.page_url }}" }
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

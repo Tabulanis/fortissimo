@@ -6,6 +6,7 @@
    is fake: additive sprite flames and glows, no PointLights. */
 
 import { gltfLoader, initModelLoader } from "./gltf.js";
+import { withBase } from "../base.js";
 import KTX_LIST from "./ktx-list.json";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -141,9 +142,9 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   const KTX_SET = new Set(KTX_LIST), KTX = MOBILE && !(TIER === "lowest" || POTATO) && !new URLSearchParams(location.search).has("noktx");
   initModelLoader(renderer);
   THREE.DefaultLoadingManager.setURLModifier((url) => {
-    if ((TIER === "lowest" || POTATO) && /^\/(textures|models)\//.test(url)) return "/small" + url;
+    if ((TIER === "lowest" || POTATO) && /^\/(textures|models)\//.test(url)) return withBase("/small" + url);
     const m = KTX && /^\/models\/([^/?]+\.glb)$/.exec(url);
-    return m && KTX_SET.has(m[1]) ? "/ktx" + url : url;
+    return withBase(m && KTX_SET.has(m[1]) ? "/ktx" + url : url);   // + the base, when served under one (GitHub Pages)
   });
   {
     const gl = renderer.getContext();

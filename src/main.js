@@ -7,6 +7,7 @@
    its own canvas#chart. A calibration mode removes the player's systematic
    offset. */
 
+import "./base.js";   // first: the game finds its files under the address it is served from (GitHub Pages)
 import "./audio/voices.js";
 import { Conductor } from "./game/conductor.js";
 import "./audio/hbchain.js";

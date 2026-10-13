@@ -5,11 +5,12 @@
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
 import { bootlog } from "../bootlog.js";
+import { withBase } from "../base.js";
 
 let ktx2 = null;
 export function initModelLoader(renderer) {
   if (ktx2) return;
-  ktx2 = new KTX2Loader().setTranscoderPath("/basis/").detectSupport(renderer);
+  ktx2 = new KTX2Loader().setTranscoderPath(withBase("/basis/")).detectSupport(renderer);
 }
 export function gltfLoader() {
   const l = new GLTFLoader();

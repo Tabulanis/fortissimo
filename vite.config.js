@@ -143,6 +143,7 @@ const hackbeat = {
 };
 
 export default {
+  base: process.env.BASE || "/",   // GitHub Pages builds with BASE=/fortissimo/ (.github/workflows/pages.yml); everything else at the root
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
   plugins: [deviceLog, levelSave, modelList, songSave, hackbeat, pruneDev],
   build: { sourcemap: false, chunkSizeWarningLimit: 1500 },

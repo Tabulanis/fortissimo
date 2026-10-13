@@ -5,10 +5,11 @@
    KABOOM style (owner): a military STENCIL face (Black Ops One, SIL OFL —
    public/fonts/, licence beside it) and a rattle — it shakes back and forth,
    dying down — before it smears out. */
+import { withBase } from "../base.js";
 
 // load the stencil face now, so the very first LOCKED! isn't in a fallback font
 try {
-  const face = new FontFace("Black Ops One", "url(/fonts/BlackOpsOne.woff2)");
+  const face = new FontFace("Black Ops One", `url(${withBase("/fonts/BlackOpsOne.woff2")})`);
   face.load().then((f) => document.fonts.add(f)).catch(() => {});
 } catch { /* very old browser: the fallback font still slams */ }
 
