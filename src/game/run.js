@@ -74,6 +74,7 @@ export function normalize(cfg = {}) {
   // comes from the first bar, every hit locks its note and the locked ones stop coming, so the sky clears as you learn it.
   // Full song implies the full chart, single notes, keep whatever you hit.
   if (!DENSITIES.includes(c.density)) c.density = c.keep === "any" ? "easy" : c.keep === "half" ? "medium" : c.lock === Infinity ? "expert" : "hard";
+  c.patterns = "full";   // (10-12) the DENSITY decides how many notes come now; the old pattern filter dropped every off-grid note for good (Trojan's violin)
   c.stream = c.stream === "all" ? "all" : "steps";
   if (c.stream === "all") { c.patterns = "full"; c.lock = 1; c.keep = "any"; }
   delete c.step;   // the old bell loop's setting

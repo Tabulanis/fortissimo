@@ -1,0 +1,25 @@
+<!doctype html><body style="margin:0"><iframe id="f" style="width:1100px;height:760px;border:0"></iframe>
+<script type="module">
+// TROJAN'S VIOLIN (10-12: "treble instrument top isn't making it in consistently"): the treble section played by a robot that hits every
+// cue; every sound the game fires is counted by its Hackbeat track channel (200 + track): 208 = harp (treble bottom), 209 = violin (top)
+const P = new URLSearchParams(location.hash.slice(1)), f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms));
+localStorage.setItem("gr.run2", JSON.stringify({ density: P.get("d") || "easy", hitbox: 0.25, tempo: 1, damage: "gentle", stream: P.get("s") || "steps" })); localStorage.setItem("gr.level", P.get("lvl") || "6");
+f.src = "/?autobegin=1&quality=low&section=treble";
+f.onload = async () => { const w = f.contentWindow, d = w.document; const out = { byChannel: {}, perPass: [] };
+  try { await wait(5000); [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click(); await wait(1200);
+    const G = w.__gr.game, pool = G.pool, on = pool.noteOn.bind(pool); let pass = -1, cur = null;
+    pool.noteOn = (o) => { const c = o.channel; out.byChannel[c] = (out.byChannel[c] || 0) + 1; if (cur && (c === 208 || c === 209)) cur[c] = (cur[c] || 0) + 1; return on(o); };
+    const kit = w.__gr.stage3d.kit, keyFor = (lane) => { const m = /^(bass|treble) (\d+)$/.exec(lane); if (!m) return null; const bar = +m[2], top = bar > 8, built = kit[m[1]][top ? "top" : "bottom"] || [], k = built.indexOf((bar - 1) % 8); return k < 0 ? null : (top ? "qwertyui" : "asdfghjk")[k]; };
+    const press = (k) => { w.dispatchEvent(new w.KeyboardEvent("keydown", { key: k, bubbles: true })); w.dispatchEvent(new w.KeyboardEvent("keyup", { key: k, bubbles: true })); };
+    const at = (T, k) => { const o = G.ctx.getOutputTimestamp(); setTimeout(() => press(k), Math.max(0, o.performanceTime + (T + G.calibration - o.contextTime) * 1000 - w.performance.now())); };
+    const planned = new Set(), t0 = performance.now(), loopS = 4 * 4 * G.clock.beatDur;
+    while (performance.now() - t0 < 60000) {
+      const now = G.ctx.getOutputTimestamp().contextTime, p = Math.floor((now - G.clock.first) / loopS);
+      if (p !== pass) { pass = p; cur = { pass: p, locked: G.defend.locked.size }; out.perPass.push(cur); }
+      for (const a of G.upcoming()) { const key = a.laneIdx + "@" + a.time.toFixed(3), k = keyFor(G.laneOf(a.laneIdx)); if (!planned.has(key) && a.time - now < 0.6 && k) { planned.add(key); at(a.time, k); } }
+      await wait(40);
+    }
+    out.section = G.defend.section; out.trebleLocked = G.defend.progress("treble");
+  } catch (e) { out.err = String(e) + (e.stack || "").slice(0, 200); }
+  fetch("http://127.0.0.1:8899/violin", { method: "POST", body: JSON.stringify(out) }); };
+</script>

@@ -130,7 +130,8 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
       el("hitbox").value = cfg.hitbox; el("tempo").value = cfg.tempo; el("patterns").value = cfg.patterns;
       el("lock").value = cfg.lock === Infinity ? "all" : String(cfg.lock); el("keep").value = cfg.keep; el("damage").value = cfg.damage;
       el("stream").value = cfg.stream || "steps"; el("density").value = cfg.density || "easy"; el("density").disabled = cfg.stream === "all";
-      for (const k of ["patterns", "lock", "keep"]) el(k).disabled = cfg.stream === "all";   // full song sets these itself (run.js)
+      for (const k of ["lock", "keep"]) el(k).disabled = cfg.stream === "all";   // full song sets these itself (run.js)
+      el("patterns").disabled = true;   // (10-12) every note is in play; Density sets how many come
       card.querySelector("[data-v=hitbox]").textContent = `${ms(cfg.hitbox)}`;
       card.querySelector("[data-v=tempo]").textContent = L.bpm ? `${Math.round(L.bpm * cfg.tempo)} bpm` : `×${cfg.tempo.toFixed(2)}`;
       const lv = levelOf(cfg);

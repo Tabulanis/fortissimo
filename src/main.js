@@ -227,7 +227,7 @@ function joinBacking() {
   const lanes = [...done].filter((l) => !backingJoined.has(l) && b.some((n) => n.lane === l));
   if (!lanes.length) return;
   for (const l of lanes) backingJoined.add(l);
-  const hits = b.filter((n) => lanes.includes(n.lane)).map((n) => ({ lane: n.lane, pos: n.beat * clock.beatDur, velocity: (n.vel ?? 1) * 0.85, midi: n.midi }));
+  const hits = b.filter((n) => lanes.includes(n.lane)).map((n) => ({ lane: n.lane, pos: n.beat * clock.beatDur, velocity: (n.vel ?? 1) * 0.85, midi: n.midi, sound: n.sound }));
   const startBar = Math.ceil((ctx.currentTime - clock.first) / (4 * clock.beatDur * song().bars)) * song().bars;   // from the next pass of the song
   loops.add({ bars: song().bars, startBar, backing: true, hits });
 }
@@ -523,7 +523,7 @@ function defendEvents() {
       // locked notes join the band: they play every pass from the next one on
       const loop = 4 * song().bars * clock.beatDur, k = Math.floor((ctx.currentTime - clock.first) / loop);
       loops.add({ bars: song().bars, startBar: (k + 1) * song().bars,
-        hits: e.notes.map((n) => { const h = e.hits.find((x) => x.id === n.id) || {}; return { lane: n.lane, pos: n.beat * clock.beatDur + (autoCorrect ? 0 : h.offset || 0), velocity: h.velocity ?? 0.9, midi: n.midi }; }) });
+        hits: e.notes.map((n) => { const h = e.hits.find((x) => x.id === n.id) || {}; return { lane: n.lane, pos: n.beat * clock.beatDur + (autoCorrect ? 0 : h.offset || 0), velocity: h.velocity ?? 0.9, midi: n.midi , sound: n.sound }; }) });
       const last = e.notes[e.notes.length - 1], idx = LANE_INDEX[last.lane], p = idx != null && stage3d.drumScreen(idx);
       if (p) showStamp("LOCKED!", p.x, p.y - 30, { size: e.notes.length > 1 ? 56 : 40, ms: 1600 });
       if (siege) siege.heal();
@@ -1127,7 +1127,7 @@ function scheduleGhosts() {
       channel: entry.idx + 40,   // ghosts on their own channels: live play never cuts them
       midi: 60,
       baseNote: 60,
-      ...laneSound(entry.ln, e.midi),
+      ...laneSound(entry.ln, e.midi, e.sound),   // the band plays each note with ITS instrument (10-12: locked violin came back as harp)
       velocity: e.velocity * 0.85,   // exactly as played, a touch under live play
       when: e.time,
     });
