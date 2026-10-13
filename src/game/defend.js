@@ -31,6 +31,15 @@ export const LIFE = {              // per run damage: a miss hurts you and the t
   gentle: { miss: 3, heal: 3 }, normal: { miss: 5, heal: 2 }, harsh: { miss: 8, heal: 1 },
 };
 /** the stream's density per keep rule: gap = beats between notes, together = at most this many at one beat */
+// THE FOUR DENSITIES (owner, 2026-10-12: "make med, hard and expert actual — med twice the notes and sometimes two at once; hard two at
+// once 75% and twice as many; expert two at a time constantly, with breaks to throw you off"). gap = beats between picks; pair = the
+// chance a pick brings a partner (another instrument on the same beat — the song's own, never invented); breaks = expert's sudden rests.
+export const DENSITY = {
+  easy:   { gap: 2,   together: 1, pair: 0,    maxGap: 4 },
+  medium: { gap: 1,   together: 2, pair: 0.3,  maxGap: 2 },
+  hard:   { gap: 0.5, together: 2, pair: 0.75, maxGap: 2 },
+  expert: { gap: 0.5, together: 2, pair: 1,    maxGap: 3, breaks: true },
+};
 export const STREAM = { any: { gap: 2, together: 1, maxGap: 4 }, half: { gap: 0.5, together: 2, maxGap: 2 }, none: { gap: 0, together: 2, maxGap: 3 } };   // Easy: every 2 beats (owner, 2026-10-04: one a beat "came a bit fast")
 const FILL_STEP = 2;   // fillers never closer than this (beats) — fewer of them (owner)
 // FILLERS ARE THE SONG (owner, 2026-10-04): a long wait is filled with the section's notes
@@ -48,11 +57,12 @@ export class Defend {
    * @param {{notes: {lane, beat, midi?, vel?}[], bars: number}} song  (beats; the song loops every 4*bars beats)
    * @param {{lockSize?: number, keep?: "any"|"half"|"none", rng?: () => number}} opts
    */
-  constructor(song, { lockSize = 1, keep = "any", rng = Math.random, all = false } = {}) {
+  constructor(song, { lockSize = 1, keep = "any", rng = Math.random, all = false, density = null } = {}) {
     this.loopBeats = 4 * song.bars;
     this.lockSize = lockSize;
     this.keep = keep;
-    this.all = !!all;   // FULL SONG (owner, 2026-10-10): no layers, no thinning, no fillers — every unlocked note streams, every pass
+    this.all = !!all;
+    this.density = DENSITY[density] ? density : null;   // null: the old per-keep stream (STREAM), kept for old saves and the tests   // FULL SONG (owner, 2026-10-10): no layers, no thinning, no fillers — every unlocked note streams, every pass
     this.rng = rng;
     this.notes = song.notes.map((n, id) => ({ ...n, id, section: sectionOf(n.lane) }));
     this.locked = new Set();          // note ids
@@ -91,7 +101,12 @@ export class Defend {
       }
       else layer = open;   // the guns: both rows from the start (owner, 2026-10-04: "we need top and bottom or you die fast") — see PHRASES below
     }
-    const { gap, together, maxGap } = STREAM[this.keep] || STREAM.none;
+    const D = this.density ? DENSITY[this.density] : null;
+    const { gap, together, maxGap } = D || STREAM[this.keep] || STREAM.none;
+    const partnerOf = (n, list, from) => { for (let j = from; j < list.length && list[j].beat <= n.beat + 1e-6; j++) { const m = list[j];
+      if (m !== n && Math.abs(m.beat - n.beat) < 1e-6 && m.lane !== n.lane && (this.section === "drums" || +m.lane.split(" ")[1] >= 9 === +n.lane.split(" ")[1] >= 9)) return m; } return null; };
+    let nextBreak = D && D.breaks ? 6 + Math.floor(this.rng() * 5) : Infinity, picks = 0;
+    const breaks = [];   // expert's rests: [from, to) beats the fillers must leave empty
     const cands = [...layer].sort((a, b) => a.beat - b.beat || rankOf(a) - rankOf(b) || a.id - b.id);
     // FLOW (owner, 2026-10-04: "too many bdrum bdrum bdrum"): walk the song; each next hit is the
     // earliest note a gap on, but within a beat of slack prefer one on a DIFFERENT instrument from
@@ -116,23 +131,31 @@ export class Defend {
           if (u < best) { best = u; pick = cands[j]; }
         }
       }
+      const wantPair = D && D.pair > 0 && this.rng() < D.pair;   // this pick should come as a pair: prefer a note that HAS a partner
+      if (!pick && wantPair) { best = Infinity; for (let j = i; j < cands.length && cands[j].beat <= b0 + SLACK + 1e-6; j++) { if (!partnerOf(cands[j], cands, i)) continue; const u = used[cands[j].lane] ?? -Infinity; if (u < best) { best = u; pick = cands[j]; } } }
       if (!pick) { best = Infinity; for (let j = i; j < cands.length && cands[j].beat <= b0 + SLACK + 1e-6; j++) { const u = used[cands[j].lane] ?? -Infinity; if (u < best) { best = u; pick = cands[j]; } } }
       plan.push(pick); last = pick.beat; used[pick.lane] = pick.beat;
       if (guns) {
         if (rowOf(pick) !== rowWant) { rowWant = rowOf(pick); rowCount = 0; }
         if (++rowCount >= PHRASE) { rowWant ^= 1; rowCount = 0; }
       }
-      let at = 1;   // together: two hands at most, a different instrument each
+      let at = (D && !wantPair) ? together : 1;   // together: two hands at most, a different instrument each (a density decides per pick)
       for (let j = i; j < cands.length && cands[j].beat <= last + 1e-6; j++) { const n = cands[j]; if (n !== pick && Math.abs(n.beat - last) < 1e-6 && at < together && n.lane !== pick.lane && (!guns || rowOf(n) === rowOf(pick))) { plan.push(n); used[n.lane] = n.beat; at++; } }
       while (i < cands.length && cands[i].beat <= last + 1e-6) i++;
+      if (++picks >= nextBreak) {   // EXPERT: a sudden rest of 1-2 beats, then it comes back
+        const rest = this.rng() < 0.5 ? 1.5 : 2.5; breaks.push([last, last + rest]); last += rest - gap;
+        while (i < cands.length && cands[i].beat < last + gap - 1e-6) i++;
+        picks = 0; nextBreak = 6 + Math.floor(this.rng() * 5);
+      }
     }
     plan.sort((a, b) => a.beat - b.beat);
     // FILL the long waits with THE SONG: its notes in the gap, locked ones replayed (bonus),
     // unlocked ones from later layers brought forward (real) — every FILL_STEP at most
     const inPlan = new Set(plan.map((n) => n.id)), filled = [], promoted = [];
     const all = this.sectionNotes();
+    const inBreak = (b) => breaks.some(([a, z]) => b > a + 1e-6 && b < z - 1e-6);
     const fill = (from, to) => {
-      const cands = all.filter((n) => !inPlan.has(n.id) && n.beat > from + 1e-6 && n.beat < to - 1e-6)
+      const cands = all.filter((n) => !inPlan.has(n.id) && n.beat > from + 1e-6 && n.beat < to - 1e-6 && !inBreak(n.beat))
         .sort((a, b) => a.beat - b.beat || (this.locked.has(b.id) ? 1 : 0) - (this.locked.has(a.id) ? 1 : 0));   // the locked (the band's) first at a beat
       let last = from;
       for (const n of cands) {

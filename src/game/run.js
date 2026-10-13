@@ -18,42 +18,43 @@
  */
 
 export const PRESETS = {
-  easy:   { hitbox: 0.25, tempo: 1, patterns: "easy",   lock: 3,        keep: "any",  damage: "gentle" },
-  medium: { hitbox: 0.25, tempo: 1, patterns: "medium", lock: 3,        keep: "half", damage: "normal" },
-  hard:   { hitbox: 0.25, tempo: 1, patterns: "full",   lock: 8,        keep: "none", damage: "normal" },
-  expert: { hitbox: 0.25, tempo: 1, patterns: "full",   lock: Infinity, keep: "none", damage: "harsh" },
+  easy:   { hitbox: 0.25, tempo: 1, patterns: "easy",   lock: 3,        keep: "any",  damage: "gentle", density: "easy" },
+  medium: { hitbox: 0.25, tempo: 1, patterns: "medium", lock: 3,        keep: "half", damage: "normal", density: "medium" },
+  hard:   { hitbox: 0.25, tempo: 1, patterns: "full",   lock: 8,        keep: "none", damage: "normal", density: "hard" },
+  expert: { hitbox: 0.25, tempo: 1, patterns: "full",   lock: Infinity, keep: "none", damage: "harsh",  density: "expert" },
 };
 // THE DIFFICULTY SLIDER (owner, 2026-10-03): 10 levels, each a full set of modifiers;
 // the old four presets sit on it at 3, 5, 7 and 10. The HITBOX is ±250 ms at every level
 // (owner: "ginormous"): anything near the note counts — the score is how CLOSE (chase 100%)
 export const LEVELS = [
-  { hitbox: 0.25, tempo: 0.8, patterns: "easy",   lock: 1, keep: "any",  damage: "gentle" },   // 1  single notes, slower
-  { hitbox: 0.25, tempo: 0.9, patterns: "easy",   lock: 1, keep: "any",  damage: "gentle" },   // 2
+  { hitbox: 0.25, tempo: 0.8, patterns: "easy",   lock: 1, keep: "any",  damage: "gentle", density: "easy" },   // 1  single notes, slower
+  { hitbox: 0.25, tempo: 0.9, patterns: "easy",   lock: 1, keep: "any",  damage: "gentle", density: "easy" },   // 2
   PRESETS.easy,                                                                                 // 3  groups: keep whatever you hit
-  { hitbox: 0.25, tempo: 1,   patterns: "medium", lock: 3, keep: "any",  damage: "normal" },   // 4
+  { hitbox: 0.25, tempo: 1,   patterns: "medium", lock: 3, keep: "any",  damage: "normal", density: "medium" },   // 4
   PRESETS.medium,                                                                               // 5  groups: keep half if it breaks
-  { hitbox: 0.25, tempo: 1,   patterns: "full",   lock: 3, keep: "half", damage: "normal" },   // 6
+  { hitbox: 0.25, tempo: 1,   patterns: "full",   lock: 3, keep: "half", damage: "normal", density: "hard" },   // 6
   PRESETS.hard,                                                                                 // 7  only a perfect pattern
-  { hitbox: 0.25, tempo: 1,   patterns: "full",   lock: 8, keep: "none", damage: "harsh" },    // 8
-  { hitbox: 0.25, tempo: 1.1, patterns: "full",   lock: 8, keep: "none", damage: "harsh" },    // 9  faster
+  { hitbox: 0.25, tempo: 1,   patterns: "full",   lock: 8, keep: "none", damage: "harsh", density: "hard" },    // 8
+  { hitbox: 0.25, tempo: 1.1, patterns: "full",   lock: 8, keep: "none", damage: "harsh", density: "expert" },    // 9  faster
   PRESETS.expert,                                                                               // 10
 ];
 export const LEVEL_NAMES = ["Sprout", "Seedling", "Easy", "Steady", "Medium", "Brisk", "Hard", "Fierce", "Brutal", "Expert"];
 /** which level (1..10) a config IS, or 0 for custom */
 export function levelOf(cfg) {
-  const i = LEVELS.findIndex((p) => Math.abs(p.hitbox - cfg.hitbox) < 1e-3 && Math.abs(p.tempo - cfg.tempo) < 1e-3 && p.patterns === cfg.patterns && p.lock === cfg.lock && p.keep === cfg.keep && p.damage === cfg.damage);
+  const i = LEVELS.findIndex((p) => Math.abs(p.hitbox - cfg.hitbox) < 1e-3 && Math.abs(p.tempo - cfg.tempo) < 1e-3 && p.patterns === cfg.patterns && p.lock === cfg.lock && p.keep === cfg.keep && p.damage === cfg.damage && (!cfg.density || p.density === cfg.density));
   return i + 1;
 }
 export const PRESET_NAMES = { easy: "Easy", medium: "Medium", hard: "Hard", expert: "Expert", custom: "Custom" };
 export const LIMITS = { hitbox: [0.03, 0.25], tempo: [0.6, 1.4] };
 export const LOCKS = [1, 3, 8, Infinity];
 export const DAMAGES = ["gentle", "normal", "harsh"];
-export const KEEPS = ["any", "half", "none"];   // a group you don't finish: keep every hit / a random half / nothing
+export const KEEPS = ["any", "half", "none"];
+export const DENSITIES = ["easy", "medium", "hard", "expert"];   // how many notes come, and how often two at once (defend.js DENSITY)   // a group you don't finish: keep every hit / a random half / nothing
 
 /** which preset a config IS (else "custom") */
 export function presetOf(cfg) {
   for (const [k, p] of Object.entries(PRESETS)) {
-    if (Math.abs(p.hitbox - cfg.hitbox) < 1e-3 && Math.abs(p.tempo - cfg.tempo) < 1e-3 && p.patterns === cfg.patterns && p.lock === cfg.lock && p.keep === cfg.keep && p.damage === cfg.damage) return k;
+    if (Math.abs(p.hitbox - cfg.hitbox) < 1e-3 && Math.abs(p.tempo - cfg.tempo) < 1e-3 && p.patterns === cfg.patterns && p.lock === cfg.lock && p.keep === cfg.keep && p.damage === cfg.damage && (!cfg.density || p.density === cfg.density)) return k;
   }
   return "custom";
 }
@@ -72,6 +73,7 @@ export function normalize(cfg = {}) {
   // STREAM (owner, 2026-10-10): "steps" = the song learned in layers (as above); "all" = FULL SONG — every note of the chart
   // comes from the first bar, every hit locks its note and the locked ones stop coming, so the sky clears as you learn it.
   // Full song implies the full chart, single notes, keep whatever you hit.
+  if (!DENSITIES.includes(c.density)) c.density = c.keep === "any" ? "easy" : c.keep === "half" ? "medium" : c.lock === Infinity ? "expert" : "hard";
   c.stream = c.stream === "all" ? "all" : "steps";
   if (c.stream === "all") { c.patterns = "full"; c.lock = 1; c.keep = "any"; }
   delete c.step;   // the old bell loop's setting
@@ -87,7 +89,8 @@ export function scoreMultiplier(cfg) {
     lock: c.stream === "all" ? 1 : ({ 1: 0.8, 3: 0.95, 8: 1.05 }[c.lock] ?? 1.15),   // all at once: x1.15 (full song sets these itself: no penalty)
     keep: c.stream === "all" ? 1 : { any: 0.85, half: 1, none: 1.1 }[c.keep],
     damage: { gentle: 0.9, normal: 1, harsh: 1.1 }[c.damage],
-    stream: { steps: 1, all: 1.25 }[c.stream],                             // the whole song at once: x1.25
+    stream: { steps: 1, all: 1.25 }[c.stream],
+    density: c.stream === "all" ? 1 : { easy: 0.85, medium: 1, hard: 1.15, expert: 1.3 }[c.density],                             // the whole song at once: x1.25
   };
   const total = Object.values(parts).reduce((a, b) => a * b, 1);
   return { total: Math.round(total * 100) / 100, parts };

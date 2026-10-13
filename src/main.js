@@ -985,7 +985,7 @@ function makeStartButton() {
     addBacking();
     if (CREATE) startCreating();
     else if (HYDRA) startHydra();
-    else if (!HYDRA) defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, keep: RUN.keep, beatDur: clock.beatDur, all: RUN.stream === "all" });   // full song: every note streams
+    else if (!HYDRA) defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, keep: RUN.keep, beatDur: clock.beatDur, all: RUN.stream === "all", density: RUN.density });   // full song: every note streams
     if (defend) { const sec = new URLSearchParams(location.search).get("section");   // dev: ?section=bass|treble starts the round there (photos of the armies)
       const k = ["drums", "bass", "treble"].indexOf(sec); if (k > 0) defend.sectionIdx = k; }
     stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat

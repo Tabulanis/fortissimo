@@ -108,6 +108,9 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
       <div class="row"><span>Tempo</span><input type="range" data-k="tempo" min="${LIMITS.tempo[0]}" max="${LIMITS.tempo[1]}" step="0.05"><span class="v" data-v="tempo"></span></div>
       <div class="row"><span>Mode</span><select data-k="stream">
         <option value="steps">Step by step — the song comes in layers</option><option value="all">Full song — every note from the start; lock what you can</option></select><span></span></div>
+      <div class="row"><span>Density</span><select data-k="density">
+        <option value="easy">Easy — a note every 2 beats</option><option value="medium">Medium — twice as many, sometimes two at once</option>
+        <option value="hard">Hard — twice that, mostly two at once</option><option value="expert">Expert — two at a time, with rests to throw you</option></select><span></span></div>
       <div class="row"><span>Patterns</span><select data-k="patterns">
         <option value="easy">Easy — beats and half-beats</option><option value="medium">Medium — no fast runs</option><option value="full">Full — every note</option></select><span></span></div>
       <div class="row"><span>Groups</span><select data-k="lock">
@@ -126,7 +129,7 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
     const paint = () => {
       el("hitbox").value = cfg.hitbox; el("tempo").value = cfg.tempo; el("patterns").value = cfg.patterns;
       el("lock").value = cfg.lock === Infinity ? "all" : String(cfg.lock); el("keep").value = cfg.keep; el("damage").value = cfg.damage;
-      el("stream").value = cfg.stream || "steps";
+      el("stream").value = cfg.stream || "steps"; el("density").value = cfg.density || "easy"; el("density").disabled = cfg.stream === "all";
       for (const k of ["patterns", "lock", "keep"]) el(k).disabled = cfg.stream === "all";   // full song sets these itself (run.js)
       card.querySelector("[data-v=hitbox]").textContent = `${ms(cfg.hitbox)}`;
       card.querySelector("[data-v=tempo]").textContent = L.bpm ? `${Math.round(L.bpm * cfg.tempo)} bpm` : `×${cfg.tempo.toFixed(2)}`;
@@ -147,6 +150,7 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
     el("damage").onchange = () => { cfg.damage = el("damage").value; paint(); };
     el("keep").onchange = () => { cfg.keep = el("keep").value; paint(); };
     el("stream").onchange = () => { cfg = normalize({ ...cfg, stream: el("stream").value }); paint(); };
+    el("density").onchange = () => { cfg.density = el("density").value; paint(); };
     card.querySelector("[data-a=back]").onclick = levelsScreen;
     card.querySelector("[data-a=start]").onclick = () => { root.style.display = "none"; onStart(lvl, normalize(cfg)); };
     paint();
