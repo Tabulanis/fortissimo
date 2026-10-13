@@ -254,7 +254,7 @@ export function createCourtyard(scene) {
     }
   }, undefined, (err) => console.warn("Pillar.glb failed to load", err));
 
-  // --- the owner's Meshy pieces (2026-10-06), lean copies made by tools/slim-glb.py.
+  // --- the owner's model pieces (2026-10-06), lean copies made by tools/slim-glb.py.
   // placeGlb: load once, drop a clone at each spot — fit = { width | height } in metres,
   // bottom on the floor at y, centred on x/z, turned by yaw (glTF front = +z).
   const placeGlb = (url, spots, fit) => gltfLoader().load(url, (gltf) => {

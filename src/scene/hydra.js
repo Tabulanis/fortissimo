@@ -1,4 +1,4 @@
-/* hydra.js — the HYDRA's heads: the owner's one-piece Meshy head (public/models/HydraHead.glb,
+/* hydra.js — the HYDRA's heads: the owner's one-piece head (public/models/HydraHead.glb,
    neck stub + skull + open jaw, 7.8k tris, NO rig in the file) given a skeleton in code and
    skinned — bones and weights, the mesh stays one piece (owner, 2026-10-06).
 

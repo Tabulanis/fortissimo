@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""rig-from-mixamo.py — give an UNRIGGED T-pose humanoid (the owner's Meshy Minotaur) the
-skeleton and animation clips of an already-rigged Mixamo/Meshy model (the Sentinel), so it
+"""rig-from-mixamo.py — give an UNRIGGED T-pose humanoid (the owner's Minotaur) the
+skeleton and animation clips of an already-rigged Mixamo model (the Sentinel), so it
 walks, runs and swings exactly like it (owner, 2026-10-07: "rig it with the same animations").
 
 How:

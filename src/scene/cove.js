@@ -31,7 +31,7 @@ export function createCove(scene) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.name = name;
     m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = m.receiveShadow = true; parent.add(m); return m;
   };
-  // (10-08: the box wharf/landing, box dock and box side pier are GONE — his Meshy dock (below) replaces them; he lays it out in the editor)
+  // (10-08: the box wharf/landing, box dock and box side pier are GONE — his dock (below) replaces them; he lays it out in the editor)
   // SEA: sea.js — swell, sky-fresnel, moon glint, ripple rings; stage3d ticks it and the hydra ripples it
   const SEA_FAR = 230;   // (10-08: the sea runs out to the draw distance, then the sky dome's painted sea takes over)
   const sea = createSea(scene, { x: 0, z: COVE.wallZ + SEA_FAR / 2, width: SEA_FAR * 2, depth: SEA_FAR, y: -0.15 });   // from the wall out
@@ -54,7 +54,7 @@ export function createCove(scene) {
   }
   // the beach's own flanks: lower rock so the cove reads closed next to the wall
   for (const side of [-1, 1]) box("spur", 8, 5, 10, rock, side * 14, 2.0, COVE.beachZ0 + 4).name = "spur";
-  // HIS MESHY CLIFFS + RUINS (2026-10-07) replace the placeholder box cliffs, which stay built but hidden
+  // HIS CLIFFS + RUINS (2026-10-07) replace the placeholder box cliffs, which stay built but hidden
   for (const n of ["cliff-left", "cliff-right"]) { const o = root.getObjectByName(n); if (o) o.visible = false; }
   root.traverse((o) => { if (o.name === "spur") o.visible = false; });
   const placeModel = (url, spots, height) => gltfLoader().load(url, (gltf) => {
@@ -91,8 +91,8 @@ export function createCove(scene) {
   // the SHIP: run up on the beach to the right, listing a little; a mast and a gangplank down to the sand
   const ship = new THREE.Group(); ship.name = "ship"; ship.position.copy(SHIP_POS).add(new THREE.Vector3(0, -0.35, 0)); ship.rotation.set(0, 0.04 + Math.PI / 2, 0.03); root.add(ship);
   // (10-08: turned HERE, not on load — a saved edit must not get the turn twice) the model's length along the pier, keel ~1.2 m under  (was: alongside the pier, a slight roll)
-  // (10-08: the box hull, deck, mast, sail and gangplank are gone — his Meshy ship below is the ship)
-  // HIS MESHY DOCK (2026-10-08, meshy/dock/newdock.glb → public/models/NewDock.glb): a stone landing with steps at one end,
+  // (10-08: the box hull, deck, mast, sail and gangplank are gone — his ship below is the ship)
+  // HIS DOCK (2026-10-08, his newdock.glb → public/models/NewDock.glb): a stone landing with steps at one end,
   // a plank pier with a crane at the other. Its length runs along its x: turned so the stone sits at the gate and the pier
   // runs out to the podium, scaled to reach from the wall to just past the podium; its DECK (measured: 1.92 units above the
   // posts' feet, the pier's centre line at z -0.25) at the old dock's plank height, so the podium and camera stay put.
@@ -115,7 +115,7 @@ export function createCove(scene) {
     register(pivot, "cove-newdock", "dock (his)");
     bootlog("placed NewDock.glb", { scale: +k.toFixed(2), length: +(len * k).toFixed(1), deckY });
   }, undefined, (e) => console.warn("NewDock.glb failed to load", e));
-  // HIS ALTAR (2026-10-08, meshy/alter/alter.glb → public/models/Altar.glb): "put that at the end of the dock — I'll move it —
+  // HIS ALTAR (2026-10-08, his alter.glb → public/models/Altar.glb): "put that at the end of the dock — I'll move it —
   // that will be the end hydra play area". A stepped stone altar rising out of the water past the dock's end, its stairs facing
   // the dock. ROUND 4 IS PLAYED ON ITS TOP, wherever he moves it: stage3d.playSpot() reads root.userData.altar.
   gltfLoader().load("/models/Altar.glb", (gltf) => {

@@ -1,6 +1,6 @@
 /* axe.js — the minotaurs' AXE (owner, 2026-10-07: "give them axes so they can attack us"):
    a placeholder two-bitted axe on a long haft, locked to a Mixamo skeleton's right-hand bone
-   so it swings with the slash clip. Swap in a Meshy axe later: keep AXE_GRIP, replace build(). */
+   so it swings with the slash clip. Swap in a modelled axe later: keep AXE_GRIP, replace build(). */
 import * as THREE from "three";
 
 // how the haft sits in the fist, in the hand bone's own space — tuned by eye in the viewer

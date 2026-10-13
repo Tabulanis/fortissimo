@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""build-cyclops.py — the BOSS model (owner's Meshy "Canyon Cyclops", 2026-10-04).
+"""build-cyclops.py — the BOSS model (owner's "Canyon Cyclops", 2026-10-04).
 
-Meshy ships one 22 MB .glb per animation clip, each a full copy of the skinned mesh
+The export ships one 22 MB .glb per animation clip, each a full copy of the skinned mesh
 with 2K-4K textures. This folds them into ONE game file:
   - the mesh, skin and skeleton from the Walking file
   - every other file's animation clip appended (same skeleton: node lists are checked)
@@ -14,9 +14,9 @@ import io, json, struct, sys
 from pathlib import Path
 from PIL import Image
 
-# usage: build-cyclops.py <unzipped Meshy folder> <OutName> [colour px] [metal/rough px]
-#   e.g. build-cyclops.py .../Meshy_AI_Canyon_Sentinel_biped Sentinel 512 256
-SRC = Path(sys.argv[1] if len(sys.argv) > 1 else "/tmp/fortissimo-dev/cyclops/Meshy_AI_Canyon_Cyclops_biped")
+# usage: build-cyclops.py <unzipped model export folder> <OutName> [colour px] [metal/rough px]
+#   e.g. build-cyclops.py .../Canyon_Sentinel_biped Sentinel 512 256
+SRC = Path(sys.argv[1] if len(sys.argv) > 1 else "/tmp/fortissimo-dev/cyclops/Canyon_Cyclops_biped")
 OUT_NAME = sys.argv[2] if len(sys.argv) > 2 else "Cyclops"
 CAP_COLOR = int(sys.argv[3]) if len(sys.argv) > 3 else 1024
 CAP_MR = int(sys.argv[4]) if len(sys.argv) > 4 else 512
@@ -105,7 +105,7 @@ def build(cap_color, cap_mr, out):
         pic.save(o, "JPEG", quality=88, optimize=True)
         chunks[bv] = o.getvalue()
         im["mimeType"] = "image/jpeg"
-    base_j["asset"]["generator"] = "Fortissimo build-cyclops.py (Meshy source)"
+    base_j["asset"]["generator"] = "Fortissimo build-cyclops.py (owner's model)"
     total = write_glb(base_j, chunks, out)
     print(f"{out}: {total // 1024} KB, clips {[a['name'] for a in base_j['animations']]}, textures {cap_color}/{cap_mr}")
 

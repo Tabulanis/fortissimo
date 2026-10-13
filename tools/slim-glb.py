@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""slim-glb.py — a Meshy (or any) .glb with huge embedded textures -> a lean game file.
+"""slim-glb.py — any .glb with huge embedded textures -> a lean game file.
 Geometry untouched; every embedded image is shrunk to a cap and re-encoded (JPEG for
 colour/metal-rough, PNG kept only if it has transparency). Writes public/models/<Name>.glb
 and a half-size copy in public/small/models/ for the cheap tiers.

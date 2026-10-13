@@ -123,7 +123,7 @@ literally what you played. The garden shows how the band is doing.
   reflecting water, scaled up), cliffs closing in on both sides, a dock running out into
   the water with the podium at its end, a ship run up on the beach — the troops pour down
   its gangplank; the hydra rises from the sea. Blocked out in placeholder geometry
-  (src/scene/cove.js); his Meshy pieces replace parts as they come (Hydra needs a rigged
+  (src/scene/cove.js); his models replace parts as they come (Hydra needs a rigged
   export with clips: rise, bite, hit, death).
 - Build order: cove blockout + the back gate opened (DONE) → the three sections answering
   the four gestures on the bar line, the song's own parts as the band, no monsters (is

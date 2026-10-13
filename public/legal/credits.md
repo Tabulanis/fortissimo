@@ -9,7 +9,7 @@ Made by Tabulanis.
 - Drum kit, mortars and other effects: made for this game [CHECK: list every bank in public/banks with its source before shipping]
 
 ## Models and art
-- Town, gate, columns, fountain, ship, dock, altar, hydra and creatures: made for this game with Meshy [CHECK: the Meshy plan's commercial-use terms]
+- Town, gate, columns, fountain, ship, dock, altar, hydra and creatures: Tabulanis
 - App icon and title art: Tabulanis
 
 ## Type

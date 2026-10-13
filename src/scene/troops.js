@@ -91,13 +91,13 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
     };
   };
   const rigs = Array.from({ length: MAX }, () => makeRig("soldier"));
-  // THE SOLDIER MODEL (owner's Meshy "Canyon Sentinel", 2026-10-04; built like the cyclops): every
+  // THE SOLDIER MODEL (owner's "Canyon Sentinel", 2026-10-04; built like the cyclops): every
   // rig gets its own skinned copy and mixer — walks or spear-walks in (runs when far), slashes at the
   // wall; dead, it's thrown tumbling like the box ragdoll was, lies there, then sinks. Cheap tiers
   // (models: false) keep the box rigs.
   const sent = { template: null, clips: {} };
   // THE MINOTAURS (owner, 2026-10-07): the BASS court's enemies are minotaurs with axes, not
-  // soldiers. His Meshy minotaur had no rig; tools/rig-from-mixamo.py gave it the Sentinel's
+  // soldiers. His minotaur had no rig; tools/rig-from-mixamo.py gave it the Sentinel's
   // skeleton and clips (public/models/MinotaurRig.glb): it walks, runs and slashes by the same names.
   const mino = { template: null, clips: {} };
   const makeModel = (src) => {
@@ -163,7 +163,7 @@ export function createTroops(scene, { court, center, layer = 0, fireTexture = nu
     return { env, basket, rig: null, pop: -1 };
   });
   const bossRig = makeRig("boss");
-  // THE BOSS MODEL (owner's Meshy "Canyon Cyclops", 2026-10-04; tools/build-cyclops.py folds its
+  // THE BOSS MODEL (owner's "Canyon Cyclops", 2026-10-04; tools/build-cyclops.py folds its
   // six clips into public/models/Cyclops.glb): it stands on the box rig's spot and plays Walking as
   // it lumbers, Attack at the wall, Double_Combo_Attack when it thrashes, Hit_Reaction when the
   // lightning lands; no death clip, so it topples. The box rig stays as the fallback.
