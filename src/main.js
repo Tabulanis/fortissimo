@@ -800,6 +800,12 @@ const laneDest = (ln) => mixer.lane(ln.kind || ln.name);
 /* Hackbeat track chains for the current round, built on first use: one per
    (track, destination) — the back tracks have their own section faders. */
 let hbChains = null;
+/** the song-maker's 🎚 Sound (10-13): new effect settings for a part's tracks — written into the song and into every chain already built */
+function setTrackFx(tracks, fx) {
+  const s = song(); if (!s.tracks) return;
+  for (const t of tracks) { if (!s.tracks[t]) continue; s.tracks[t].fx = fx;
+    if (hbChains && hbChains.song === s) for (const [k, ch] of hbChains.chains) if (+k.split("|")[0] === t) ch.update(fx, true); }
+}
 function hbTrack(track, dest, destKey) {
   const s = song();
   if (track == null || !s.tracks || !s.tracks[track] || !ctx) return null;
@@ -1397,7 +1403,8 @@ function hitLane(idx, lane, press, padVel = 1) {
 const G = {
   get CREATE() { return CREATE; }, get BANKS() { return BANKS; }, get RUN() { return RUN; }, get HYDRA() { return HYDRA; },
   applyStage: () => applyStage(), relabel: () => relabel(), song: () => song(), laneSound: (ln, midi, own) => laneSound(ln, midi, own),
-  get padConnected() { return padConnected; }, get touch() { return IS_TOUCH; },   // what's in hand: the kits label themselves for it
+  get padConnected() { return padConnected; }, get touch() { return IS_TOUCH; },
+  setTrackFx: (tracks, fx) => setTrackFx(tracks, fx), openSettings: () => settingsUI.open(),   // what's in hand: the kits label themselves for it
   updateBackLevels: () => updateBackLevels(), hurtFlash: () => hurtFlash(), runName: (r) => runName(r),
   get ctx() { return ctx; }, get pool() { return pool; }, get KEYMAP_BY_LANE() { return KEYMAP_BY_LANE; }, get stage3d() { return stage3d; },
   get hudUI() { return hudUI; }, get results() { return results; }, get drums() { return drums; }, get mixer() { return mixer; }, get life() { return life; },
@@ -1738,7 +1745,7 @@ resize();
 window.addEventListener("resize", resize);
 // test hook (the harness robot reads the song state through this)
 if (window.__gr) window.__gr.game = {
-  get clock() { return clock; }, get ctx() { return ctx; },
+  get clock() { return clock; }, get ctx() { return ctx; }, get songNow() { return song(); },
   get roundIdx() { return roundIdx; },
   setBackLevel: (v) => { for (const g of Object.values(backGain)) g.gain.value = v; },   // harness: backgrounds at full
   get defend() { return defend; }, get siege() { return siege; }, get lightning() { return lightning; },

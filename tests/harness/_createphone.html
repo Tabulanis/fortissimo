@@ -16,5 +16,13 @@ f.onload = async () => { const w = f.contentWindow, d = w.document;
     await wait(8000); const p = d.getElementById("mk-panel"), r = p.getBoundingClientRect();
     say("createphone", JSON.stringify({ step: "recorder", panelH: Math.round(r.height), panelW: Math.round(r.width), viewH: w.innerHeight, coverPct: Math.round(100 * r.height / w.innerHeight), buttons: p.querySelectorAll("button").length }));
     await snap(w, "create-recorder");
+    const P = new URLSearchParams(location.hash.slice(1));
+    p.querySelector("[data-a=sound]").click(); await wait(300); const pr = p.getBoundingClientRect();
+    say("createphone", JSON.stringify({ step: "sound drawer", panelH: Math.round(pr.height), coverPct: Math.round(100 * pr.height / w.innerHeight), sliders: p.querySelectorAll("input[type=range]").length }));
+    await snap(w, "create-sound");
+    // drag Reverb: does the song's track change, live?
+    const rv = p.querySelector("[data-mix=reverb]"); rv.value = "0.8"; rv.dispatchEvent(new w.Event("input")); await wait(200);
+    say("createphone", JSON.stringify({ step: "reverb dragged", drumTrackReverb: w.__gr.game.songNow.tracks[0].fx.reverb.send, bassTrackReverb: w.__gr.game.songNow.tracks[6].fx.reverb.send, tracks: w.__gr.game.songNow.tracks.length }));
+    p.querySelector("[data-a=more]").click(); await wait(300); await snap(w, "create-more");
   } catch (e) { say("createphone", "ERR " + e); } };
 </script>

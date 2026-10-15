@@ -8,8 +8,12 @@ export function createMode(G) {
   // The loop runs; what you've recorded plays back each pass (the pass you're playing is heard live);
   // each pass while recording is a take. No army, no chart: mode "free".
   function makeRecorder() {
+    document.body.classList.add("mk-creating");   // the life bars and the gear make no sense while writing: the bar sits up there instead
     G.recorder = createRecorder({ picks: G.CREATE, banks: G.BANKS, hooks: {
       setPart: () => { G.applyStage(); G.relabel(); },
+      // 🎚 Sound: a part's settings, live — its tracks in the order draftToSong builds them (6 drums, 16 bass, 16 treble)
+      setMix: (part, fx) => G.setTrackFx(part === "drums" ? [0, 1, 2, 3, 4, 5] : Array.from({ length: 16 }, (_, i) => (part === "bass" ? 6 : 22) + i), fx),
+      settings: () => G.openSettings(),
       leave: () => { location.href = location.pathname; },
       save: async (slug, level, songs) => {
         try { localStorage.setItem(`gr.made.${slug}`, JSON.stringify({ level, songs })); } catch { /* the server copy is the real one */ }

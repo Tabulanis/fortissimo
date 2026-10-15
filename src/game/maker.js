@@ -116,8 +116,20 @@ export function starterPart(part, bars = 4) {
 /** the lanes the RECORD screen offers: treble's top row (bars 9-16) is the boss's crystals in play, so a made song writes bars 1-8 */
 export const recordLanes = (part) => (part === "treble" ? lanesOf("treble").slice(0, 8) : lanesOf(part));
 
-/** the finished draft as a Fortissimo song file (the same shape the game loads: roundfiles.js) */
-export function draftToSong(draft, { name, title, banks }) {
+// SOUND SHAPING (owner, 2026-10-13: "we need to be able to choose and set reverb and tone etc. on the instrument the player is selecting"):
+// one setting per PART (drums / bass / treble) for the whole level, written into every track of that part as the game's own effects chain
+// (hbchain.js: volume, EQ, echo send, reverb send — the same chain Hackbeat songs play through)
+export const MIX_DEFAULT = { reverb: 0.2, tone: 0, volume: 1, echo: 0 };
+export function partFx(m = MIX_DEFAULT) {
+  const t = Math.max(-1, Math.min(1, m.tone ?? 0));   // -1 dark … +1 bright
+  return { nudge: 0, vol: m.volume ?? 1, pan: 0, eq: { low: t < 0 ? -t * 4 : -t * 3, mid: t < 0 ? t * 3 : 0, high: t * 11 },
+    dist: { on: false, drive: 0.4 }, crush: { on: false, bits: 8 }, chorus: { on: false, rate: 1.5, depth: 0.01, mix: 0.5 },
+    delay: { on: true, send: 0.6 * (m.echo ?? 0) }, reverb: { on: true, send: 0.9 * (m.reverb ?? 0) }, filter: { on: false, type: "lowpass", freq: 2000, q: 1 } };
+}
+const partOfTrack = (t) => (t < 6 ? "drums" : t < 22 ? "bass" : "treble");   // the order draftToSong gives tracks: 6 drums, 16 bass bars, 16 treble bars
+
+/** the finished draft as a Fortissimo song file (the same shape the game loads: roundfiles.js); mix: { drums, bass, treble } sound settings */
+export function draftToSong(draft, { name, title, banks, mix = null }) {
   const kit = banks.drums.find((k) => k.id === draft.kit) || banks.drums[0];
   const setOf = (part) => banks[part].find((b) => b.id === draft[part]) || banks[part][0];
   const sounds = {};
@@ -132,7 +144,9 @@ export function draftToSong(draft, { name, title, banks }) {
   return {
     format: "fortissimo-song", version: 1, world: draft.world, name, title, swing: 0,
     bpm: draft.bpm, bars: draft.bars, notes, sounds, back: { drums: [], bass: [], treble: [] },
-    tracks: [], fxBus: null, masterVol: 1,
+    tracks: Array.from({ length: track }, (_, t) => ({ name: partOfTrack(t), fx: partFx((mix && mix[partOfTrack(t)]) || MIX_DEFAULT) })),
+    fxBus: { reverbDecay: 2.6, delayTime: Math.round((60 / draft.bpm) * 0.75 * 1000) / 1000, delayFb: 0.32 }, masterVol: 1,
+    ...(mix ? { mix } : {}),
     made: { kit: kit.id, bass: setOf("bass").id, treble: setOf("treble").id, mood: draft.mood, tempo: draft.tempo, help: draft.help },
   };
 }
