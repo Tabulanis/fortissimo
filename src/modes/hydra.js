@@ -105,6 +105,7 @@ export function hydraMode(G) {
       drums: DRUMS.map((d, i) => ({ label: d.key.toUpperCase(), pad: d.glyph, color: DRUM_HEX[i] })),
       guns: GUNS.map((g, i) => ({ label: g.key.toUpperCase(), pad: g.glyph, color: GUN_HEX[i] })), fireTexture: G.stage3d.fireTexture, fireSim: G.stage3d.fireSim });   // (10-11) one big label each: the key, or the pad button
     relabel();
+    G.stage3d.keepInView(Array.from({ length: 10 }, (_, c) => kit.targetPos(c)));   // (10-15) every drum and gun on screen, on any phone
     highway = { draw: (items, now) => kit.update(items, now), flash: (c, good) => kit.press(c, good), show: (on) => { kit.root.visible = on; kit.station.visible = on; },
       setNoteColor() {}, el: { dataset: {} } };
     highway.show(true); active = true; movement = 0;

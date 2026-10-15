@@ -371,6 +371,23 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
   // FOV is set HORIZONTALLY (games' convention; owner: 110), vertical follows the window shape
   // held upright (portrait) a 110-degree width would mean a ~145-degree fisheye
   // height: narrower there, and the height capped
+  // KEEP IN VIEW (owner, 2026-10-15: "hydra — we need to be able to see all the drums"; an upright phone showed half the kit): the camera
+  // steps BACK along its gaze until every kept point is inside the frame with a margin — no wider lens (a portrait fisheye), just distance.
+  // Wide screens need no step back, so they're unchanged. keepInView(points | null).
+  let keepPts = null, keepBack = 0; const _kq = new THREE.Quaternion(), _kp = new THREE.Vector3(), _kf = new THREE.Vector3();
+  function fitKeep(dt) {
+    _kq.copy(camera.quaternion).invert();
+    const tanV = Math.tan(camera.fov * Math.PI / 360), tanH = tanV * camera.aspect, M = 0.72;   // M: the points stay inside 72% of the frame (the guns' barrels reach past their buttons)
+    let need = 0;
+    for (const p of keepPts) {
+      _kp.copy(p).sub(camera.position).applyQuaternion(_kq);   // camera space: x right, y up, -z ahead
+      const depth = -_kp.z;
+      need = Math.max(need, Math.abs(_kp.x) / (M * tanH) - depth, Math.abs(_kp.y) / (M * tanV) - depth);
+    }
+    need = Math.min(4, Math.max(0, need));
+    keepBack += (need - keepBack) * (1 - Math.exp(-dt * 3));
+    camera.getWorldDirection(_kf); camera.position.addScaledVector(_kf, -keepBack);
+  }
   const fitFov = () => {
     const h = camera.aspect >= 1 ? 110 : 80;
     const v = 2 * Math.atan(Math.tan(h * Math.PI / 360) / camera.aspect) * 180 / Math.PI;
@@ -2418,6 +2435,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       st.pos.lerp(S.pos, ks);
       camera.position.copy(st.pos);
       camera.quaternion.setFromEuler(_eul.set((st.pitch ?? PITCH0) + look.y * LOOK_PITCH, st.yaw - look.x * LOOK_YAW, 0, "YXZ"));
+      if (keepPts && station === "sea" && !cine) fitKeep(fireDt);   // round 4: every drum and gun in view, whatever the screen's shape
       if (cine) updateCine();          // the final battle's opening flight overrides the seat
       if (fly.on) updateFly(fireDt);   // DEV: the free camera overrides the seat
     }
@@ -2990,6 +3008,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     debugShieldGlowAmount: (v) => { if (shieldMix) shieldMix.uniforms.amount.value = v; },   // harness
     setCuePulse: (on) => { cuePulse = !!on; },   // full-song mode: short per-note flashes instead of the long warm-up
     get fireTexture() { return fireTexture; }, get fireSim() { return fireSim; },   // lent to round 4's kit: the same comets and trails as the rockets
+    keepInView: (pts) => { keepPts = pts && pts.length ? pts.map((p) => p.clone()) : null; if (!keepPts) keepBack = 0; },   // round 4's kit (modes/hydra.js)
     debugShieldOnly: (on) => { shieldOnly = !!on; },
     get debugBatcher() { return batcher; },
     debugGlowers: () => { const on = glowShowing(); return [on, ...(glowers || []).filter((o) => shown(o) && (!o.frustumCulled || !o.geometry || _gFr.intersectsObject(o))).map((o) => (o.parent && o.parent.name ? o.parent.name + "/" : "") + (o.name || o.type) + "@" + o.getWorldPosition(new THREE.Vector3()).toArray().map((v) => v.toFixed(1)).join(","))]; },   // harness: what keeps the glow pass on

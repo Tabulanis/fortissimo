@@ -1,4 +1,4 @@
-<!doctype html><body style="margin:0"><iframe id="f" style="width:1400px;height:900px;border:0"></iframe>
+<!doctype html><body style="margin:0"><iframe id="f" style="width:var(--w,1400px);height:var(--h,900px);border:0"></iframe><script>{ const P = new URLSearchParams(location.hash.slice(1)); if (P.get("size")) { const [w, h] = P.get("size").split("x"); document.documentElement.style.setProperty("--w", w + "px"); document.documentElement.style.setProperty("--h", h + "px"); } }</script>
 <script type="module">
 // QUICK PHOTOS of round 4 (10-11): start it, let the robot play, photograph at #at=9,12,15 (seconds after the start) — no full round
 const P = new URLSearchParams(location.hash.slice(1)), AT = (P.get("at") || "9,12").split(",").map(Number);
