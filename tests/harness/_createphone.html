@@ -1,0 +1,20 @@
+<!doctype html><body style="margin:0;background:#222"><iframe id="f" style="width:915px;height:412px;border:0"></iframe>
+<script type="module">
+// CREATE MODE on a phone-sized screen (10-13: "you can't do ANYTHING on phones"): the sound picker, then the recorder panel over the arena
+const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms)), say = (k, b) => fetch("http://127.0.0.1:8899/" + k, { method: "POST", body: b });
+import { snap } from "./_pagesnap.js";
+let out_closed = null; sessionStorage.clear(); let phase = 0; f.src = "/?quality=low&device=phone";
+f.onload = async () => { const w = f.contentWindow, d = w.document;
+  try {
+    if (phase === 0) { phase = 1; await wait(6000); [...d.querySelectorAll("#gr-menu button")].find((b) => /Create/.test(b.textContent)).click(); await wait(1500);
+      const card = d.querySelector("#gr-menu .card"), r = card.getBoundingClientRect();
+      say("createphone", JSON.stringify({ step: "picker", cardH: Math.round(r.height), cardW: Math.round(r.width), viewH: w.innerHeight, scrollH: d.getElementById("gr-menu").scrollHeight, buttons: card.querySelectorAll("button").length }));
+      out_closed = [...d.querySelectorAll("#gr-menu details:not([open]) .fold-body")].map((x) => Math.round(x.getBoundingClientRect().height)); { const sel = d.querySelector("#gr-menu select[data-k=kit]"), r = sel.getBoundingClientRect(), hit = d.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); say("createphone", JSON.stringify({ closedBodyHeights: out_closed, atKitSelect: hit ? hit.tagName + "." + (hit.className || "") : null, selectVisible: sel.checkVisibility ? sel.checkVisibility() : "n/a" })); }
+      await snap(w, "create-picker"); if (new URLSearchParams(location.hash.slice(1)).has("open")) { d.querySelectorAll("#gr-menu details").forEach((x) => (x.open = true)); await wait(300); await snap(w, "create-picker-open"); }
+      await wait(500);
+      [...d.querySelectorAll("#gr-menu button")].find((b) => /Start writing/.test(b.textContent)).click(); return; }
+    await wait(8000); const p = d.getElementById("mk-panel"), r = p.getBoundingClientRect();
+    say("createphone", JSON.stringify({ step: "recorder", panelH: Math.round(r.height), panelW: Math.round(r.width), viewH: w.innerHeight, coverPct: Math.round(100 * r.height / w.innerHeight), buttons: p.querySelectorAll("button").length }));
+    await snap(w, "create-recorder");
+  } catch (e) { say("createphone", "ERR " + e); } };
+</script>

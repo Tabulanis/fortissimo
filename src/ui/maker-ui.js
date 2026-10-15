@@ -37,21 +37,32 @@ export function pickSounds(card, { worlds, banks, onDone, onBack }) {
   const p = { world: worlds[0].id, kit: banks.drums[0].id, bass: banks.bass[0].id, treble: banks.treble[0].id, mood: "bright", tempo: "medium", title: "My level" };
   const opts = (list, cur) => list.map((x) => `<option value="${x.id}" ${x.id === cur ? "selected" : ""}>${x.name}</option>`).join("");
   const chips = (obj, key) => Object.entries(obj).map(([id, v]) => `<button class="chip ${p[key] === id ? "on" : ""}" data-chip="${key}" data-v="${id}">${v.label}</button>`).join("");
+  // FOLDED SECTIONS (owner, 2026-10-13: "collapsible menus — you can't do ANYTHING on phones"): each fold shows its current choice, so
+  // the whole screen reads at a glance; Start / Surprise / Back are pinned under the folds and never scroll away
+  const open = pickSounds._open ||= new Set(window.innerHeight > 700 ? ["sounds"] : []);
+  const nameOf = (list, id) => (list.find((x) => x.id === id) || {}).name || id;
   function paint() {
-    card.innerHTML = `<h2>Make a level</h2>
-      <div class="sub">Everything's already picked. Change what you like, or just hit Start.</div>
-      <div class="mk-row"><span>World</span><span class="chip on">${worlds.find((w) => w.id === p.world).name}</span><span class="t">more worlds coming</span></div>
-      <div class="mk-row"><span>Drums</span><select data-k="kit">${opts(banks.drums, p.kit)}</select><button class="play" data-play="kit">▶</button></div>
-      <div class="mk-row"><span>Bass</span><select data-k="bass">${opts(banks.bass, p.bass)}</select><button class="play" data-play="bass">▶</button></div>
-      <div class="mk-row"><span>Treble</span><select data-k="treble">${opts(banks.treble, p.treble)}</select><button class="play" data-play="treble">▶</button></div>
-      <div class="mk-row"><span>Mood</span><div class="chips">${chips(MOODS, "mood")}</div></div>
-      <div class="mk-row"><span>Speed</span><div class="chips">${chips(TEMPOS, "tempo")}</div></div>
-      <div class="mk-row"><span>Name</span><input data-k="title" maxlength="40" value="${p.title.replace(/"/g, "&quot;")}"></div>
-      <button class="big" data-a="go">Start writing ▶</button>
-      <button class="big lucky" data-a="lucky">🎲 Just make me something</button>
-      <button class="back" data-a="back">◀ Back</button>`;
-    card.querySelectorAll("select[data-k]").forEach((s) => (s.onchange = () => { p[s.dataset.k] = s.value; }));
+    card.classList.add("mk-pick");
+    const fold = (key, title, summary, body) => `<details data-fold="${key}" ${open.has(key) ? "open" : ""}><summary><b>${title}</b><span class="val">${summary}</span></summary><div class="fold-body">${body}</div></details>`;
+    card.innerHTML = `<div class="mk-head"><h2>Make a level</h2><div class="sub">Everything's picked already — tap a section to change it, or just Start.</div></div>
+      <div class="mk-scroll">
+      ${fold("sounds", "Sounds", `${nameOf(banks.drums, p.kit)} · ${nameOf(banks.bass, p.bass)} · ${nameOf(banks.treble, p.treble)}`, `
+        <div class="mk-row"><span>Drums</span><select data-k="kit">${opts(banks.drums, p.kit)}</select><button class="play" data-play="kit">▶</button></div>
+        <div class="mk-row"><span>Bass</span><select data-k="bass">${opts(banks.bass, p.bass)}</select><button class="play" data-play="bass">▶</button></div>
+        <div class="mk-row"><span>Treble</span><select data-k="treble">${opts(banks.treble, p.treble)}</select><button class="play" data-play="treble">▶</button></div>`)}
+      ${fold("feel", "Mood & speed", `${MOODS[p.mood].label} · ${TEMPOS[p.tempo].label}`, `
+        <div class="mk-row"><span>Mood</span><div class="chips">${chips(MOODS, "mood")}</div></div>
+        <div class="mk-row"><span>Speed</span><div class="chips">${chips(TEMPOS, "tempo")}</div></div>`)}
+      ${fold("name", "Name & world", `${p.title} · ${worlds.find((w) => w.id === p.world).name}`, `
+        <div class="mk-row"><span>Name</span><input data-k="title" maxlength="40" value="${p.title.replace(/"/g, "&quot;")}"></div>
+        <div class="mk-row"><span>World</span><span class="chip on">${worlds.find((w) => w.id === p.world).name}</span><span class="t">more coming</span></div>`)}
+      </div>
+      <div class="mk-foot"><button class="big" data-a="go">Start writing ▶</button>
+        <button class="big lucky" data-a="lucky">🎲 Surprise me</button><button class="back" data-a="back">◀ Back</button></div>`;
+    card.querySelectorAll("details[data-fold]").forEach((d) => d.addEventListener("toggle", () => { d.open ? open.add(d.dataset.fold) : open.delete(d.dataset.fold); }));
+    card.querySelectorAll("select[data-k]").forEach((s) => (s.onchange = () => { p[s.dataset.k] = s.value; paint(); }));
     card.querySelector("input[data-k=title]").oninput = (e) => { p.title = e.target.value; };
+    card.querySelector("input[data-k=title]").onchange = () => paint();
     card.querySelectorAll("[data-chip]").forEach((b) => (b.onclick = () => { p[b.dataset.chip] = b.dataset.v; paint(); }));
     card.querySelectorAll("[data-play]").forEach((b) => (b.onclick = () => preview(b.dataset.play)));
     card.querySelector("[data-a=go]").onclick = () => onDone({ ...p, title: p.title.trim() || "My level" });
@@ -71,6 +82,29 @@ export function pickSounds(card, { worlds, banks, onDone, onBack }) {
   }
   paint();
 }
+
+// the picker's layout: a column whose middle scrolls while the head and the Start buttons stay put; smaller on short screens
+{ const st = document.createElement("style"); st.textContent = `
+#gr-menu .card.mk-pick { display:flex; flex-direction:column; max-height:calc(100dvh - 20px); padding:14px 16px; }
+#gr-menu .mk-pick .mk-head h2 { margin:0 0 2px; }
+#gr-menu .mk-pick .mk-head .sub { margin-bottom:8px; }
+#gr-menu .mk-pick .mk-scroll { overflow:auto; flex:1 1 auto; min-height:0; }
+#gr-menu .mk-pick details { border:1px solid rgba(255,190,120,0.25); border-radius:10px; margin:6px 0; background:rgba(255,160,80,0.05); }
+#gr-menu .mk-pick summary { display:flex; gap:10px; align-items:baseline; padding:10px 12px; cursor:pointer; list-style:none; }
+#gr-menu .mk-pick summary::-webkit-details-marker { display:none; }
+#gr-menu .mk-pick summary::before { content:"▸"; color:#ffd27a; }
+#gr-menu .mk-pick details[open] summary::before { content:"▾"; }
+#gr-menu .mk-pick summary .val { opacity:0.65; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; text-align:right; }
+#gr-menu .mk-pick .fold-body { padding:0 12px 8px; }
+#gr-menu .mk-pick .mk-foot { flex:0 0 auto; display:grid; grid-template-columns:1fr 1fr; gap:8px; padding-top:8px; }
+#gr-menu .mk-pick .mk-foot .big { margin:0; font-size:17px; padding:12px; }
+#gr-menu .mk-pick .mk-foot .back { grid-column:1 / -1; }
+@media (max-height: 500px) {
+  #gr-menu .mk-pick { padding:8px 12px; }
+  #gr-menu .mk-pick .mk-head h2 { font-size:17px; } #gr-menu .mk-pick .mk-head .sub { display:none; }
+  #gr-menu .mk-pick summary { padding:7px 10px; } #gr-menu .mk-pick .mk-foot .big { font-size:15px; padding:9px; }
+  #gr-menu .mk-pick .mk-foot { grid-template-columns:1fr 1fr auto; } #gr-menu .mk-pick .mk-foot .back { grid-column:auto; }
+}`; document.head.appendChild(st); }
 
 // ---- 2. the record panel ------------------------------------------------------------------------
 const PANEL_CSS = `
