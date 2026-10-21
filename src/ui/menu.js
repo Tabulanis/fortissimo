@@ -113,12 +113,6 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
         <option value="hard">Hard — twice that, mostly two at once</option><option value="expert">Expert — two at a time, with rests to throw you</option></select><span></span></div>
       <div class="row"><span>Patterns</span><select data-k="patterns">
         <option value="easy">Easy — beats and half-beats</option><option value="medium">Medium — no fast runs</option><option value="full">Full — every note</option></select><span></span></div>
-      <div class="row"><span>Groups</span><select data-k="lock">
-        <option value="1">1 — single notes</option><option value="3">3 — groups of 3</option>
-        <option value="8">8 — the next 8, in order</option><option value="all">All — the whole section in one go</option></select><span></span></div>
-      <div class="row"><span>Keep</span><select data-k="keep">
-        <option value="any">Whatever you hit — any order</option><option value="half">Half — if the pattern breaks</option>
-        <option value="none">Nothing — only a perfect pattern</option></select><span></span></div>
       <div class="row"><span>Damage</span><select data-k="damage">
         <option value="gentle">Gentle — a miss costs a little</option><option value="normal">Normal</option>
         <option value="harsh">Harsh — misses hurt</option></select><span></span></div>
@@ -128,9 +122,8 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
     const el = (k) => card.querySelector(`[data-k=${k}]`);
     const paint = () => {
       el("hitbox").value = cfg.hitbox; el("tempo").value = cfg.tempo; el("patterns").value = cfg.patterns;
-      el("lock").value = cfg.lock === Infinity ? "all" : String(cfg.lock); el("keep").value = cfg.keep; el("damage").value = cfg.damage;
+      el("damage").value = cfg.damage;   // (10-21) Groups and Keep are gone: every clean hit locks
       el("stream").value = cfg.stream || "steps"; el("density").value = cfg.density || "easy"; el("density").disabled = cfg.stream === "all";
-      for (const k of ["lock", "keep"]) el(k).disabled = cfg.stream === "all";   // full song sets these itself (run.js)
       el("patterns").disabled = true;   // (10-12) every note is in play; Density sets how many come
       card.querySelector("[data-v=hitbox]").textContent = `${ms(cfg.hitbox)}`;
       card.querySelector("[data-v=tempo]").textContent = L.bpm ? `${Math.round(L.bpm * cfg.tempo)} bpm` : `×${cfg.tempo.toFixed(2)}`;
@@ -147,9 +140,7 @@ export function createMenu({ levels, unlocked = 0, level = 0, run, startAt = "ti
     el("hitbox").oninput = () => { cfg.hitbox = +el("hitbox").value; paint(); };
     el("tempo").oninput = () => { cfg.tempo = +el("tempo").value; paint(); };
     el("patterns").onchange = () => { cfg.patterns = el("patterns").value; paint(); };
-    el("lock").onchange = () => { cfg.lock = el("lock").value === "all" ? Infinity : +el("lock").value; paint(); };
     el("damage").onchange = () => { cfg.damage = el("damage").value; paint(); };
-    el("keep").onchange = () => { cfg.keep = el("keep").value; paint(); };
     el("stream").onchange = () => { cfg = normalize({ ...cfg, stream: el("stream").value }); paint(); };
     el("density").onchange = () => { cfg.density = el("density").value; paint(); };
     card.querySelector("[data-a=back]").onclick = levelsScreen;

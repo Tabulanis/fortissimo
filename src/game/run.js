@@ -17,26 +17,26 @@
  * Every setting moves the SCORE MULTIPLIER: harder pays more.
  */
 
-export const PRESETS = {
-  easy:   { hitbox: 0.25, tempo: 1, patterns: "easy",   lock: 3,        keep: "any",  damage: "gentle", density: "easy" },
-  medium: { hitbox: 0.25, tempo: 1, patterns: "medium", lock: 3,        keep: "half", damage: "normal", density: "medium" },
-  hard:   { hitbox: 0.25, tempo: 1, patterns: "full",   lock: 8,        keep: "none", damage: "normal", density: "hard" },
-  expert: { hitbox: 0.25, tempo: 1, patterns: "full",   lock: Infinity, keep: "none", damage: "harsh",  density: "expert" },
+export const PRESETS = {   // (10-21) every clean hit locks: lock 1 / keep "any" everywhere (normalize enforces it)
+  easy:   { hitbox: 0.25, tempo: 1, patterns: "full", lock: 1, keep: "any", damage: "gentle", density: "easy" },
+  medium: { hitbox: 0.25, tempo: 1, patterns: "full", lock: 1, keep: "any", damage: "normal", density: "medium" },
+  hard:   { hitbox: 0.25, tempo: 1, patterns: "full", lock: 1, keep: "any", damage: "normal", density: "hard" },
+  expert: { hitbox: 0.25, tempo: 1, patterns: "full", lock: 1, keep: "any", damage: "harsh",  density: "expert" },
 };
 // THE DIFFICULTY SLIDER (owner, 2026-10-03): 10 levels, each a full set of modifiers;
 // the old four presets sit on it at 3, 5, 7 and 10. The HITBOX is ±250 ms at every level
 // (owner: "ginormous"): anything near the note counts — the score is how CLOSE (chase 100%)
-export const LEVELS = [
-  { hitbox: 0.25, tempo: 0.8, patterns: "easy",   lock: 1, keep: "any",  damage: "gentle", density: "easy" },   // 1  single notes, slower
-  { hitbox: 0.25, tempo: 0.9, patterns: "easy",   lock: 1, keep: "any",  damage: "gentle", density: "easy" },   // 2
-  PRESETS.easy,                                                                                 // 3  groups: keep whatever you hit
-  { hitbox: 0.25, tempo: 1,   patterns: "medium", lock: 3, keep: "any",  damage: "normal", density: "medium" },   // 4
-  PRESETS.medium,                                                                               // 5  groups: keep half if it breaks
-  { hitbox: 0.25, tempo: 1,   patterns: "full",   lock: 3, keep: "half", damage: "normal", density: "hard" },   // 6
-  PRESETS.hard,                                                                                 // 7  only a perfect pattern
-  { hitbox: 0.25, tempo: 1,   patterns: "full",   lock: 8, keep: "none", damage: "harsh", density: "hard" },    // 8
-  { hitbox: 0.25, tempo: 1.1, patterns: "full",   lock: 8, keep: "none", damage: "harsh", density: "expert" },    // 9  faster
-  PRESETS.expert,                                                                               // 10
+export const LEVELS = [   // (10-21, re-cut with C: each step up adds notes, harsher damage or speed — and pays more)
+  { ...PRESETS.easy, tempo: 0.8 },                                  // 1  slower
+  { ...PRESETS.easy, tempo: 0.9 },                                  // 2
+  PRESETS.easy,                                                     // 3  Easy
+  { ...PRESETS.medium, damage: "gentle" },                          // 4  twice the notes, gentle
+  PRESETS.medium,                                                   // 5  Medium
+  { ...PRESETS.hard, damage: "gentle" },                            // 6  mostly pairs, gentle
+  PRESETS.hard,                                                     // 7  Hard
+  { ...PRESETS.hard, damage: "harsh" },                             // 8  misses hurt
+  { ...PRESETS.hard, damage: "harsh", tempo: 1.1 },                 // 9  faster
+  PRESETS.expert,                                                   // 10 Expert: pairs always, rests to throw you
 ];
 export const LEVEL_NAMES = ["Sprout", "Seedling", "Easy", "Steady", "Medium", "Brisk", "Hard", "Fierce", "Brutal", "Expert"];
 /** which level (1..10) a config IS, or 0 for custom */
@@ -74,9 +74,12 @@ export function normalize(cfg = {}) {
   // comes from the first bar, every hit locks its note and the locked ones stop coming, so the sky clears as you learn it.
   // Full song implies the full chart, single notes, keep whatever you hit.
   if (!DENSITIES.includes(c.density)) c.density = c.keep === "any" ? "easy" : c.keep === "half" ? "medium" : c.lock === Infinity ? "expert" : "hard";
+  // EVERY CLEAN HIT LOCKS (owner, 2026-10-21, the gameplay pass "C"): the group and keep rules are gone — a player couldn't see why a hit
+  // didn't stick. Difficulty is how many notes come (density) and how close a hit must be (hitbox), both of which you can feel.
+  c.lock = 1; c.keep = "any";
   c.patterns = "full";   // (10-12) the DENSITY decides how many notes come now; the old pattern filter dropped every off-grid note for good (Trojan's violin)
   c.stream = c.stream === "all" ? "all" : "steps";
-  if (c.stream === "all") { c.patterns = "full"; c.lock = 1; c.keep = "any"; }
+  if (c.stream === "all") { c.patterns = "full"; }
   delete c.step;   // the old bell loop's setting
   return c;
 }
@@ -87,8 +90,7 @@ export function scoreMultiplier(cfg) {
   const parts = {
     tempo: 1 + (c.tempo - 1) * 0.8,                                       // 0.75x -> x0.80, 1.25x -> x1.20
     patterns: { easy: 0.7, medium: 0.85, full: 1 }[c.patterns],
-    lock: c.stream === "all" ? 1 : ({ 1: 0.8, 3: 0.95, 8: 1.05 }[c.lock] ?? 1.15),   // all at once: x1.15 (full song sets these itself: no penalty)
-    keep: c.stream === "all" ? 1 : { any: 0.85, half: 1, none: 1.1 }[c.keep],
+    // lock / keep: no longer settings (every clean hit locks) — nothing to pay for
     damage: { gentle: 0.9, normal: 1, harsh: 1.1 }[c.damage],
     stream: { steps: 1, all: 1.25 }[c.stream],
     density: c.stream === "all" ? 1 : { easy: 0.85, medium: 1, hard: 1.15, expert: 1.3 }[c.density],                             // the whole song at once: x1.25

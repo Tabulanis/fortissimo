@@ -11,13 +11,14 @@ assert.strictEqual(normalize({ hitbox: 9, tempo: 0 }).hitbox, 0.25, "clamped");
 const m = (c) => scoreMultiplier(c).total;
 assert.ok(m(PRESETS.easy) < m(PRESETS.medium) && m(PRESETS.medium) < m(PRESETS.hard) && m(PRESETS.hard) < m(PRESETS.expert), `${["easy", "medium", "hard", "expert"].map((k) => m(PRESETS[k]))}`);
 assert.ok(m({ ...PRESETS.hard, tempo: 1.25 }) > m(PRESETS.hard), "faster pays more");
-assert.ok(m({ ...PRESETS.hard, lock: 1 }) < m(PRESETS.hard), "a smaller lock size pays less");
+assert.strictEqual(m({ ...PRESETS.hard, lock: 1 }), m(PRESETS.hard), "lock size no longer changes the score (10-21: every clean hit locks)");
 assert.ok(m({ ...PRESETS.hard, damage: "harsh" }) > m(PRESETS.hard), "harsher damage pays more");
 
 // judging follows the hitbox
 assert.strictEqual(judgeFor(PRESETS.easy).window, 0.25);
 assert.strictEqual(judgeFor({ ...PRESETS.easy, hitbox: 0.1 }).window, 0.1);
-assert.strictEqual(normalize({ lock: "all" }).lock, Infinity, "saved 'all' comes back as Infinity");
+assert.strictEqual(normalize({ lock: "all", keep: "none" }).lock, 1, "any saved group size comes back as single notes (10-21)");
+assert.strictEqual(normalize({ lock: 8, keep: "half" }).keep, "any", "any saved keep rule comes back as keep-every-hit (10-21)");
 
 // pattern difficulty: easy = beats and half-beats; medium drops fast sixteenth runs and off-grid notes; full = all
 const k = (beat) => ({ lane: "kick", beat });
