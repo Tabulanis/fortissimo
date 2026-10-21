@@ -26,7 +26,8 @@ const softDisc = () => {   // a radial glow for the comets and the target halos 
   const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32); grad.addColorStop(0, "rgba(255,255,255,1)"); grad.addColorStop(0.4, "rgba(255,255,255,0.6)"); grad.addColorStop(1, "rgba(255,255,255,0)");
   g.fillStyle = grad; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
 };
-const PULSE = 0.3, OFF = 0.06;   // the target flash: charges over PULSE s before the beat, dark OFF s after (the courtyard's full-song pulse)
+const PULSE = 0.3, OFF = 0.06;
+const _dir = (from, to) => new THREE.Vector3().subVectors(to, from).normalize();   // the target flash: charges over PULSE s before the beat, dark OFF s after (the courtyard's full-song pulse)
 
 export function createAltarKit(scene, { spot, drums, guns, approach = 1.7, fireTexture = null, fireSim = null }) {
   const root = new THREE.Group(); root.name = "altar-kit"; scene.add(root);
@@ -37,7 +38,7 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7, fireT
   // DRUMS: two rows like the courtyard kit (top three, bottom two), left of centre, heads turned to your eye
   // (x as you SEE it, + = right; facing +z out to sea, world +x is your LEFT, so it is flipped where used)
   const K = 1.35, UP = 0.3;   // (10-11) bigger and higher: each drum a clear silhouette against the sky at the end of its lane
-  const drumPos = [[-1.35, 1.32 + UP, 1.35], [-0.85, 1.38 + UP, 1.4], [-0.35, 1.32 + UP, 1.35], [-1.1, 1.0 + UP, 1.0], [-0.6, 1.0 + UP, 1.0]];
+  const drumPos = [[-1.75, 1.36 + UP, 1.35], [-1.05, 1.42 + UP, 1.4], [-0.35, 1.36 + UP, 1.35], [-1.4, 0.92 + UP, 1.0], [-0.7, 0.92 + UP, 1.0]];   // (10-21) spread out: room for each drum's ring
   const halo = (color, size) => {   // the target's glow: a flat additive disc facing the eye, dark until a cue closes
     const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: glowTex, color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
     m.scale.setScalar(size); m.renderOrder = 5; root.add(m); return m;
@@ -53,7 +54,7 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7, fireT
     lab.userData.maps = { key: lab.material.map, pad: label(d.pad || d.label) };   // the keyboard letter or the controller button (setLabelMode)
     labelSprites.push(lab);
     g.scale.setScalar(K); root.add(g); g.lookAt(eye);
-    const h = halo(d.color, 0.55 * K); h.position.copy(g.position); h.lookAt(eye);   // (10-11 photo: at 0.9 a hit flash swallowed the screen)
+    const h = halo(d.color, 0.2 * K); h.position.copy(g.position); h.lookAt(eye);   // (10-21 owner: "the lights on the drums are too big" — a third of 0.55)
     targets.push({ pos: g.position.clone(), obj: g, mat: headMat, glow: h, color: new THREE.Color(d.color), drum: true, spawn: g.position.clone().add(new THREE.Vector3(-x * 1.5, 1.6, 9)) });
   });
   // GUNS: a real gun STATION from stations.js (rounds 1-3's mortars, red strike buttons) with five mortars, on the altar to your right
@@ -68,9 +69,19 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7, fireT
     muzzles.push(pos.clone().add(new THREE.Vector3(0, 0.25, 0.25)));
     const col = new THREE.Color(gn.color || 0xff8a4a);
     if (b.buttonMat && b.buttonMat.color) b.buttonMat.color.copy(col).multiplyScalar(0.7);   // each gun its own colour, like its lane
-    const h = halo(col.getHex(), 0.8); h.position.copy(pos).add(new THREE.Vector3(0, 0.05, 0)); h.lookAt(eye);
+    const h = halo(col.getHex(), 0.27); h.position.copy(pos).add(new THREE.Vector3(0, 0.05, 0)); h.lookAt(eye);   // a third (10-21)
     targets.push({ pos, obj: null, mat: b.buttonMat, glow: h, color: col, drum: false, spawn: null });
   });
+  // THE HIT RING (10-21, the gameplay pass A — the same cue as the courtyard): each target wears a fixed RIM, and a second ring starts wide
+  // and closes onto it at a constant speed, exactly on the beat
+  const RING_S = 1.0, SPREAD = 0.55, ringGeo = new THREE.RingGeometry(0.93, 1.0, 40);   // the altar's kit is packed tight: a ring starts close (1.75x) so it stays round its own target
+  const ringMat = (c) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  for (const t of targets) {
+    t.ringR = t.drum ? 0.16 * K : 0.09;
+    t.rim = new THREE.Mesh(ringGeo, ringMat(t.color)); t.rim.position.copy(t.pos); t.rim.lookAt(eye); t.rim.scale.setScalar(t.ringR * 1.05); t.rim.renderOrder = 6; root.add(t.rim);
+    t.ring = new THREE.Mesh(ringGeo, ringMat(t.color)); t.ring.position.copy(t.pos); t.ring.lookAt(eye); t.ring.visible = false; t.ring.renderOrder = 6; root.add(t.ring);
+    if (t.drum) { t.rim.position.addScaledVector(_dir(t.pos, eye), 0.13 * K); t.ring.position.copy(t.rim.position); }   // on the drumhead, not its middle
+  }
   // LANES: a strip from the source to each target, in the target's colour — faint always, bright while a shot rides it
   const LANE_FRAG = `uniform vec3 uColor; uniform float uLit; uniform float uTime; varying vec2 vUv;
     void main() { float edge = 1.0 - abs(vUv.x - 0.5) * 2.0; float dash = 0.6 + 0.4 * step(0.5, fract(vUv.y * 10.0 - uTime * 1.5));
@@ -140,11 +151,17 @@ export function createAltarKit(scene, { spot, drums, guns, approach = 1.7, fireT
         // the glow: charges over PULSE s before the beat, white-hot on it, dark OFF s after — a flash per note, never a held glow
         const dt = nearest[i], ch = dt === Infinity ? 0 : dt >= 0 ? (dt > PULSE ? 0 : Math.pow(1 - dt / PULSE, 3)) : Math.max(0, 1 + dt / OFF);
         const f = flashes.get(i), on = f && f.until > tn, fl = on ? (f.until - tn) / 180 : 0;
+        { const dt = nearest[i], show = dt !== Infinity && dt > -0.1 && dt < RING_S;   // the closing ring
+          t.rim.material.opacity = 0.22 + (show ? 0.3 : 0);
+          t.ring.visible = show;
+          if (show) { const u = Math.max(0, dt) / RING_S; t.ring.scale.setScalar(t.ringR * (1.05 + SPREAD * u));
+            t.ring.material.opacity = dt >= 0 ? 0.35 + 0.65 * (1 - u) : Math.max(0, 1 + dt / 0.1);
+            t.ring.material.color.copy(t.color).lerp(_white, dt >= 0 ? (1 - u) * (1 - u) * 0.8 : 1); } }
         const a = Math.min(1, 0.95 * ch + fl);
         t.glow.material.opacity = a; t.glow.visible = a > 0.01;
         const E = ELEMENTS[t.drum ? drumElement : gunElement] || ELEMENTS.fire;
         _c.copy(on ? (f.good ? new THREE.Color(E.glow).lerp(_white, 0.5) : new THREE.Color(0xff3020)) : t.color).lerp(_white, 0.6 * ch * ch);
-        t.glow.material.color.copy(_c); t.glow.scale.setScalar((t.drum ? 0.55 * K : 0.6) * (0.8 + 0.4 * ch + 0.2 * fl));
+        t.glow.material.color.copy(_c); t.glow.scale.setScalar((t.drum ? 0.2 * K : 0.27) * (0.8 + 0.4 * ch + 0.2 * fl));
         if (t.obj) t.obj.scale.setScalar(on ? 1 + 0.12 * fl : 1);
         if (t.mat && t.mat.emissive) { t.mat.emissive.copy(on ? (f.good ? t.color : new THREE.Color(0xff3020)) : t.color); t.mat.emissiveIntensity = on ? 0.8 : 0.9 * ch; }
       });
