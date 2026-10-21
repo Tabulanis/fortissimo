@@ -533,6 +533,11 @@ function defendEvents() {
       if (siege) siege.heal();
       showShield();
       stageMessage();
+    } else if (e.type === "carried") {
+      // PACING (10-21): three passes with nothing new locked — the band plays the rest exactly as written, and the song moves on
+      const loop = 4 * song().bars * clock.beatDur, k = Math.floor((ctx.currentTime - clock.first) / loop);
+      loops.add({ bars: song().bars, startBar: (k + 1) * song().bars, hits: e.notes.map((n) => ({ lane: n.lane, pos: n.beat * clock.beatDur, velocity: (n.vel ?? 0.9) * 0.8, midi: n.midi, sound: n.sound })) });
+      hudUI.say(`The band takes the rest of the ${e.section} — on to the next part`, "good", 2600);
     } else if (e.type === "progress") {
       hudUI.say(`${e.hit} / ${e.of} — keep going, in order`, "good", 1200);
     } else if (e.type === "chunkFail") {
@@ -995,7 +1000,7 @@ function makeStartButton() {
     addBacking();
     if (CREATE) startCreating();
     else if (HYDRA) startHydra();
-    else if (!HYDRA) defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, keep: RUN.keep, beatDur: clock.beatDur, all: RUN.stream === "all", density: RUN.density });   // full song: every note streams
+    else if (!HYDRA) defend = new Defend({ notes: song().playNotes || song().notes, bars: song().bars }, { lockSize: RUN.lock, keep: RUN.keep, beatDur: clock.beatDur, all: RUN.stream === "all", density: RUN.density, passes: RUN.stream === "all" ? 0 : 3 });   // pacing: step-by-step only (full song is "clear the sky")   // full song: every note streams
     if (defend) { const sec = new URLSearchParams(location.search).get("section");   // dev: ?section=bass|treble starts the round there (photos of the armies)
       const k = ["drums", "bass", "treble"].indexOf(sec); if (k > 0) defend.sectionIdx = k; }
     stage3d.setBeat(clock.first, clock.beatDur);   // the cues count in on the song's beat

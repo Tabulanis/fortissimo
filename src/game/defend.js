@@ -57,12 +57,16 @@ export class Defend {
    * @param {{notes: {lane, beat, midi?, vel?}[], bars: number}} song  (beats; the song loops every 4*bars beats)
    * @param {{lockSize?: number, keep?: "any"|"half"|"none", rng?: () => number}} opts
    */
-  constructor(song, { lockSize = 1, keep = "any", rng = Math.random, all = false, density = null } = {}) {
+  constructor(song, { lockSize = 1, keep = "any", rng = Math.random, all = false, density = null, passes = 0 } = {}) {
     this.loopBeats = 4 * song.bars;
     this.lockSize = lockSize;
     this.keep = keep;
     this.all = !!all;
-    this.density = DENSITY[density] ? density : null;   // null: the old per-keep stream (STREAM), kept for old saves and the tests   // FULL SONG (owner, 2026-10-10): no layers, no thinning, no fillers — every unlocked note streams, every pass
+    this.density = DENSITY[density] ? density : null;
+    // PACING (owner, 2026-10-21, the gameplay pass "D", the middle version): a section moves on after `passes` trips round the loop
+    // UNLESS the player locked something new in the last one; what's still unlocked is CARRIED — handed to the band — and the song
+    // goes on. 0 = off (the section lasts until every note is locked, as before).
+    this.passes = passes; this._secStartK = null; this._lastLockK = null; this.carried = new Set();   // null: the old per-keep stream (STREAM), kept for old saves and the tests   // FULL SONG (owner, 2026-10-10): no layers, no thinning, no fillers — every unlocked note streams, every pass
     this.rng = rng;
     this.notes = song.notes.map((n, id) => ({ ...n, id, section: sectionOf(n.lane) }));
     this.locked = new Set();          // note ids
@@ -196,6 +200,11 @@ export class Defend {
   /** every frame: streamed occurrences that went by unhit are misses */
   tick() {
     if (this.done) return;
+    if (this.passes > 0) {   // PACING: three passes, and nothing new locked in the last one → the band takes the rest
+      const k = Math.floor(this.now / this.loopBeats);
+      if (this._secStartK === null) this._secStartK = Math.max(0, k);
+      if (k - this._secStartK >= this.passes && (this._lastLockK === null || this._lastLockK < k - 1)) { this.carry(); if (this.done) return; }
+    }
     const L = this.loopBeats, k0 = Math.floor((this.now - this.graceBeats - 1) / L), k1 = Math.floor(this.now / L);
     for (let k = k0; k <= k1; k++) {
       for (const id of this._plan(k)) {
@@ -237,6 +246,13 @@ export class Defend {
   drain() { const e = this.events; this.events = []; return e; }
 
   /** harness only: lock everything left in this section */
+  /** the section's unlocked notes go to the band (pacing): they play on, but count as carried, not as yours */
+  carry() {
+    const ids = this.unlocked().map((n) => n.id); if (!ids.length) return;
+    for (const id of ids) { this.locked.add(id); this.carried.add(id); }
+    this.events.push({ type: "carried", section: this.section, notes: ids.map((id) => this.note(id)) });
+    this._skipEmpty();
+  }
   lockAll() { const ids = this.unlocked().map((n) => n.id); if (ids.length) this._lock(ids, ids.map((id) => ({ id }))); }
 
   _miss(n) {
@@ -258,6 +274,7 @@ export class Defend {
 
   _lock(ids, hits) {
     for (const id of ids) this.locked.add(id);
+    this._lastLockK = Math.floor(this.now / this.loopBeats);
     this.events.push({ type: "lock", notes: ids.map((id) => this.note(id)), hits });
     this._skipEmpty();
   }
@@ -266,7 +283,7 @@ export class Defend {
     while (!this.done && this.unlocked().length === 0) {
       this.events.push({ type: "sectionDone", section: this.section });
       this.sectionIdx++;
-      this._run = [];
+      this._run = []; this._secStartK = null; this._lastLockK = null;   // the next section counts its own passes
     }
   }
 }

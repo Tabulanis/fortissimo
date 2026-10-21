@@ -76,6 +76,15 @@ stands 0.45 back so it never covers the kit; the spit source is the spitter's mo
 (RIG.neckBones), bends scaled by 8/N. Fixed on the way: acid.js's hit burst was 3-5 m across at the drum (a screen-filling green blob
 every hit) → 0.6/1.1 m. `tests/harness/_hydrashot.html#at=9,12,15` = quick photos of the round without playing it through.
 
+## DONE 2026-10-21: the gameplay pass A, C, E, D (B held off by him)
+- **A runway + hit ring** (stage3d.js `runways`, `rims`, `RING_S`; altarkit.js same, `SPREAD` tighter, drums spread out, halos a third).
+- **C every clean hit locks** (run.js normalize forces lock 1 / keep any; menu Groups/Keep rows gone; LEVELS re-cut so each step pays more).
+- **E the streak** (src/ui/combo.js: PERFECT ≤40 ms / GREAT ≤90 ms / OK; counter right edge; 10/25/50/100 stamps + chime; misses
+  anywhere and stray hits break it; `combo.bandLevel()` scales the locked loops 0.7→1 over a 20 streak). Round 4 (modes/hydra.js) not wired yet.
+- **D pacing** (defend.js `passes`, `carry()`, event "carried"): step-by-step only; after 3 passes with no new lock in the last one the rest of
+  the section goes to the band; tests/pacing.test.mjs. Robot: a non-playing run carried the drums after ~36 s and moved to the bass.
+- Harness note: `_fullsong.html` skips the title menu (clicks the in-arena Start), so the menu stays drawn over its photos — not a game bug.
+
 ## NEXT: the gameplay pass (decided with the owner 2026-10-21 — start here)
 
 His verdicts on the "what's fun / what isn't" talk: **A go, B hold off, C agree, D try the middle version, E yes, F yes.** Build in this order:

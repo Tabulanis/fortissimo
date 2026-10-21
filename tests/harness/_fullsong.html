@@ -21,7 +21,7 @@ f.onload = async () => { const w = f.contentWindow, d = w.document; const out = 
       if (!shot && s >= +(PP.get("at") || 6)) { shot = true; const png = await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png")))); say("png/fullsong", png); if (PP.has("page")) await snap(w, "fullsong-page"); }
       await wait(40);
     }
-    out.label = d.getElementById("gr-hud").innerText.match(/locked \d+\/\d+/)?.[0]; const gm = d.getElementById("gr-menu"); out.menu = gm ? { display: gm.style.display, visible: gm.checkVisibility ? gm.checkVisibility() : "?" } : "none"; const cb = d.getElementById("gr-combo"); out.combo = cb ? { shown: cb.style.opacity, n: cb.querySelector(".n").textContent } : null;
+    out.label = d.getElementById("gr-hud").innerText.match(/locked \d+\/\d+/)?.[0]; out.section = G.defend.section; out.carried = G.defend.carried.size; const gm = d.getElementById("gr-menu"); out.menu = gm ? { display: gm.style.display, visible: gm.checkVisibility ? gm.checkVisibility() : "?" } : "none"; const cb = d.getElementById("gr-combo"); out.combo = cb ? { shown: cb.style.opacity, n: cb.querySelector(".n").textContent } : null;
   } catch (e) { out.err = String(e) + (e.stack || "").slice(0, 200); }
   say("fullsong", JSON.stringify(out)); };
 </script>
