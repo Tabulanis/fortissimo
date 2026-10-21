@@ -76,6 +76,26 @@ stands 0.45 back so it never covers the kit; the spit source is the spitter's mo
 (RIG.neckBones), bends scaled by 8/N. Fixed on the way: acid.js's hit burst was 3-5 m across at the drum (a screen-filling green blob
 every hit) → 0.6/1.1 m. `tests/harness/_hydrashot.html#at=9,12,15` = quick photos of the round without playing it through.
 
+## NEXT: the gameplay pass (decided with the owner 2026-10-21 — start here)
+
+His verdicts on the "what's fun / what isn't" talk: **A go, B hold off, C agree, D try the middle version, E yes, F yes.** Build in this order:
+
+- **A. One cue everywhere — a runway with a hit ring.** Each target gets a straight, fixed lane; the rocket rides it at constant speed; a ring
+  shrinks onto the target and closes exactly on the beat. Same at the courtyard and the altar; the Hydra heads roar over the lanes instead of
+  being the lanes. What's there already (stage3d.js): rockets DO fly a fixed path per lane (`SPAWNS[lane]` → `drumFace[lane]`, `pathPoint` =
+  straight line + a low parabolic lift `ARC_LIFT`, `APPROACH_S` 4 s, constant speed) — so the geometry is fixed; what's missing is the
+  VISIBLE runway and the ring. Old approach rings exist but are hidden (`rings[lane].mesh`, line ~1915; `r.mesh.visible = false` in the cue
+  loop ~2645 — the "magic charge" glow replaced them). Bring a big clear ring back, add a faint lane strip per target. The altar kit
+  (altarkit.js) draws its own comets + halos: give it the same ring and lanes; its halos are too big (owner) — a third of the size.
+- **C. Every clean hit locks, always.** Drop the group / keep rules (defend.js lockSize/keep, run.js lock/keep rows); difficulty = density +
+  hit window only. Menu rows go.
+- **E. Juice.** Combo counter on screen, a streak sound, Perfect / Great / OK per hit, the band's volume following the streak.
+- **D. Pacing (the middle version).** A section moves on after three passes UNLESS the player is still locking new notes in it; what's
+  unlocked joins the band (joinBacking already does that) and the song moves on.
+- **B. Held off** (teach one thing per song: level 1 drums only, the town/shield/guns introduced over the first songs). Don't build.
+- **F.** The Hydra halos smaller; A covers "an obvious way to see the notes coming".
+Also raised, not done: watch someone else play it (his nephew) and note where they stall in the first two minutes.
+
 ## Checks before a release
 
 - `npm run check` must pass.
