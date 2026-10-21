@@ -1954,6 +1954,23 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
     firelights.push({ glow, radius: i < 6 ? TARGET(i).radius : 0.13, base: hexToColor(laneHex(i)).clone() });   // a gun's halo: drum-like, on its button
   }
 
+  // THE RUNWAY + THE HIT RING (owner, 2026-10-21, the gameplay pass "A": "an easy, obvious way to see the notes coming"). Every lane's
+  // rocket flies the same fixed path every time (SPAWNS → drumFace, a low lift); now that path is DRAWN — a thin line in the lane's colour,
+  // faint at rest, bright while a rocket rides it — and each target wears a fixed RIM (the hit line) with a second ring that starts wide
+  // and closes onto the rim at a constant speed, exactly on the beat. Read it like any rhythm game: when the ring meets the rim, hit.
+  const RING_S = 1.3;   // seconds the closing ring takes, the same for every note (constant speed = readable)
+  const runways = [], rims = [];
+  const _rp = new THREE.Vector3();
+  for (let i = 0; i < N_T; i++) {
+    const pts = []; for (let k = 0; k <= 24; k++) { const f = k / 24; _rp.copy(SPAWNS[i]).lerp(drumFace[i], f); _rp.y += ARC_LIFT[i] * 4 * f * (1 - f); pts.push(_rp.clone()); }
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 48, i < 6 ? 0.022 : 0.016, 5, false),
+      new THREE.MeshBasicMaterial({ color: hexToColor(laneHex(i)), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    tube.visible = false; tube.renderOrder = 3; scene.add(tube); runways.push(tube);
+    const rim = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: hexToColor(laneHex(i)), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    rim.position.copy(rings[i].mesh.position); rim.quaternion.copy(rings[i].mesh.quaternion); rim.scale.setScalar(rings[i].radius * 1.04);
+    rim.visible = false; scene.add(rim); rims.push(rim);
+  }
+
   // BUTTON FRAMES: a glowing outline round each column's shared button (owner, 2026-10-04: one
   // box per column, not a mortar's and a cannon's stacked) — the guns' version of the drums' charge light
   const barFrames = [];   // PER_ROW per station: the bottom-row bar carries its column's frame
@@ -2645,6 +2662,26 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
       const r = rings[lane];
       const fl = firelights[lane];
       r.mesh.visible = false;
+      { // RUNWAY + RING (gameplay pass A): only the lanes of the station you face, only lanes in play
+        const live = drumVisible[lane] && stationOf(lane) === station && !fly.on && station !== "sea";
+        let ride = 0, close = null;   // ride: how far along the nearest rocket on THIS lane is (0..1); close: the nearest note's dt for the ring
+        const gunCol = lane >= 6 && (lane - 6) % BARS < PER_ROW, mates = gunCol ? [lane, lane + PER_ROW] : [lane];
+        for (const e of activeNotes) {
+          if (e.hit) continue; const dt = e.time - heardNow;
+          if (e.laneIdx === lane && dt > 0 && dt < APPROACH_S) ride = Math.max(ride, 1 - dt / APPROACH_S);
+          if (mates.includes(e.laneIdx) && dt > -0.1 && dt < RING_S && (close === null || Math.abs(dt) < Math.abs(close))) close = dt;
+        }
+        const tube = runways[lane]; tube.visible = live;
+        if (live) tube.material.opacity = 0.14 + 0.5 * ride;
+        const rim = rims[lane], onRow = live && (!gunCol || true) && !(lane >= 6 && (lane - 6) % BARS >= PER_ROW);
+        rim.visible = onRow; if (onRow) rim.material.opacity = 0.3 + (close !== null ? 0.4 : 0);
+        if (onRow && close !== null) {
+          const u = Math.max(0, close) / RING_S;   // 1 when it appears, 0 on the beat
+          r.mesh.visible = true; r.mesh.scale.setScalar(r.radius * (1.04 + 1.6 * u));
+          r.mesh.material.opacity = close >= 0 ? 0.35 + 0.65 * (1 - u) : Math.max(0, 1 + close / 0.1);
+          r.mesh.material.color.copy(hexToColor(laneHex(lane))).lerp(_white, close >= 0 ? (1 - u) * (1 - u) * 0.8 : 1);
+        }
+      }
       // a gun column has ONE button: its bottom lane draws the glow for both rows; the top lane draws nothing
       const gunK = lane >= 6 ? (lane - 6) % BARS : -1;
       if (gunK >= PER_ROW) { if (fl) fl.glow.visible = false; continue; }
@@ -2662,7 +2699,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         const flash = Math.exp(-(heardNow - previewAt[lane]) / 0.1);   // the preview: full for an instant, gone in a quarter second
         fl.glow.visible = true;
         fl.glow.material.opacity = Math.min(1, (0.2 + 0.8 * pl * pl) * (0.65 + 0.35 * beatKick) + flash);
-        fl.glow.scale.setScalar(fl.radius * (1.25 + 0.55 * ramp + 0.6 * flash));
+        fl.glow.scale.setScalar(fl.radius * 0.8 * (1.25 + 0.55 * ramp + 0.6 * flash));   // (10-21) smaller: the ring carries the timing now
         _mc.copy(laneCol[lane]).lerp(_white, Math.min(1, Math.max(0, (pl - 0.65) / 0.35) * 0.9 + 0.8 * flash));
         fl.glow.material.color.copy(_mc);
         if (frame) { frame.visible = true; frame.material.opacity = Math.min(1, 0.3 + 0.9 * pl); frame.material.color.copy(_mc); }
@@ -2676,7 +2713,7 @@ export function createStage3D(canvas, layout, colors, opts = {}) {
         const peak = Math.abs(dt) < 0.025 ? 1 : 0;              // the flash AT the beat
         fl.glow.visible = true;
         fl.glow.material.opacity = Math.min(1, 0.08 + 0.85 * c + 0.25 * peak);
-        fl.glow.scale.setScalar(fl.radius * 2.6 * (0.75 + 0.45 * c + 0.3 * peak));
+        fl.glow.scale.setScalar(fl.radius * 1.6 * (0.75 + 0.45 * c + 0.3 * peak));   // (10-21) smaller: the ring carries the timing now
         _mc.copy(fl.base).lerp(_white, 0.55 * c * c + 0.3 * peak);   // white-hot at the peak
         fl.glow.material.color.copy(_mc);
         tint = Math.min(0.68, 0.58 * c + 0.15 * peak);

@@ -3,7 +3,7 @@
 // FULL SONG mode (10-10): every note streams from the start; a robot that hits ~70% of them; locked count must climb, the stream thin
 const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms)), say = (k, b) => fetch("http://127.0.0.1:8899/" + k, { method: "POST", body: b });
 const KEY = { hat: "q", snare: "w", crash: "e", kick: "a", "tom low": "s", "tom high": "d" };
-localStorage.setItem("gr.run2", JSON.stringify({ stream: "all", hitbox: 0.25, tempo: 1, damage: "gentle" })); localStorage.setItem("gr.level", "0");
+const PP = new URLSearchParams(location.hash.slice(1)); localStorage.setItem("gr.run2", JSON.stringify({ stream: PP.get("s") || "all", density: PP.get("d") || "easy", hitbox: 0.25, tempo: 1, damage: "gentle" })); if (PP.get("lvl")) localStorage.setItem("gr.level", PP.get("lvl")); localStorage.setItem("gr.level", "0");
 f.src = "/?autobegin=1&quality=medium";
 f.onload = async () => { const w = f.contentWindow, d = w.document; const out = { t: [] };
   try { await wait(5000); [...d.querySelectorAll("button")].find((b) => b.textContent.trim() === "Start").click(); await wait(2500);
@@ -17,7 +17,7 @@ f.onload = async () => { const w = f.contentWindow, d = w.document; const out = 
       for (const a of G.upcoming()) { const key = a.laneIdx + "@" + a.time.toFixed(3), lane = G.laneOf(a.laneIdx); if (!planned.has(key) && a.time - now < 0.6 && KEY[lane]) { planned.add(key); if (Math.random() < 0.7) at(a.time + (Math.random() - 0.5) * 0.04, KEY[lane]); } }
       const s = Math.round((performance.now() - t0) / 1000);
       if (s % 10 === 0 && !out.t.some((x) => x.s === s)) out.t.push({ s, locked: D.locked.size, open: D.unlocked().length, inFlight: D.offered().length, life: G.life.you });
-      if (!shot && s >= 6) { shot = true; const png = await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png")))); say("png/fullsong", png); }
+      if (!shot && s >= +(PP.get("at") || 6)) { shot = true; const png = await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png")))); say("png/fullsong", png); }
       await wait(40);
     }
     out.label = d.getElementById("gr-hud").innerText.match(/locked \d+\/\d+/)?.[0];
