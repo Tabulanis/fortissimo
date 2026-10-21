@@ -39,6 +39,7 @@ import { Siege, ARMY } from "./game/siege.js";
 import { gradeRound } from "./game/grade.js";
 import { createResults } from "./ui/results.js";
 import { showStamp } from "./ui/locked.js";
+import { createCombo, grade as gradeOf } from "./ui/combo.js";
 import { createHud } from "./ui/hud.js";
 import { createMixer } from "./audio/mixer.js";
 import { loadSettings, createSettings } from "./ui/settings.js";
@@ -235,6 +236,7 @@ function joinBacking() {
 let audioStarted = false;   // Start pressed and the audio graph exists (the page lays out its HUD before that)
 let roundOffsets = [];          // every guided hit this round: seconds off its note, null = off-chart
 const results = createResults();
+const combo = createCombo({ getCtx: () => ctx, stamp: showStamp });   // the streak: counter, grades, milestones, the band following it (10-21)
 const hudUI = createHud({ onHint: () => playHint() });
 let autoCorrect = SET.autoCorrect;   // A toggles; also in settings
 function showDifficulty() { hudUI.setDifficulty(`${runName(RUN)} ×${scoreMultiplier(RUN).total}${autoCorrect ? " · Auto ✓" : ""}`); }
@@ -515,6 +517,7 @@ function defendEvents() {
   for (const e of defend.drain()) {
     if (e.type === "bonusHit") continue;   // a filler note: the sound, the stamp and the gun already happened
     if (e.type === "miss") {
+      { const mi = LANE_INDEX[e.note.lane], mp = mi != null && stage3d.drumScreen(mi); combo.breakStreak(mp ? mp.x : null, mp ? mp.y : null); }   // any missed note breaks the streak
       if (e.note.section !== "drums") continue;   // at the guns a miss just doesn't fire: the enemy is the threat
       life.you -= L.miss;   // a missed rocket arrow blows up at the drum: it hurts YOU (owner: rockets threaten the player, arrows the town)
       hurtFlash();
@@ -1135,7 +1138,7 @@ function scheduleGhosts() {
       midi: 60,
       baseNote: 60,
       ...laneSound(entry.ln, e.midi, e.sound),   // the band plays each note with ITS instrument (10-12: locked violin came back as harp)
-      velocity: e.velocity * 0.85,   // exactly as played, a touch under live play
+      velocity: e.velocity * 0.85 * combo.bandLevel(),   // exactly as played, a touch under live play — and swelling with your streak (10-21)
       when: e.time,
     });
     if (defend && isGun(e.lane)) fireGun(entry.idx, e.lane, e.time);   // the band's guns fire on their notes
@@ -1351,10 +1354,11 @@ function hitLane(idx, lane, press, padVel = 1) {
       const r = defend.hit(found.id, { offset: j.offset, velocity: vel });
       if (isGun(lane.name)) fireGun(idx, lane.name, ctx.getOutputTimestamp().contextTime, Math.max(0, 1 - Math.abs(j.offset) / box) * (Math.abs(j.offset) <= 0.02 ? 1.1 : 1));   // your gun — at the boss it charges a crystal, by accuracy
       if (r !== "bonus") { const L = LIFE[RUN.damage] || LIFE.normal; life.you += L.heal; life.town += L.heal; }   // a filler note scores, but doesn't heal
-      if (p) showStamp(Math.round(Math.max(0, 1 - Math.abs(j.offset) / box) * 100) + "%", p.x, p.y - 4, { size: 30, ms: 900 });
+      combo.hit(gradeOf(j.offset), p ? p.x : null, p ? p.y : null);   // PERFECT / GREAT / OK at the target, the counter up (10-21: was a %)
     } else {
       defend.stray();   // nothing offered there: breaks a run under way
-      if (p && found) showStamp("0%", p.x, p.y - 4, { size: 26, color: "#ff9a7a", ms: 700 });
+      if (p && found) showStamp("✕", p.x, p.y - 4, { size: 26, color: "#ff9a7a", ms: 700 });
+      combo.breakStreak(p ? p.x : null, p ? p.y : null);
     }
     defendEvents();
   }

@@ -1,5 +1,6 @@
 <!doctype html><body style="margin:0"><iframe id="f" style="width:1280px;height:720px;border:0"></iframe>
 <script type="module">
+import { snap } from "./_pagesnap.js";
 // FULL SONG mode (10-10): every note streams from the start; a robot that hits ~70% of them; locked count must climb, the stream thin
 const f = document.getElementById("f"), wait = (ms) => new Promise((r) => setTimeout(r, ms)), say = (k, b) => fetch("http://127.0.0.1:8899/" + k, { method: "POST", body: b });
 const KEY = { hat: "q", snare: "w", crash: "e", kick: "a", "tom low": "s", "tom high": "d" };
@@ -14,13 +15,13 @@ f.onload = async () => { const w = f.contentWindow, d = w.document; const out = 
     const planned = new Set(), t0 = performance.now(); let shot = false;
     while (performance.now() - t0 < 50000) {
       const now = G.ctx.getOutputTimestamp().contextTime;
-      for (const a of G.upcoming()) { const key = a.laneIdx + "@" + a.time.toFixed(3), lane = G.laneOf(a.laneIdx); if (!planned.has(key) && a.time - now < 0.6 && KEY[lane]) { planned.add(key); if (Math.random() < 0.7) at(a.time + (Math.random() - 0.5) * 0.04, KEY[lane]); } }
+      for (const a of G.upcoming()) { const key = a.laneIdx + "@" + a.time.toFixed(3), lane = G.laneOf(a.laneIdx); if (!planned.has(key) && a.time - now < 0.6 && KEY[lane]) { planned.add(key); if (Math.random() < +(PP.get("acc") || 0.7)) at(a.time + (Math.random() - 0.5) * 0.04, KEY[lane]); } }
       const s = Math.round((performance.now() - t0) / 1000);
       if (s % 10 === 0 && !out.t.some((x) => x.s === s)) out.t.push({ s, locked: D.locked.size, open: D.unlocked().length, inFlight: D.offered().length, life: G.life.you });
-      if (!shot && s >= +(PP.get("at") || 6)) { shot = true; const png = await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png")))); say("png/fullsong", png); }
+      if (!shot && s >= +(PP.get("at") || 6)) { shot = true; const png = await new Promise((r) => w.requestAnimationFrame(() => r(d.querySelector("canvas").toDataURL("image/png")))); say("png/fullsong", png); if (PP.has("page")) await snap(w, "fullsong-page"); }
       await wait(40);
     }
-    out.label = d.getElementById("gr-hud").innerText.match(/locked \d+\/\d+/)?.[0];
+    out.label = d.getElementById("gr-hud").innerText.match(/locked \d+\/\d+/)?.[0]; const gm = d.getElementById("gr-menu"); out.menu = gm ? { display: gm.style.display, visible: gm.checkVisibility ? gm.checkVisibility() : "?" } : "none"; const cb = d.getElementById("gr-combo"); out.combo = cb ? { shown: cb.style.opacity, n: cb.querySelector(".n").textContent } : null;
   } catch (e) { out.err = String(e) + (e.stack || "").slice(0, 200); }
   say("fullsong", JSON.stringify(out)); };
 </script>
